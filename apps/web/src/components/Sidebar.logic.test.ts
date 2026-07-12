@@ -261,7 +261,7 @@ describe("resolveSidebarNewThreadEnvMode", () => {
 });
 
 describe("resolveSidebarNewThreadSeedContext", () => {
-  it("prefers the default worktree mode over active thread context", () => {
+  it("preserves active draft context over the default worktree mode", () => {
     expect(
       resolveSidebarNewThreadSeedContext({
         projectId: "project-1",
@@ -280,15 +280,18 @@ describe("resolveSidebarNewThreadSeedContext", () => {
         },
       }),
     ).toEqual({
+      branch: "feature/draft",
+      worktreePath: "/repo/.t3/worktrees/draft",
       envMode: "worktree",
+      startFromOrigin: true,
     });
   });
 
-  it("inherits the active server thread context when creating a new thread in the same project", () => {
+  it("preserves the active branch over the default worktree mode", () => {
     expect(
       resolveSidebarNewThreadSeedContext({
         projectId: "project-1",
-        defaultEnvMode: "local",
+        defaultEnvMode: "worktree",
         activeThread: {
           projectId: "project-1",
           branch: "effect-atom",
@@ -300,6 +303,25 @@ describe("resolveSidebarNewThreadSeedContext", () => {
       branch: "effect-atom",
       worktreePath: null,
       envMode: "local",
+    });
+  });
+
+  it("preserves the active worktree over the default worktree mode", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "feature/existing",
+          worktreePath: "/repo/.t3/worktrees/existing",
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      branch: "feature/existing",
+      worktreePath: "/repo/.t3/worktrees/existing",
+      envMode: "worktree",
     });
   });
 

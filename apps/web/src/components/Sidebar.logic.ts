@@ -205,12 +205,6 @@ export function resolveSidebarNewThreadSeedContext(input: {
   envMode: SidebarNewThreadEnvMode;
   startFromOrigin?: boolean;
 } {
-  if (input.defaultEnvMode === "worktree") {
-    return {
-      envMode: "worktree",
-    };
-  }
-
   if (input.activeDraftThread?.projectId === input.projectId) {
     return {
       branch: input.activeDraftThread.branch,
