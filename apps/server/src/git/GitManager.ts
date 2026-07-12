@@ -1104,27 +1104,30 @@ export const make = Effect.gen(function* () {
       ? yield* provider.getTargetRepositoryCloneUrls({ cwd }).pipe(Effect.orElseSucceed(() => null))
       : null;
     if (targetCloneUrls) {
-      const originUrl = yield* readConfigValueNullable(cwd, "remote.origin.url");
-      const targetUrl = shouldPreferSshRemote(originUrl)
-        ? targetCloneUrls.sshUrl
-        : targetCloneUrls.url;
-      const remoteName = yield* gitCore.ensureRemote({
-        cwd,
-        preferredName: "upstream",
-        url: targetUrl,
-      });
-      yield* gitCore.fetchRemoteTrackingBranch({
-        cwd,
-        remoteName,
-        remoteBranch: baseBranch,
-      });
-      return yield* gitCore
-        .resolveRemoteTrackingCommit({
+      const targetBaseRangeRef = yield* Effect.gen(function* () {
+        const originUrl = yield* readConfigValueNullable(cwd, "remote.origin.url");
+        const targetUrl = shouldPreferSshRemote(originUrl)
+          ? targetCloneUrls.sshUrl
+          : targetCloneUrls.url;
+        const remoteName = yield* gitCore.ensureRemote({
           cwd,
-          refName: baseBranch,
-          fallbackRemoteName: remoteName,
-        })
-        .pipe(Effect.map((resolved) => resolved.commitSha));
+          preferredName: "upstream",
+          url: targetUrl,
+        });
+        yield* gitCore.fetchRemoteTrackingBranch({
+          cwd,
+          remoteName,
+          remoteBranch: baseBranch,
+        });
+        return yield* gitCore
+          .resolveRemoteTrackingCommit({
+            cwd,
+            refName: baseBranch,
+            fallbackRemoteName: remoteName,
+          })
+          .pipe(Effect.map((resolved) => resolved.commitSha));
+      }).pipe(Effect.orElseSucceed(() => null));
+      if (targetBaseRangeRef) return targetBaseRangeRef;
     }
 
     const remoteName = yield* gitCore

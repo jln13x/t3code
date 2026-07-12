@@ -2375,7 +2375,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
-  it.effect("generates PR content against the remote base when the local base is stale", () =>
+  it.effect("falls back to the tracking ref when the target repository fetch fails", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
@@ -2410,6 +2410,12 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       let generatedCommitSummary = "";
       const { manager } = yield* makeManager({
         ghScenario: {
+          repositoryCloneUrls: {
+            "pingdotgg/codething-mvp": {
+              url: "/missing/target-repository",
+              sshUrl: "/missing/target-repository",
+            },
+          },
           prListSequence: ["[]", "[]"],
         },
         textGeneration: {
