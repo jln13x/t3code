@@ -1834,12 +1834,36 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         { allowNonZeroExit: true },
       );
       const hasHead = headResult.exitCode === 0;
-      yield* executeGit(
-        "GitVcsDriver.readWorkingTreeReviewDiff.readTree",
+      const gitIndexResult = yield* executeGit(
+        "GitVcsDriver.readWorkingTreeReviewDiff.resolveIndex",
         cwd,
-        hasHead ? ["read-tree", "HEAD"] : ["read-tree", "--empty"],
-        { env },
+        ["rev-parse", "--git-path", "index"],
       );
+      const gitIndexPath = path.isAbsolute(gitIndexResult.stdout.trim())
+        ? gitIndexResult.stdout.trim()
+        : path.resolve(cwd, gitIndexResult.stdout.trim());
+
+      if (yield* fileSystem.exists(gitIndexPath)) {
+        yield* fileSystem.copyFile(gitIndexPath, indexPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new GitCommandError({
+                operation: "GitVcsDriver.readWorkingTreeReviewDiff.copyIndex",
+                command: "git diff",
+                cwd,
+                detail: "Failed to copy the Git index for the review diff.",
+                cause,
+              }),
+          ),
+        );
+      } else {
+        yield* executeGit(
+          "GitVcsDriver.readWorkingTreeReviewDiff.readEmptyTree",
+          cwd,
+          ["read-tree", "--empty"],
+          { env },
+        );
+      }
       yield* executeGit(
         "GitVcsDriver.readWorkingTreeReviewDiff.add",
         cwd,

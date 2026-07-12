@@ -307,6 +307,27 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("preserves sparse-checkout entries in the working-tree diff", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "included/file.ts", "export const included = 1;\n");
+        yield* writeTextFile(cwd, "excluded/file.ts", "export const excluded = 1;\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "add sparse files"]);
+        yield* git(cwd, ["sparse-checkout", "set", "included"]);
+        yield* writeTextFile(cwd, "included/file.ts", "export const included = 2;\n");
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, ignoreWhitespace: false });
+        const diff = preview.sources.find((source) => source.kind === "working-tree")?.diff ?? "";
+
+        assert.include(diff, "diff --git a/included/file.ts b/included/file.ts");
+        assert.include(diff, "+export const included = 2;");
+        assert.notInclude(diff, "excluded/file.ts");
+      }),
+    );
+
     it.effect("detects a committed rename with edits in the branch diff", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
