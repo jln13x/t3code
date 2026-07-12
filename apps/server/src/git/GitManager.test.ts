@@ -1845,6 +1845,21 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
             // @effect-diagnostics-next-line preferSchemaOverJson:off
             "octocat:feature/existing-upstream-pr": JSON.stringify([
               {
+                number: 3899,
+                title: "Another fork's PR",
+                url: "https://github.com/pingdotgg/t3code/pull/3899",
+                baseRefName: "main",
+                headRefName: "feature/existing-upstream-pr",
+                state: "OPEN",
+                isCrossRepository: true,
+                headRepository: {
+                  nameWithOwner: "somebody-else/t3code",
+                },
+                headRepositoryOwner: {
+                  login: "somebody-else",
+                },
+              },
+              {
                 number: 3900,
                 title: "Existing upstream PR",
                 url: "https://github.com/pingdotgg/t3code/pull/3900",
@@ -1874,7 +1889,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       expect(
         ghCalls.some((call) =>
           call.includes(
-            "pr list --head octocat:feature/existing-upstream-pr --state open --limit 1",
+            "pr list --head octocat:feature/existing-upstream-pr --state open --limit 100",
           ),
         ),
       ).toBe(true);

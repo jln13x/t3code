@@ -94,6 +94,7 @@ const COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_PROGRESS_TEXT_LENGTH = 500;
 const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
+const OPEN_PULL_REQUEST_CANDIDATE_LIMIT = 100;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
 type StripProgressContext<T> = T extends any ? Omit<T, "actionId" | "cwd" | "action"> : never;
@@ -917,7 +918,7 @@ export const make = Effect.gen(function* () {
         cwd,
         headSelector,
         state: "open",
-        limit: 1,
+        limit: OPEN_PULL_REQUEST_CANDIDATE_LIMIT,
       });
       const normalizedPullRequests = pullRequests.map(toPullRequestInfo);
 
