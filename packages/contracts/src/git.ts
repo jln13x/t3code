@@ -223,6 +223,7 @@ const VcsStatusRemoteShape = {
   aheadCount: NonNegativeInt,
   behindCount: NonNegativeInt,
   aheadOfDefaultCount: Schema.optional(NonNegativeInt),
+  remoteRefHash: Schema.optional(TrimmedNonEmptyStringSchema),
   pr: Schema.NullOr(VcsStatusChangeRequest),
 };
 

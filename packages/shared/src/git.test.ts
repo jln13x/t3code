@@ -157,6 +157,7 @@ describe("applyGitStatusStreamEvent", () => {
       behindCount: 0,
       pr: null,
       localGeneration: 1,
+      remoteRefHash: "remote-ref-hash",
     };
 
     expect(
@@ -172,6 +173,7 @@ describe("applyGitStatusStreamEvent", () => {
       behindCount: 0,
       pr: null,
       localGeneration: 2,
+      remoteRefHash: "remote-ref-hash",
     });
   });
 });

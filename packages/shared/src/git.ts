@@ -230,6 +230,7 @@ function toRemoteStatusPart(status: VcsStatusResult): VcsStatusRemoteResult {
     ...(status.aheadOfDefaultCount === undefined
       ? {}
       : { aheadOfDefaultCount: status.aheadOfDefaultCount }),
+    ...(status.remoteRefHash === undefined ? {} : { remoteRefHash: status.remoteRefHash }),
     pr: status.pr,
   };
 }

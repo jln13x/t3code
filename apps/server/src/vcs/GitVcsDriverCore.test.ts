@@ -351,6 +351,32 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("changes the remote ref hash when a remote-tracking ref moves", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const initialCommit = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* writeTextFile(cwd, "next.txt", "next\n");
+        yield* git(cwd, ["add", "next.txt"]);
+        yield* git(cwd, ["commit", "-m", "next commit"]);
+        const nextCommit = yield* git(cwd, ["rev-parse", "HEAD"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        yield* git(cwd, ["update-ref", "refs/remotes/origin/base", initialCommit]);
+        const initialStatus = yield* driver.statusDetailsRemote(cwd, {
+          refreshUpstream: false,
+        });
+        yield* git(cwd, ["update-ref", "refs/remotes/origin/base", nextCommit]);
+        const nextStatus = yield* driver.statusDetailsRemote(cwd, {
+          refreshUpstream: false,
+        });
+
+        assert.isString(initialStatus.remoteRefHash);
+        assert.isString(nextStatus.remoteRefHash);
+        assert.notEqual(initialStatus.remoteRefHash, nextStatus.remoteRefHash);
+      }),
+    );
+
     it.effect("can read cached remote divergence without fetching upstream", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
