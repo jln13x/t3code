@@ -270,6 +270,10 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
   const latestTurn = orderedTurnDiffSummaries[0];
+  const diffPreviewCacheKey = JSON.stringify({
+    latestTurnId: latestTurn?.turnId ?? null,
+    workingTree: gitStatusQuery.data?.workingTree ?? null,
+  });
   const selectedScopeLabel =
     selectedTurnId === null
       ? selectedGitScope === "unstaged"
@@ -316,6 +320,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
+          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
@@ -333,6 +338,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     shouldRetryBranchDiffAtEnvironmentCwd && activeThread && serverConfig
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
+          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: serverConfig.cwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),

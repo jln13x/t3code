@@ -187,6 +187,31 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    it.effect("omits an untracked file after it is deleted", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        const createdPath = pathService.join(cwd, "created.ts");
+        yield* writeTextFile(cwd, "created.ts", "export const created = true;\n");
+
+        const beforeDelete = yield* driver.getReviewDiffPreview({ cwd });
+        yield* fileSystem.remove(createdPath);
+        const afterDelete = yield* driver.getReviewDiffPreview({ cwd });
+
+        assert.include(
+          beforeDelete.sources.find((source) => source.kind === "working-tree")?.diff ?? "",
+          "created.ts",
+        );
+        assert.strictEqual(
+          afterDelete.sources.find((source) => source.kind === "working-tree")?.diff,
+          "",
+        );
+      }),
+    );
+
     it.effect("drops an unterminated path from truncated NUL-separated git output", () =>
       Effect.sync(() => {
         const paths = splitNullSeparatedGitStdoutPaths({
