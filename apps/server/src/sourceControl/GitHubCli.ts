@@ -49,7 +49,7 @@ function qualifyPullRequestHead(
 ): string {
   if (
     context.baseRepository.toLowerCase() === context.headRepository.toLowerCase() ||
-    /^[^:/\s]+:.+$/u.test(headSelector)
+    /^[^:\s]+:.+$/u.test(headSelector)
   ) {
     return headSelector;
   }

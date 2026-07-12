@@ -304,6 +304,31 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("preserves slash-qualified remote head selectors", () =>
+    Effect.gen(function* () {
+      mockRun
+        .mockReturnValueOnce(
+          Effect.succeed(processOutput("github.com/pingdotgg/t3code\tgithub.com/octocat/t3code\n")),
+        )
+        .mockReturnValueOnce(Effect.succeed(processOutput("[]\n")));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.listPullRequests({
+        cwd: "/repo",
+        headSelector: "my-org/upstream:feature/fork-pr",
+        state: "open",
+      });
+
+      expect(mockRun).toHaveBeenNthCalledWith(2, {
+        operation: "GitHubCli.execute",
+        command: "gh",
+        args: expect.arrayContaining(["--head", "my-org/upstream:feature/fork-pr"]),
+        cwd: "/repo",
+        timeoutMs: 30_000,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("preserves GitHub Enterprise hosts across pull request operations", () =>
     Effect.gen(function* () {
       mockRun
