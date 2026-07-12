@@ -44,6 +44,7 @@ import {
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   ServerProviderSkillsError,
+  ServerProviderSkillsUnsupportedError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   OrchestrationReplayEventsError,
@@ -1259,21 +1260,20 @@ const makeWsRpcLayer = (
             Effect.gen(function* () {
               const skills = yield* providerRegistry.listSkills(input);
               if (!skills) {
-                return yield* new ServerProviderSkillsError({
+                return yield* new ServerProviderSkillsUnsupportedError({
                   instanceId: input.instanceId,
                   cwd: input.cwd,
-                  message: "This provider does not support project skill discovery.",
                 });
               }
               return { skills };
             }).pipe(
               Effect.mapError((cause) =>
-                cause._tag === "ServerProviderSkillsError"
+                cause._tag === "ServerProviderSkillsError" ||
+                cause._tag === "ServerProviderSkillsUnsupportedError"
                   ? cause
                   : new ServerProviderSkillsError({
                       instanceId: input.instanceId,
                       cwd: input.cwd,
-                      message: "Failed to list provider skills.",
                       cause,
                     }),
               ),

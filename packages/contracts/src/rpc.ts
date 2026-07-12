@@ -123,6 +123,7 @@ import {
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
   ServerProviderSkillsError,
+  ServerProviderSkillsUnsupportedError,
   ServerProviderSkillsInput,
   ServerProviderSkillsResult,
   ServerTraceDiagnosticsResult,
@@ -275,7 +276,11 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
 export const WsServerListProviderSkillsRpc = Rpc.make(WS_METHODS.serverListProviderSkills, {
   payload: ServerProviderSkillsInput,
   success: ServerProviderSkillsResult,
-  error: Schema.Union([ServerProviderSkillsError, EnvironmentAuthorizationError]),
+  error: Schema.Union([
+    ServerProviderSkillsError,
+    ServerProviderSkillsUnsupportedError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 
 export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
