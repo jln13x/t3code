@@ -988,7 +988,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
   const workspaceRefTargets = useMemo(
     () =>
-      threadGroupingMode === "worktree"
+      threadGroupingMode === "worktree" && shouldShowThreadPanel
         ? projectMembers.map((member) => ({
             member,
             atom: vcsEnvironment.listRefs({
@@ -997,7 +997,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             }),
           }))
         : [],
-    [projectMembers, threadGroupingMode],
+    [projectMembers, shouldShowThreadPanel, threadGroupingMode],
   );
   const workspaceRefsAtom = useMemo(
     () =>
