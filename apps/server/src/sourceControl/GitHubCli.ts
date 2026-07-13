@@ -282,11 +282,13 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly state: ChangeRequestState | "all";
       readonly limit?: number;
+      readonly repository?: string;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
+      readonly repository?: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
@@ -310,16 +312,19 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly title: string;
       readonly bodyFile: string;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
+      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly force?: boolean;
+      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
   }
 >()("t3/sourceControl/GitHubCli") {}
@@ -428,6 +433,10 @@ export const make = Effect.gen(function* () {
 
   const resolvePullRequestRepositoryContext = (cwd: string) =>
     Cache.get(pullRequestRepositoryContextCache, cwd);
+  const resolveInputPullRequestRepositoryContext = (cwd: string, repository: string | undefined) =>
+    repository
+      ? Effect.succeed({ baseRepository: repository, headRepository: repository })
+      : resolvePullRequestRepositoryContext(cwd);
 
   const getRepositoryCloneUrls: GitHubCli["Service"]["getRepositoryCloneUrls"] = (input) =>
     execute({
@@ -453,7 +462,7 @@ export const make = Effect.gen(function* () {
   return GitHubCli.of({
     execute,
     listPullRequests: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
+      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
         Effect.flatMap((context) =>
           execute({
             cwd: input.cwd,
@@ -495,7 +504,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     getPullRequest: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
+      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
         Effect.flatMap((context) =>
           execute({
             cwd: input.cwd,
@@ -548,7 +557,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     createPullRequest: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
+      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
         Effect.flatMap((context) => {
           const base = parseGitHubRepositoryCoordinate(context.baseRepository);
           const head = parseGitHubRepositoryCoordinate(context.headRepository);
@@ -606,7 +615,7 @@ export const make = Effect.gen(function* () {
         Effect.asVoid,
       ),
     getDefaultBranch: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
+      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
         Effect.flatMap((context) =>
           execute({
             cwd: input.cwd,
@@ -627,7 +636,7 @@ export const make = Effect.gen(function* () {
         }),
       ),
     checkoutPullRequest: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
+      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
         Effect.flatMap((context) =>
           execute({
             cwd: input.cwd,
