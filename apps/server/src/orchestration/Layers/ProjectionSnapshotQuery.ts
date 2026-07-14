@@ -324,6 +324,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
+          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
@@ -352,6 +353,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
+          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
@@ -382,6 +384,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
+          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
@@ -744,6 +747,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
+          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
@@ -1176,6 +1180,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               const threads: ReadonlyArray<OrchestrationThread> = threadRows.map((row) => ({
                 id: row.threadId,
                 projectId: row.projectId,
+                context:
+                  row.contextKind === "standalone"
+                    ? { kind: "standalone" }
+                    : { kind: "project", projectId: row.projectId! },
                 title: row.title,
                 modelSelection: row.modelSelection,
                 runtimeMode: row.runtimeMode,
@@ -1374,6 +1382,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 threads.push({
                   id: row.threadId,
                   projectId: row.projectId,
+                  context:
+                    row.contextKind === "standalone"
+                      ? { kind: "standalone" }
+                      : { kind: "project", projectId: row.projectId! },
                   title: row.title,
                   modelSelection: row.modelSelection,
                   runtimeMode: row.runtimeMode,
@@ -1503,6 +1515,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   ? Result.succeed({
                       id: row.threadId,
                       projectId: row.projectId,
+                      context:
+                        row.contextKind === "standalone"
+                          ? { kind: "standalone" }
+                          : { kind: "project", projectId: row.projectId! },
                       title: row.title,
                       modelSelection: row.modelSelection,
                       runtimeMode: row.runtimeMode,
@@ -1613,7 +1629,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               updatedAt = maxIso(updatedAt, row.updatedAt);
             }
 
-            const activeProjectIds = new Set(threadRows.map((row) => row.projectId));
+            const activeProjectIds = new Set(
+              threadRows.flatMap((row) => (row.projectId === null ? [] : [row.projectId])),
+            );
             const repositoryIdentities = yield* resolveRepositoryIdentitiesForProjects(
               projectRows.filter((row) => activeProjectIds.has(row.projectId)),
             );
@@ -1637,6 +1655,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 (row): OrchestrationThreadShell => ({
                   id: row.threadId,
                   projectId: row.projectId,
+                  context:
+                    row.contextKind === "standalone"
+                      ? { kind: "standalone" }
+                      : { kind: "project", projectId: row.projectId! },
                   title: row.title,
                   modelSelection: row.modelSelection,
                   runtimeMode: row.runtimeMode,
@@ -1877,6 +1899,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       return Option.some({
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
+        context:
+          threadRow.value.contextKind === "standalone"
+            ? { kind: "standalone" }
+            : { kind: "project", projectId: threadRow.value.projectId! },
         title: threadRow.value.title,
         modelSelection: threadRow.value.modelSelection,
         runtimeMode: threadRow.value.runtimeMode,
@@ -1971,6 +1997,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       const thread = {
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
+        context:
+          threadRow.value.contextKind === "standalone"
+            ? { kind: "standalone" }
+            : { kind: "project", projectId: threadRow.value.projectId! },
         title: threadRow.value.title,
         modelSelection: threadRow.value.modelSelection,
         runtimeMode: threadRow.value.runtimeMode,

@@ -276,6 +276,11 @@ export function projectEvent(
           {
             id: payload.threadId,
             projectId: payload.projectId,
+            context:
+              payload.context ??
+              (payload.projectId === null
+                ? { kind: "standalone" as const }
+                : { kind: "project" as const, projectId: payload.projectId }),
             title: payload.title,
             modelSelection: payload.modelSelection,
             runtimeMode: payload.runtimeMode,

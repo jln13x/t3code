@@ -293,6 +293,39 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
+  it("creates standalone chats without a project", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+
+    await system.run(
+      engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-standalone-chat-create"),
+        threadId: ThreadId.make("thread-standalone"),
+        projectId: null,
+        context: { kind: "standalone" },
+        title: "Standalone chat",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: now(),
+      }),
+    );
+
+    const thread = (await system.readModel()).threads.find(
+      (candidate) => candidate.id === "thread-standalone",
+    );
+    expect(thread?.projectId).toBeNull();
+    expect(thread?.context).toEqual({ kind: "standalone" });
+
+    await system.dispose();
+  });
+
   it("archives and unarchives threads through orchestration commands", async () => {
     const system = await createOrchestrationSystem();
     const { engine } = system;
