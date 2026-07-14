@@ -81,7 +81,7 @@ export function groupSidebarThreadsByWorktree<
     }
     groups.set(key, {
       label: isMainCheckout
-        ? "Main checkout"
+        ? "Main"
         : worktreePath
           ? thread.branch?.trim() || worktreeDisplayName(worktreePath)
           : matchesWorkspaceIdentity

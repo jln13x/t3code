@@ -122,7 +122,7 @@ describe("groupSidebarThreadsByWorktree", () => {
       },
       {
         key: "local:worktree:/repo",
-        label: "Main checkout",
+        label: "Main",
         threads: [mainCheckoutThread],
       },
     ]);
@@ -171,7 +171,7 @@ describe("groupSidebarThreadsByWorktree", () => {
     expect(groups).toEqual([
       {
         key: "local:worktree:/repo-one",
-        label: "Main checkout",
+        label: "Main",
         threads: [memberOneImplicit],
       },
       {
@@ -210,7 +210,7 @@ describe("groupSidebarThreadsByWorktree", () => {
     ).toEqual([
       {
         key: "windows:worktree:c:/repo/worktree",
-        label: "Main checkout",
+        label: "Main",
         threads: [implicitThread, explicitThread],
       },
     ]);

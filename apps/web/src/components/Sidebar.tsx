@@ -247,6 +247,18 @@ const THREAD_GROUPING_MODE_LABELS: Record<SidebarThreadGroupingMode, string> = {
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
+interface SidebarNewThreadOptions {
+  readonly branch?: string | null;
+  readonly worktreePath?: string | null;
+  readonly envMode?: "local" | "worktree";
+  readonly startFromOrigin?: boolean;
+}
+
+type SidebarNewThreadHandler = (
+  projectRef: ScopedProjectRef,
+  options?: SidebarNewThreadOptions,
+) => Promise<void>;
+
 function SidebarThreadDetailPrewarmer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   useEnvironmentThread(threadRef.environmentId, threadRef.threadId);
   return null;
@@ -323,6 +335,7 @@ function buildThreadJumpLabelMap(input: {
 
 interface SidebarThreadRowProps {
   thread: SidebarThreadSummary;
+  nestedUnderWorktree: boolean;
   projectCwd: string | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
@@ -384,6 +397,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     attemptArchiveThread,
     openPrLink,
     thread,
+    nestedUnderWorktree,
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
@@ -698,7 +712,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-1.5 text-left ${nestedUnderWorktree ? "pl-3" : ""}`}
+        >
           {prStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -733,7 +749,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-xs"
+                    className="min-w-0 flex-1 truncate text-[13px]"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -906,6 +922,7 @@ interface SidebarProjectThreadListProps {
   isThreadListExpanded: boolean;
   projectCwd: string;
   projectMembers: readonly SidebarProjectGroupMember[];
+  handleNewThread: SidebarNewThreadHandler;
   activeRouteThreadKey: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
@@ -959,6 +976,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     isThreadListExpanded,
     projectCwd,
     projectMembers,
+    handleNewThread,
     activeRouteThreadKey,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
@@ -1040,12 +1058,33 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     [renderedThreads, workspaceIdentities],
   );
 
-  const renderThread = (thread: SidebarThreadSummary) => {
+  const handleWorktreeGroupClick = useCallback(
+    (group: (typeof renderedThreadGroups)[number]) => {
+      const thread = group.threads[0];
+      if (!thread) return;
+      const workspaceIdentity = workspaceIdentities.find(
+        (identity) =>
+          identity.environmentId === thread.environmentId &&
+          identity.projectId === thread.projectId,
+      );
+      const worktreePath = thread.worktreePath ?? workspaceIdentity?.projectCheckoutPath ?? null;
+      void handleNewThread(scopeProjectRef(thread.environmentId, thread.projectId), {
+        branch: thread.branch,
+        worktreePath,
+        envMode: group.label === "Main" ? "local" : "worktree",
+        startFromOrigin: false,
+      });
+    },
+    [handleNewThread, workspaceIdentities],
+  );
+
+  const renderThread = (thread: SidebarThreadSummary, nestedUnderWorktree = false) => {
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
     return (
       <SidebarThreadRow
         key={threadKey}
         thread={thread}
+        nestedUnderWorktree={nestedUnderWorktree}
         projectCwd={projectCwd}
         orderedProjectThreadKeys={orderedProjectThreadKeys}
         isActive={activeRouteThreadKey === threadKey}
@@ -1089,19 +1128,24 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         </SidebarMenuSubItem>
       ) : null}
       {shouldShowThreadPanel && threadGroupingMode === "separate"
-        ? renderedThreads.map(renderThread)
+        ? renderedThreads.map((thread) => renderThread(thread))
         : null}
       {shouldShowThreadPanel && threadGroupingMode === "worktree"
         ? renderedThreadGroups.flatMap((group) => [
             <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-              <div className="flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+              <button
+                type="button"
+                className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label={`Start a new chat in ${group.label}`}
+                onClick={() => handleWorktreeGroupClick(group)}
+              >
                 <span className="truncate">{group.label}</span>
                 <span className="shrink-0 tabular-nums text-muted-foreground/35">
                   {group.threads.length}
                 </span>
-              </div>
+              </button>
             </SidebarMenuSubItem>,
-            ...group.threads.map(renderThread),
+            ...group.threads.map((thread) => renderThread(thread, true)),
           ])
         : null}
 
@@ -1147,7 +1191,7 @@ interface SidebarProjectItemProps {
   isThreadListExpanded: boolean;
   activeRouteThreadKey: string | null;
   newThreadShortcutLabel: string | null;
-  handleNewThread: (projectRef: ScopedProjectRef) => Promise<void>;
+  handleNewThread: SidebarNewThreadHandler;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
@@ -2300,7 +2344,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           )}
           <ProjectFavicon environmentId={project.environmentId} cwd={project.workspaceRoot} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-xs font-medium text-foreground/90">
+            <span className="truncate text-[13px] font-medium text-foreground/90">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -2375,6 +2419,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         isThreadListExpanded={isThreadListExpanded}
         projectCwd={project.workspaceRoot}
         projectMembers={project.memberProjects}
+        handleNewThread={handleNewThread}
         activeRouteThreadKey={activeRouteThreadKey}
         threadJumpLabelByKey={threadJumpLabelByKey}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
@@ -2909,7 +2954,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
+            <span className="text-[13px]">Settings</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -2936,7 +2981,7 @@ interface SidebarProjectsContentProps {
   handleProjectDragStart: (event: DragStartEvent) => void;
   handleProjectDragEnd: (event: DragEndEvent) => void;
   handleProjectDragCancel: (event: DragCancelEvent) => void;
-  handleNewThread: (projectRef: ScopedProjectRef) => Promise<void>;
+  handleNewThread: SidebarNewThreadHandler;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   sortedProjects: readonly SidebarProjectSnapshot[];
@@ -3044,7 +3089,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               }
             >
               <SearchIcon className="size-3.5 text-muted-foreground/70" />
-              <span className="flex-1 truncate text-left text-xs">Search</span>
+              <span className="flex-1 truncate text-left text-[13px]">Search</span>
               {commandPaletteShortcutLabel ? (
                 <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
                   {commandPaletteShortcutLabel}
@@ -3080,8 +3125,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <LocalSecondaryStatus />
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Projects
+          <span className="text-[11px] font-medium tracking-wide text-muted-foreground/70">
+            projects
           </span>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
@@ -3222,20 +3267,22 @@ export default function Sidebar() {
     resolveNewThreadDefaults,
   } = useHandleNewThread();
   const handleNewThread = useCallback(
-    (projectRef: ScopedProjectRef) =>
-      startNewThreadInProjectFromContext(
-        {
-          activeDraftThread: null,
-          activeThread: undefined,
-          defaultProjectRef: null,
-          defaultNewWorktreesStartFromOrigin,
-          defaultThreadEnvMode,
-          handleNewThread: handleNewThreadRaw,
-          resolveDefaultMainCheckout,
-          resolveNewThreadDefaults,
-        },
-        projectRef,
-      ),
+    (projectRef: ScopedProjectRef, options?: SidebarNewThreadOptions) =>
+      options
+        ? handleNewThreadRaw(projectRef, options)
+        : startNewThreadInProjectFromContext(
+            {
+              activeDraftThread: null,
+              activeThread: undefined,
+              defaultProjectRef: null,
+              defaultNewWorktreesStartFromOrigin,
+              defaultThreadEnvMode,
+              handleNewThread: handleNewThreadRaw,
+              resolveDefaultMainCheckout,
+              resolveNewThreadDefaults,
+            },
+            projectRef,
+          ),
     [
       defaultNewWorktreesStartFromOrigin,
       defaultThreadEnvMode,
