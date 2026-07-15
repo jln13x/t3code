@@ -77,6 +77,10 @@ import {
 } from "./composerInlineChip";
 import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
+import {
+  COMPOSER_EDITOR_NAMESPACE,
+  isComposerLexicalClipboardPayload,
+} from "./ComposerPromptEditor.clipboard";
 import { formatProviderSkillDisplayName } from "~/providerSkillPresentation";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -1151,7 +1155,11 @@ function ComposerClipboardPlugin() {
       PASTE_COMMAND,
       (event) => {
         const clipboardData = "clipboardData" in event ? event.clipboardData : null;
-        if (!clipboardData?.getData("application/x-lexical-editor")) {
+        if (!clipboardData) {
+          return false;
+        }
+        const lexicalPayload = clipboardData.getData("application/x-lexical-editor");
+        if (!isComposerLexicalClipboardPayload(lexicalPayload)) {
           return false;
         }
         const selection = $getSelection();
@@ -1718,7 +1726,7 @@ export function ComposerPromptEditor({
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
-      namespace: "t3tools-composer-editor",
+      namespace: COMPOSER_EDITOR_NAMESPACE,
       editable: true,
       nodes: [ComposerMentionNode, ComposerSkillNode, ComposerTerminalContextNode],
       editorState: () => {
