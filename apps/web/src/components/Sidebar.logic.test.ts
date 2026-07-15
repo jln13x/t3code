@@ -28,6 +28,7 @@ import {
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
+  resolveSidebarNewThreadSeedContext,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveThreadStatusPill,

@@ -1232,6 +1232,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const threadGroupingMode = useClientSettings<SidebarThreadGroupingMode>(
     (settings) => settings.sidebarThreadGroupingMode,
   );
+  const serverConfigs = useServerConfigs();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
