@@ -9,7 +9,7 @@ import {
   Minimize2Icon,
   WrapTextIcon,
 } from "lucide-react";
-import type { ScopedThreadRef, ServerProviderSkill, TurnId } from "@t3tools/contracts";
+import type { MessageId, ScopedThreadRef, ServerProviderSkill, TurnId } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -112,6 +112,7 @@ interface ChatMarkdownProps {
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
   artifactTurnId?: TurnId | undefined;
+  artifactMessageId?: MessageId | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
@@ -740,6 +741,7 @@ interface MarkdownFileLinkProps {
 interface MarkdownThreadArtifactImageProps extends React.ComponentProps<"code"> {
   threadRef: ScopedThreadRef;
   turnId: TurnId;
+  messageId: MessageId;
   reference: string;
   onImageExpand: (preview: ExpandedImagePreview) => void;
 }
@@ -1226,6 +1228,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
 const MarkdownThreadArtifactImage = memo(function MarkdownThreadArtifactImage({
   threadRef,
   turnId,
+  messageId,
   reference,
   onImageExpand,
   children,
@@ -1235,6 +1238,7 @@ const MarkdownThreadArtifactImage = memo(function MarkdownThreadArtifactImage({
     _tag: "thread-artifact",
     threadId: threadRef.threadId,
     turnId,
+    messageId,
     path: reference,
   });
 
@@ -1293,6 +1297,7 @@ function ChatMarkdown({
   cwd,
   threadRef,
   artifactTurnId,
+  artifactMessageId,
   onImageExpand,
   onTaskListChange,
   isStreaming = false,
@@ -1550,7 +1555,13 @@ function ChatMarkdown({
         const artifactReference = codeClassName
           ? null
           : normalizeGeneratedImageReference(plainHastText(node) ?? "");
-        if (!artifactReference || !threadRef || !artifactTurnId || !onImageExpand) {
+        if (
+          !artifactReference ||
+          !threadRef ||
+          !artifactTurnId ||
+          !artifactMessageId ||
+          !onImageExpand
+        ) {
           return (
             <code {...props} className={codeClassName}>
               {children}
@@ -1563,6 +1574,7 @@ function ChatMarkdown({
             className={codeClassName}
             threadRef={threadRef}
             turnId={artifactTurnId}
+            messageId={artifactMessageId}
             reference={artifactReference}
             onImageExpand={onImageExpand}
           >
@@ -1608,6 +1620,7 @@ function ChatMarkdown({
     [
       diffThemeName,
       artifactTurnId,
+      artifactMessageId,
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
