@@ -35,8 +35,8 @@ export function reduceCommandPaletteUiState(
   switch (action._tag) {
     case "SetOpen":
       return {
-        ...state,
         open: action.open,
+        mode: "command",
         openIntent: action.open ? state.openIntent : null,
       };
     case "ToggleCommand":

@@ -36,6 +36,21 @@ describe("reduceCommandPaletteUiState", () => {
       openIntent: { kind: "add-project" },
     });
   });
+
+  it("resets file-picker mode for dialog trigger opens and closes", () => {
+    const filesOpen = reduceCommandPaletteUiState(closedState, { _tag: "ToggleFiles" });
+
+    expect(reduceCommandPaletteUiState(filesOpen, { _tag: "SetOpen", open: false })).toEqual({
+      open: false,
+      mode: "command",
+      openIntent: null,
+    });
+    expect(reduceCommandPaletteUiState(filesOpen, { _tag: "SetOpen", open: true })).toEqual({
+      open: true,
+      mode: "command",
+      openIntent: null,
+    });
+  });
 });
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
