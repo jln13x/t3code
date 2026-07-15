@@ -46,11 +46,11 @@ import {
   formatFileCommentRange,
   nextFileCommentId,
   normalizeFileCommentRange,
-  remapFileCommentAnnotations,
+  reconcileFileCommentAnnotations,
 } from "./fileCommentAnnotations";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
 import { LocalCommentAnnotation } from "./LocalCommentAnnotation";
-import { projectFileCacheKey } from "./fileContentRevision";
+import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
 import { fileBreadcrumbs } from "./filePath";
 import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
 import { FileSaveCoordinator } from "./fileSaveCoordinator";
@@ -305,6 +305,8 @@ function EditableFileSurface({
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
   const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
+  const lineAnnotationsRef = useRef(lineAnnotations);
+  lineAnnotationsRef.current = lineAnnotations;
   const [selectionOverride, setSelectionOverride] = useState<FileSelectionOverride | null>(null);
   const selectedRange =
     selectionOverride?.revealRequestId === revealRequestId ? selectionOverride.range : null;
@@ -325,14 +327,20 @@ function EditableFileSurface({
   const editor = useMemo(
     () =>
       new Editor<FileCommentAnnotationGroup>({
+        persistState: true,
+        persistStateStorage: "inMemory",
         onChange: (file, nextLineAnnotations) => {
           setProjectFileQueryData(environmentId, cwd, relativePath, file.contents);
           saveCoordinator.change(file.contents);
           if (nextLineAnnotations) {
-            const remapped = remapFileCommentAnnotations(
+            const remapped = reconcileFileCommentAnnotations(
+              lineAnnotationsRef.current,
               nextLineAnnotations as FileCommentLineAnnotation[],
             );
-            setLineAnnotations(remapped);
+            if (remapped !== lineAnnotationsRef.current) {
+              lineAnnotationsRef.current = remapped;
+              setLineAnnotations(remapped);
+            }
             for (const annotation of remapped) {
               for (const entry of annotation.metadata.entries) {
                 if (entry.kind !== "comment") continue;
@@ -510,7 +518,7 @@ function EditableFileSurface({
             file={{
               name: relativePath,
               contents,
-              cacheKey: projectFileCacheKey(cwd, relativePath, contents),
+              cacheKey: projectFileEditorCacheKey(cwd, relativePath),
             }}
             options={{
               disableFileHeader: true,
