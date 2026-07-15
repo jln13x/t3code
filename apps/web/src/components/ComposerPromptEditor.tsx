@@ -5,6 +5,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { $getLexicalContent, $insertDataTransferForRichText } from "@lexical/clipboard";
 import { type ServerProviderSkill } from "@t3tools/contracts";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
@@ -25,6 +26,9 @@ import {
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  COPY_COMMAND,
+  CUT_COMMAND,
+  PASTE_COMMAND,
   COMMAND_PRIORITY_HIGH,
   KEY_BACKSPACE_COMMAND,
   $getRoot,
@@ -1117,6 +1121,60 @@ function ComposerInlineTokenBackspacePlugin() {
   return null;
 }
 
+function ComposerClipboardPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const addLexicalClipboardPayload = (event: ClipboardEvent | null): false => {
+      if (!event?.clipboardData) {
+        return false;
+      }
+      const lexicalContent = $getLexicalContent(editor);
+      if (lexicalContent) {
+        event.clipboardData.setData("application/x-lexical-editor", lexicalContent);
+      }
+      // Let the plain-text plugin populate the portable clipboard formats and perform cuts.
+      return false;
+    };
+
+    const unregisterCopy = editor.registerCommand(
+      COPY_COMMAND,
+      addLexicalClipboardPayload,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterCut = editor.registerCommand(
+      CUT_COMMAND,
+      addLexicalClipboardPayload,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterPaste = editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = "clipboardData" in event ? event.clipboardData : null;
+        if (!clipboardData?.getData("application/x-lexical-editor")) {
+          return false;
+        }
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) {
+          return false;
+        }
+        event.preventDefault();
+        $insertDataTransferForRichText(clipboardData, selection, editor);
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+
+    return () => {
+      unregisterCopy();
+      unregisterCut();
+      unregisterPaste();
+    };
+  }, [editor]);
+
+  return null;
+}
+
 function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
@@ -1634,6 +1692,7 @@ function ComposerPromptEditorInner({
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />
+        <ComposerClipboardPlugin />
         <HistoryPlugin />
       </div>
     </ComposerTerminalContextActionsContext>
