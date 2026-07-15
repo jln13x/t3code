@@ -236,7 +236,7 @@ export const make = Effect.gen(function* () {
       });
       return yield* Effect.gen(function* () {
         const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
-        return yield* searchIndex.search(normalizedQuery, input.limit);
+        return yield* searchIndex.search(normalizedQuery, input.limit, input.kind);
       }).pipe(Effect.provide(workspaceSearchIndexes.get(normalizedCwd)));
     },
   );

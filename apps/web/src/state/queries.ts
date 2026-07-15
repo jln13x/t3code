@@ -7,6 +7,7 @@ import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import type {
   EnvironmentId,
   OrchestrationThread,
+  ProjectEntryKind,
   ThreadId,
   VcsListRefsResult,
   VcsRef,
@@ -51,14 +52,19 @@ function useDebouncedValue<A>(value: A, delayMs: number): A {
   return debounced;
 }
 
+type ProjectPathSearchTarget = ComposerPathSearchTarget & {
+  readonly kind?: ProjectEntryKind | undefined;
+};
+
 export function areProjectPathSearchTargetsEqual(
-  left: ComposerPathSearchTarget,
-  right: ComposerPathSearchTarget,
+  left: ProjectPathSearchTarget,
+  right: ProjectPathSearchTarget,
 ): boolean {
   return (
     left.environmentId === right.environmentId &&
     left.cwd === right.cwd &&
-    left.query === right.query
+    left.query === right.query &&
+    left.kind === right.kind
   );
 }
 
@@ -192,14 +198,15 @@ export function usePaginatedBranches(target: VcsRefTarget) {
   };
 }
 
-export function useProjectPathSearch(target: ComposerPathSearchTarget, limit: number) {
+export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: number) {
   const normalizedTarget = useMemo(
     () => ({
       environmentId: target.environmentId,
       cwd: target.cwd,
       query: target.query?.trim() ?? "",
+      kind: target.kind,
     }),
-    [target.cwd, target.environmentId, target.query],
+    [target.cwd, target.environmentId, target.kind, target.query],
   );
   const debouncedTarget = useDebouncedValue(normalizedTarget, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
   const result = useEnvironmentQuery(
@@ -212,6 +219,7 @@ export function useProjectPathSearch(target: ComposerPathSearchTarget, limit: nu
             cwd: debouncedTarget.cwd,
             query: debouncedTarget.query,
             limit,
+            ...(debouncedTarget.kind ? { kind: debouncedTarget.kind } : {}),
           },
         })
       : null,

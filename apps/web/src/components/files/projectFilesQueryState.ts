@@ -143,7 +143,7 @@ export function useProjectFilePickerQuery(
   const listing = useProjectEntriesQuery(environmentId, cwd);
   const hasQuery = /\S/.test(query);
   const search = useProjectPathSearch(
-    { environmentId, cwd, query: hasQuery ? query : null },
+    { environmentId, cwd, query: hasQuery ? query : null, kind: "file" },
     limit,
   );
 
