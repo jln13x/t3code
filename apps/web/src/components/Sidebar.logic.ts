@@ -47,7 +47,7 @@ function worktreeDisplayName(path: string): string {
 export function groupSidebarThreadsByWorktree<
   TThread extends {
     readonly environmentId: string;
-    readonly projectId: string;
+    readonly projectId: string | null;
     readonly branch: string | null;
     readonly worktreePath: string | null;
   },
@@ -99,7 +99,7 @@ export function groupSidebarThreadsByWorktree<
 export function orderSidebarThreadsByWorktree<
   TThread extends {
     readonly environmentId: string;
-    readonly projectId: string;
+    readonly projectId: string | null;
     readonly branch: string | null;
     readonly worktreePath: string | null;
   },
@@ -636,6 +636,7 @@ export function sortProjectsForSidebar<
 
   const threadsByProjectId = new Map<string, TThread[]>();
   for (const thread of threads) {
+    if (thread.projectId === null) continue;
     const existing = threadsByProjectId.get(thread.projectId) ?? [];
     existing.push(thread);
     threadsByProjectId.set(thread.projectId, existing);

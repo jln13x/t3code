@@ -7,6 +7,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import { resolveThreadContext } from "@t3tools/shared/threadContext";
 import type * as PlatformError from "effect/PlatformError";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -212,11 +213,25 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.create": {
-      yield* requireProject({
-        readModel,
-        command,
-        projectId: command.projectId,
-      });
+      const context = resolveThreadContext(command);
+      if (context.kind === "project") {
+        if (command.projectId !== null && command.projectId !== context.projectId) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread project '${command.projectId}' does not match context project '${context.projectId}'.`,
+          });
+        }
+        yield* requireProject({
+          readModel,
+          command,
+          projectId: context.projectId,
+        });
+      } else if (command.projectId !== null) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "Standalone threads cannot reference a project.",
+        });
+      }
       yield* requireThreadAbsent({
         readModel,
         command,
@@ -232,7 +247,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.created",
         payload: {
           threadId: command.threadId,
-          projectId: command.projectId,
+          projectId: context.kind === "project" ? context.projectId : null,
+          context,
           title: command.title,
           modelSelection: command.modelSelection,
           runtimeMode: command.runtimeMode,
@@ -416,10 +432,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           detail: `Proposed plan '${sourceProposedPlan.planId}' does not exist on thread '${sourceProposedPlan.threadId}'.`,
         });
       }
-      if (sourceThread && sourceThread.projectId !== targetThread.projectId) {
+      const targetContext = resolveThreadContext(targetThread);
+      const sourceContext = sourceThread ? resolveThreadContext(sourceThread) : null;
+      if (
+        sourceContext &&
+        (sourceContext.kind !== targetContext.kind ||
+          (sourceContext.kind === "project" &&
+            targetContext.kind === "project" &&
+            sourceContext.projectId !== targetContext.projectId))
+      ) {
         return yield* new OrchestrationCommandInvariantError({
           commandType: command.type,
-          detail: `Proposed plan '${sourceProposedPlan?.planId}' belongs to thread '${sourceThread.id}' in a different project.`,
+          detail: `Proposed plan '${sourceProposedPlan?.planId}' belongs to thread '${sourceThread!.id}' in a different context.`,
         });
       }
       const userMessageEvent: Omit<OrchestrationEvent, "sequence"> = {

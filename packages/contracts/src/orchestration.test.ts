@@ -312,6 +312,34 @@ it.effect("decodes thread.created runtime mode for historical events", () =>
   }),
 );
 
+it.effect("decodes standalone thread creation without a project", () =>
+  Effect.gen(function* () {
+    const command = yield* decodeOrchestrationCommand({
+      type: "thread.create",
+      commandId: "cmd-standalone-create",
+      threadId: "thread-standalone",
+      projectId: null,
+      context: { kind: "standalone" },
+      title: "Standalone chat",
+      modelSelection: {
+        instanceId: "codex",
+        model: "gpt-5.4",
+      },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    assert.strictEqual(command.type, "thread.create");
+    if (command.type === "thread.create") {
+      assert.strictEqual(command.projectId, null);
+      assert.deepStrictEqual(command.context, { kind: "standalone" });
+    }
+  }),
+);
+
 it.effect("decodes thread.meta-updated payloads with explicit provider", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadMetaUpdatedPayload({

@@ -162,7 +162,7 @@ export function buildHomeThreadGroups(input: {
   }
 
   for (const thread of input.threads) {
-    if (thread.archivedAt !== null) {
+    if (thread.archivedAt !== null || thread.projectId === null) {
       continue;
     }
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) {

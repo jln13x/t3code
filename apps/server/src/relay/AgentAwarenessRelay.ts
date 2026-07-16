@@ -268,6 +268,9 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
   const projectById = new Map(input.projects.map((project) => [project.id, project]));
   return input.threads
     .filter((thread) => {
+      if (thread.projectId === null) {
+        return false;
+      }
       const project = projectById.get(thread.projectId);
       if (!project) {
         return false;
@@ -398,9 +401,10 @@ export const make = Effect.gen(function* () {
       });
 
     const thread = yield* snapshotQuery.getThreadShellById(threadId);
-    const project = Option.isSome(thread)
-      ? yield* snapshotQuery.getProjectShellById(thread.value.projectId)
-      : Option.none<OrchestrationProjectShell>();
+    const project =
+      Option.isSome(thread) && thread.value.projectId !== null
+        ? yield* snapshotQuery.getProjectShellById(thread.value.projectId)
+        : Option.none<OrchestrationProjectShell>();
     const snapshot = resolveAgentAwarenessRelayPublishSnapshot({
       environmentId,
       threadId,

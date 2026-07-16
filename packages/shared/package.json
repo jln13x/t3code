@@ -175,6 +175,10 @@
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
     },
+    "./threadContext": {
+      "types": "./src/threadContext.ts",
+      "import": "./src/threadContext.ts"
+    },
     "./hostProcess": {
       "types": "./src/hostProcess.ts",
       "import": "./src/hostProcess.ts"

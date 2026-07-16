@@ -341,9 +341,34 @@ export const OrchestrationLatestTurn = Schema.Struct({
 });
 export type OrchestrationLatestTurn = typeof OrchestrationLatestTurn.Type;
 
+export const ThreadContextKind = Schema.Literals(["project", "standalone"]);
+export type ThreadContextKind = typeof ThreadContextKind.Type;
+
+export const ProjectThreadContext = Schema.Struct({
+  kind: Schema.Literal("project"),
+  projectId: ProjectId,
+});
+export type ProjectThreadContext = typeof ProjectThreadContext.Type;
+
+export const StandaloneThreadContext = Schema.Struct({
+  kind: Schema.Literal("standalone"),
+});
+export type StandaloneThreadContext = typeof StandaloneThreadContext.Type;
+
+/**
+ * Resource context attached to a conversation thread.
+ *
+ * `projectId` remains alongside this field during the additive protocol
+ * transition so older clients and persisted events continue to decode. New
+ * callers should use `context` as the source of truth.
+ */
+export const ThreadContext = Schema.Union([ProjectThreadContext, StandaloneThreadContext]);
+export type ThreadContext = typeof ThreadContext.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
-  projectId: ProjectId,
+  projectId: Schema.NullOr(ProjectId),
+  context: Schema.optionalKey(ThreadContext),
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -389,7 +414,8 @@ export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
-  projectId: ProjectId,
+  projectId: Schema.NullOr(ProjectId),
+  context: Schema.optionalKey(ThreadContext),
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -515,7 +541,8 @@ const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal("thread.create"),
   commandId: CommandId,
   threadId: ThreadId,
-  projectId: ProjectId,
+  projectId: Schema.NullOr(ProjectId),
+  context: Schema.optionalKey(ThreadContext),
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -573,7 +600,8 @@ const ThreadInteractionModeSetCommand = Schema.Struct({
 });
 
 const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
-  projectId: ProjectId,
+  projectId: Schema.NullOr(ProjectId),
+  context: Schema.optionalKey(ThreadContext),
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -860,7 +888,8 @@ export const ProjectDeletedPayload = Schema.Struct({
 
 export const ThreadCreatedPayload = Schema.Struct({
   threadId: ThreadId,
-  projectId: ProjectId,
+  projectId: Schema.NullOr(ProjectId),
+  context: Schema.optionalKey(ThreadContext),
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),

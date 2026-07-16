@@ -318,8 +318,11 @@ export function HomeScreen(props: HomeScreenProps) {
                 props.savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
               }
               projectCwd={
-                projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
-                null
+                thread.projectId === null
+                  ? null
+                  : (projectCwdByKey.get(
+                      scopedProjectKey(thread.environmentId, thread.projectId),
+                    ) ?? null)
               }
               isLast={item.isLast}
               onArchiveThread={props.onArchiveThread}

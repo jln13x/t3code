@@ -117,8 +117,14 @@ export function useThreadActions() {
       }
 
       if (shouldNavigateToDraft) {
+        if (thread.projectId === null) {
+          await router.navigate({ to: "/" });
+          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
+          return archiveResult;
+        }
+        const projectId = thread.projectId;
         const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
+          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, projectId)),
         );
         if (navigationResult._tag === "Failure") {
           return navigationResult;
@@ -130,7 +136,7 @@ export function useThreadActions() {
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       return archiveResult;
     },
-    [archiveThreadMutation, getCurrentRouteThreadRef, resolveThreadTarget],
+    [archiveThreadMutation, getCurrentRouteThreadRef, resolveThreadTarget, router],
   );
 
   const unarchiveThread = useCallback(
@@ -166,10 +172,13 @@ export function useThreadActions() {
         const shell = readThreadShell(ref);
         return shell === null ? [] : [shell];
       });
-      const threadProject = readProject({
-        environmentId: threadRef.environmentId,
-        projectId: thread.projectId,
-      });
+      const threadProject =
+        thread.projectId === null
+          ? null
+          : readProject({
+              environmentId: threadRef.environmentId,
+              projectId: thread.projectId,
+            });
       const deletedIds =
         opts.deletedThreadKeys && opts.deletedThreadKeys.size > 0
           ? new Set<ThreadId>(
@@ -242,10 +251,12 @@ export function useThreadActions() {
       }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       clearComposerDraftForThread(threadRef);
-      clearProjectDraftThreadById(
-        scopeProjectRef(threadRef.environmentId, thread.projectId),
-        threadRef,
-      );
+      if (thread.projectId !== null) {
+        clearProjectDraftThreadById(
+          scopeProjectRef(threadRef.environmentId, thread.projectId),
+          threadRef,
+        );
+      }
       clearTerminalUiState(threadRef);
 
       if (shouldNavigateToFallback) {
