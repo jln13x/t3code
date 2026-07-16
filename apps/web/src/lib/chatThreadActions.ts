@@ -38,18 +38,20 @@ export interface ChatThreadActionContext {
   readonly activeThread: ThreadContextLike | undefined;
   readonly defaultProjectRef: ScopedProjectRef | null;
   readonly handleNewThread: NewThreadHandler;
-  readonly defaultThreadEnvMode?: DraftThreadEnvMode;
-  readonly defaultNewWorktreesStartFromOrigin?: boolean;
-  readonly resolveNewThreadDefaults?: (
-    projectRef: ScopedProjectRef,
-  ) => NewThreadDefaults | Promise<NewThreadDefaults>;
+  readonly defaultThreadEnvMode?: DraftThreadEnvMode | undefined;
+  readonly defaultNewWorktreesStartFromOrigin?: boolean | undefined;
+  readonly resolveNewThreadDefaults?:
+    | ((projectRef: ScopedProjectRef) => NewThreadDefaults | Promise<NewThreadDefaults>)
+    | undefined;
   readonly defaultMainCheckout?: {
     readonly branch: string;
     readonly path: string | null;
   } | null;
-  readonly resolveDefaultMainCheckout?: (
-    projectRef: ScopedProjectRef,
-  ) => Promise<{ readonly branch: string; readonly path: string | null } | null | undefined>;
+  readonly resolveDefaultMainCheckout?:
+    | ((
+        projectRef: ScopedProjectRef,
+      ) => Promise<{ readonly branch: string; readonly path: string | null } | null | undefined>)
+    | undefined;
 }
 
 async function resolveThreadDefaults(

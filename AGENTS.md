@@ -12,6 +12,15 @@ T3 Code is a minimal web GUI for using coding agents like Codex and Claude.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
+## Personal Fork
+
+- This is a custom fork of the open-source T3 Code project for personal product, workflow, and design changes.
+- Track meaningful fork-specific behavior in `docs/personal-fork-changes.md`; update it in the same change.
+- Check that inventory during upstream merges and record preserved, replaced, or retired customizations.
+- Gate substantial custom behavior behind centralized feature flags; flag off must preserve upstream behavior.
+- Branch at a narrow boundary instead of replacing upstream logic, and test both flag states.
+- Record each flag and its default in the inventory, and keep both states tested.
+
 ## Core Priorities
 
 1. Performance first.

@@ -9,7 +9,6 @@ import type {
   RuntimeMode,
   ScopedThreadRef,
   ServerProvider,
-  ServerProviderSkill,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -132,10 +131,13 @@ import { resolvePathLinkTarget } from "~/terminal-links";
 const TEXT_ATTACHMENT_MAX_BYTES = 1024 * 1024;
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import {
+  type CachedComposerProviderSkills,
+  getComposerProviderSkillsCacheEntry,
+  resolveComposerProviderSkills,
+} from "../../composerProviderSkills";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
-const EMPTY_PROVIDER_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
-
 const runtimeModeConfig: Record<
   RuntimeMode,
   { label: string; description: string; icon: LucideIcon }
@@ -948,27 +950,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentId,
     instanceId: selectedProviderStatus?.instanceId ?? null,
     cwd: gitCwd,
-    enabled: composerTriggerKind === "skill",
+    enabled: settings.enableProviderSkillDiscovery && composerTriggerKind === "skill",
   });
   const providerSkillsTargetKey = `${environmentId ?? ""}\0${selectedProviderStatus?.instanceId ?? ""}\0${gitCwd ?? ""}`;
-  const [cachedProviderSkills, setCachedProviderSkills] = useState<{
-    readonly targetKey: string;
-    readonly skills: ReadonlyArray<ServerProviderSkill>;
-  } | null>(null);
+  const [cachedProviderSkills, setCachedProviderSkills] =
+    useState<CachedComposerProviderSkills | null>(null);
   useEffect(() => {
-    if (providerSkills.data) {
-      setCachedProviderSkills({
-        targetKey: providerSkillsTargetKey,
-        skills: providerSkills.data.skills,
-      });
+    const cacheEntry = getComposerProviderSkillsCacheEntry({
+      targetKey: providerSkillsTargetKey,
+      discoveredSkills: providerSkills.data?.skills ?? null,
+      snapshotSkills: selectedProviderStatus?.skills,
+      discoveryUnsupported: providerSkills.isUnsupported,
+    });
+    if (cacheEntry !== null) {
+      setCachedProviderSkills(cacheEntry);
     }
-  }, [providerSkills.data, providerSkillsTargetKey]);
-  const composerProviderSkills =
-    providerSkills.data?.skills ??
-    (cachedProviderSkills?.targetKey === providerSkillsTargetKey
-      ? cachedProviderSkills.skills
-      : selectedProviderStatus?.skills) ??
-    EMPTY_PROVIDER_SKILLS;
+  }, [
+    providerSkills.data,
+    providerSkills.isUnsupported,
+    providerSkillsTargetKey,
+    selectedProviderStatus?.skills,
+  ]);
+  const composerProviderSkills = settings.enableProviderSkillDiscovery
+    ? resolveComposerProviderSkills({
+        targetKey: providerSkillsTargetKey,
+        discoveredSkills: providerSkills.data?.skills ?? null,
+        cachedSkills: cachedProviderSkills,
+        snapshotSkills: selectedProviderStatus?.skills,
+        discoveryUnsupported: providerSkills.isUnsupported,
+      })
+    : (selectedProviderStatus?.skills ?? []);
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
@@ -1109,7 +1120,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const isComposerMenuLoading =
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
-    (composerTriggerKind === "skill" && providerSkills.isPending && composerMenuItems.length === 0);
+    (settings.enableProviderSkillDiscovery &&
+      composerTriggerKind === "skill" &&
+      providerSkills.isPending &&
+      composerMenuItems.length === 0);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -1845,7 +1859,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     let error: string | null = null;
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
-        error = (await addComposerTextAttachment(file)) ?? error;
+        if (settings.enableTextFileAttachments) {
+          error = (await addComposerTextAttachment(file)) ?? error;
+        }
         continue;
       }
       if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {

@@ -374,6 +374,23 @@ export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableStandaloneChats: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableSidebarWorktreeNavigation: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  enableCheckoutAwareThreadCreation: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  enableForkPullRequests: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableProviderSkillDiscovery: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  enableTextFileAttachments: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableGeneratedImageRendering: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  enableProjectSearch: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enablePersonalDiffWorkflow: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
     Schema.withDecodingDefault(
       Effect.succeed(Duration.toMillis(DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL)),
@@ -513,6 +530,15 @@ export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
+  enableStandaloneChats: Schema.optionalKey(Schema.Boolean),
+  enableSidebarWorktreeNavigation: Schema.optionalKey(Schema.Boolean),
+  enableCheckoutAwareThreadCreation: Schema.optionalKey(Schema.Boolean),
+  enableForkPullRequests: Schema.optionalKey(Schema.Boolean),
+  enableProviderSkillDiscovery: Schema.optionalKey(Schema.Boolean),
+  enableTextFileAttachments: Schema.optionalKey(Schema.Boolean),
+  enableGeneratedImageRendering: Schema.optionalKey(Schema.Boolean),
+  enableProjectSearch: Schema.optionalKey(Schema.Boolean),
+  enablePersonalDiffWorkflow: Schema.optionalKey(Schema.Boolean),
   automaticGitFetchInterval: Schema.optionalKey(Schema.DurationFromMillis),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),

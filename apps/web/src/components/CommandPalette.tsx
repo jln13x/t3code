@@ -50,7 +50,7 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import { desktopLocalBackendId, isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
 import { resolveShortcutCommand } from "../keybindings";
 import {
   startNewThreadFromContext,
@@ -100,6 +100,7 @@ import {
   buildRootGroups,
   buildThreadActionItems,
   type CommandPaletteActionItem,
+  type CommandPaletteOpenIntent,
   type CommandPaletteSubmenuItem,
   type CommandPaletteView,
   filterBrowseEntries,
@@ -108,11 +109,13 @@ import {
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
+  reduceCommandPaletteUiState,
 } from "./CommandPalette.logic";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "./Icons";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { Button } from "./ui/button";
 import {
@@ -333,47 +336,16 @@ function errorMessage(error: unknown): string {
   return "An error occurred.";
 }
 
-interface CommandPaletteOpenIntent {
-  readonly kind: "add-project";
-}
-
-interface CommandPaletteUiState {
-  readonly open: boolean;
-  readonly openIntent: CommandPaletteOpenIntent | null;
-}
-
-type CommandPaletteUiAction =
-  | { readonly _tag: "SetOpen"; readonly open: boolean }
-  | { readonly _tag: "Toggle" }
-  | { readonly _tag: "OpenAddProject" }
-  | { readonly _tag: "ClearOpenIntent" };
-
-function reduceCommandPaletteUiState(
-  state: CommandPaletteUiState,
-  action: CommandPaletteUiAction,
-): CommandPaletteUiState {
-  switch (action._tag) {
-    case "SetOpen":
-      return {
-        open: action.open,
-        openIntent: action.open ? state.openIntent : null,
-      };
-    case "Toggle":
-      return { open: !state.open, openIntent: null };
-    case "OpenAddProject":
-      return { open: true, openIntent: { kind: "add-project" } };
-    case "ClearOpenIntent":
-      return state.openIntent ? { ...state, openIntent: null } : state;
-  }
-}
-
 export function CommandPalette({ children }: { children: ReactNode }) {
+  const enableProjectSearch = usePrimarySettings((settings) => settings.enableProjectSearch);
   const [state, dispatch] = useReducer(reduceCommandPaletteUiState, {
     open: false,
+    mode: "command",
     openIntent: null,
   });
   const setOpen = useCallback((open: boolean) => dispatch({ _tag: "SetOpen", open }), []);
-  const toggleOpen = useCallback(() => dispatch({ _tag: "Toggle" }), []);
+  const toggleCommand = useCallback(() => dispatch({ _tag: "ToggleCommand" }), []);
+  const toggleFiles = useCallback(() => dispatch({ _tag: "ToggleFiles" }), []);
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -398,16 +370,16 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           terminalOpen,
         },
       });
-      if (command !== "commandPalette.toggle") {
-        return;
-      }
+      if (command !== "commandPalette.toggle" && command !== "filePicker.toggle") return;
+      if (command === "filePicker.toggle" && !enableProjectSearch) return;
       event.preventDefault();
       event.stopPropagation();
-      toggleOpen();
+      if (command === "filePicker.toggle") toggleFiles();
+      else toggleCommand();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleOpen]);
+  }, [enableProjectSearch, keybindings, terminalOpen, toggleCommand, toggleFiles]);
 
   return (
     <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
@@ -415,6 +387,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         <CommandDialog open={state.open} onOpenChange={setOpen}>
           {children}
           <CommandPaletteDialog
+            enableProjectSearch={enableProjectSearch}
+            mode={state.mode}
             open={state.open}
             openIntent={state.openIntent}
             setOpen={setOpen}
@@ -427,13 +401,19 @@ export function CommandPalette({ children }: { children: ReactNode }) {
 }
 
 function CommandPaletteDialog(props: {
+  readonly enableProjectSearch: boolean;
   readonly open: boolean;
+  readonly mode: "command" | "files";
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
 }) {
   if (!props.open) {
     return null;
+  }
+
+  if (props.mode === "files" && props.enableProjectSearch) {
+    return <ProjectFilePicker setOpen={props.setOpen} />;
   }
 
   return (
@@ -994,38 +974,38 @@ function OpenCommandPaletteDialog(props: {
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
+  const activeProjectTitle = currentProjectId
+    ? (projectTitleById.get(currentProjectId) ?? null)
+    : null;
+
+  if (activeProjectTitle) {
+    actionItems.push({
+      kind: "action",
+      value: "action:new-thread",
+      searchTerms: ["new thread", "chat", "create", "draft"],
+      title: (
+        <>
+          New thread in <span className="font-semibold">{activeProjectTitle}</span>
+        </>
+      ),
+      icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.new",
+      run: async () => {
+        await startNewThreadFromContext({
+          activeDraftThread,
+          activeThread: activeThread ?? undefined,
+          defaultProjectRef,
+          defaultThreadEnvMode,
+          defaultNewWorktreesStartFromOrigin,
+          handleNewThread,
+          resolveDefaultMainCheckout,
+          resolveNewThreadDefaults,
+        });
+      },
+    });
+  }
+
   if (projects.length > 0) {
-    const activeProjectTitle = currentProjectId
-      ? (projectTitleById.get(currentProjectId) ?? null)
-      : null;
-
-    if (activeProjectTitle) {
-      actionItems.push({
-        kind: "action",
-        value: "action:new-thread",
-        searchTerms: ["new thread", "chat", "create", "draft"],
-        title: (
-          <>
-            New thread in <span className="font-semibold">{activeProjectTitle}</span>
-          </>
-        ),
-        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "chat.new",
-        run: async () => {
-          await startNewThreadFromContext({
-            activeDraftThread,
-            activeThread: activeThread ?? undefined,
-            defaultProjectRef,
-            defaultThreadEnvMode,
-            defaultNewWorktreesStartFromOrigin,
-            handleNewThread,
-            resolveDefaultMainCheckout,
-            resolveNewThreadDefaults,
-          });
-        },
-      });
-    }
-
     actionItems.push({
       kind: "submenu",
       value: "action:new-thread-in",

@@ -22,6 +22,7 @@ import {
   type SourceControlProviderDiscoverySpec,
 } from "./SourceControlProviderDiscovery.ts";
 import { ServerConfig } from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 
@@ -128,6 +129,7 @@ function selectProviderContext(
     readonly name: string;
     readonly url: string;
   }>,
+  enableForkPullRequests: boolean,
 ): SourceControlProvider.SourceControlProviderContext | null {
   const candidates: Array<SourceControlProvider.SourceControlProviderContext> = [];
   for (const remote of remotes) {
@@ -150,7 +152,7 @@ function selectProviderContext(
   );
 
   return (
-    conventionalGitHubUpstream ??
+    (enableForkPullRequests ? conventionalGitHubUpstream : null) ??
     origin ??
     candidates.find((candidate) => candidate.provider.kind !== "unknown") ??
     candidates[0] ??
@@ -214,6 +216,7 @@ function bindProviderContext(
 export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWithProviders")(
   function* (registrations: ReadonlyArray<SourceControlProviderRegistration>) {
     const config = yield* ServerConfig;
+    const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
     const process = yield* VcsProcess.VcsProcess;
     const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
     const providers = new Map<
@@ -251,7 +254,14 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
               }),
           ),
         );
-        const context = selectProviderContext(remotes.remotes);
+        const enableForkPullRequests =
+          serverSettings._tag === "Some"
+            ? yield* serverSettings.value.getSettings.pipe(
+                Effect.map((settings) => settings.enableForkPullRequests),
+                Effect.orElseSucceed(() => true),
+              )
+            : true;
+        const context = selectProviderContext(remotes.remotes, enableForkPullRequests);
 
         return yield* refineUnknownRemoteProvider({
           specs: discoverySpecs,

@@ -43,6 +43,36 @@ describe("ClientSettings completion sound", () => {
   });
 });
 
+describe("personal fork feature flags", () => {
+  const flagNames = [
+    "enableStandaloneChats",
+    "enableSidebarWorktreeNavigation",
+    "enableCheckoutAwareThreadCreation",
+    "enableForkPullRequests",
+    "enableProviderSkillDiscovery",
+    "enableTextFileAttachments",
+    "enableGeneratedImageRendering",
+    "enableProjectSearch",
+    "enablePersonalDiffWorkflow",
+  ] as const;
+
+  it("defaults every personal feature on", () => {
+    const settings = decodeServerSettings({});
+    for (const flagName of flagNames) {
+      expect(settings[flagName]).toBe(true);
+    }
+  });
+
+  it("preserves an explicit disabled state for every personal feature", () => {
+    const settings = decodeServerSettings(
+      Object.fromEntries(flagNames.map((name) => [name, false])),
+    );
+    for (const flagName of flagNames) {
+      expect(settings[flagName]).toBe(false);
+    }
+  });
+});
+
 describe("ClientSettings sidebar thread grouping", () => {
   it("groups threads by worktree by default", () => {
     expect(decodeClientSettings({}).sidebarThreadGroupingMode).toBe("worktree");

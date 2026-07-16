@@ -4,16 +4,20 @@ import {
   type ComposerPathSearchTarget,
 } from "@t3tools/client-runtime/state/threads";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
-import type {
-  EnvironmentId,
-  OrchestrationThread,
-  ProviderInstanceId,
-  ThreadId,
-  VcsListRefsResult,
-  VcsRef,
+import {
+  type EnvironmentId,
+  type OrchestrationThread,
+  type ProjectContentMatch,
+  type ProjectEntryKind,
+  type ProviderInstanceId,
+  ServerProviderSkillsUnsupportedError,
+  type ThreadId,
+  type VcsListRefsResult,
+  type VcsRef,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -24,11 +28,15 @@ import { useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
 
-const COMPOSER_PATH_SEARCH_DEBOUNCE_MS = 120;
+const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 120;
 const COMPOSER_PATH_SEARCH_LIMIT = 80;
+const PROJECT_CONTENT_SEARCH_DEBOUNCE_MS = 120;
+const PROJECT_CONTENT_SEARCH_LIMIT = 500;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
+const EMPTY_CONTENT_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 const INITIAL_BRANCH_CURSORS = [undefined] as const;
+const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -50,6 +58,22 @@ function useDebouncedValue<A>(value: A, delayMs: number): A {
   }, [delayMs, value]);
 
   return debounced;
+}
+
+type ProjectPathSearchTarget = ComposerPathSearchTarget & {
+  readonly kind?: ProjectEntryKind | undefined;
+};
+
+export function areProjectPathSearchTargetsEqual(
+  left: ProjectPathSearchTarget,
+  right: ProjectPathSearchTarget,
+): boolean {
+  return (
+    left.environmentId === right.environmentId &&
+    left.cwd === right.cwd &&
+    left.query === right.query &&
+    left.kind === right.kind
+  );
 }
 
 export function useThreadDetail(
@@ -212,16 +236,17 @@ export function useAllBranches(target: VcsRefTarget) {
   return state;
 }
 
-export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: number) {
   const normalizedTarget = useMemo(
     () => ({
       environmentId: target.environmentId,
       cwd: target.cwd,
       query: target.query?.trim() ?? "",
+      kind: target.kind,
     }),
-    [target.cwd, target.environmentId, target.query],
+    [target.cwd, target.environmentId, target.kind, target.query],
   );
-  const debouncedTarget = useDebouncedValue(normalizedTarget, COMPOSER_PATH_SEARCH_DEBOUNCE_MS);
+  const debouncedTarget = useDebouncedValue(normalizedTarget, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
   const result = useEnvironmentQuery(
     debouncedTarget.environmentId !== null &&
       debouncedTarget.cwd !== null &&
@@ -231,7 +256,8 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
           input: {
             cwd: debouncedTarget.cwd,
             query: debouncedTarget.query,
-            limit: COMPOSER_PATH_SEARCH_LIMIT,
+            limit,
+            ...(debouncedTarget.kind ? { kind: debouncedTarget.kind } : {}),
           },
         })
       : null,
@@ -240,9 +266,15 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return {
     entries: result.data?.entries ?? [],
     error: result.error,
-    isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
+    isPending:
+      !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
+    searchedQuery: debouncedTarget.query,
     refresh: result.refresh,
   };
+}
+
+export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+  return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
 }
 
 export function useProviderSkills(target: {
@@ -251,7 +283,7 @@ export function useProviderSkills(target: {
   readonly cwd: string | null;
   readonly enabled: boolean;
 }) {
-  return useEnvironmentQuery(
+  const result = useEnvironmentQuery(
     target.enabled &&
       target.environmentId !== null &&
       target.instanceId !== null &&
@@ -262,6 +294,51 @@ export function useProviderSkills(target: {
         })
       : null,
   );
+  return {
+    ...result,
+    isUnsupported: result.failure !== null && isProviderSkillsUnsupportedError(result.failure),
+  };
+}
+
+interface ProjectContentSearchTarget {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly query: string;
+  readonly caseSensitive: boolean;
+  readonly wholeWord: boolean;
+  readonly useRegex: boolean;
+}
+
+export function useProjectContentSearch(target: ProjectContentSearchTarget) {
+  const query = target.query.trim();
+  const debouncedQuery = useDebouncedValue(query, PROJECT_CONTENT_SEARCH_DEBOUNCE_MS);
+  const result = useEnvironmentQuery(
+    target.environmentId !== null &&
+      target.cwd !== null &&
+      query.length > 0 &&
+      debouncedQuery.length > 0
+      ? projectEnvironment.searchContents({
+          environmentId: target.environmentId,
+          input: {
+            cwd: target.cwd,
+            query: debouncedQuery,
+            limit: PROJECT_CONTENT_SEARCH_LIMIT,
+            caseSensitive: target.caseSensitive,
+            wholeWord: target.wholeWord,
+            useRegex: target.useRegex,
+          },
+        })
+      : null,
+  );
+
+  return {
+    matches: result.data?.matches ?? EMPTY_CONTENT_MATCHES,
+    error: result.error,
+    isPending: query !== debouncedQuery || result.isPending,
+    hasQuery: query.length > 0,
+    truncated: result.data?.truncated ?? false,
+    invalidRegex: result.data?.regexFallbackError !== undefined,
+  };
 }
 
 export function useCheckpointDiff(
