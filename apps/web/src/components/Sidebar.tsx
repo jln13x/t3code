@@ -1066,7 +1066,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const handleWorktreeGroupClick = useCallback(
     (group: (typeof renderedThreadGroups)[number]) => {
       const thread = group.threads[0];
-      if (!thread) return;
+      if (!thread || thread.projectId === null) return;
       const workspaceIdentity = workspaceIdentities.find(
         (identity) =>
           identity.environmentId === thread.environmentId &&
@@ -1471,6 +1471,7 @@ const SidebarStandaloneChatList = memo(function SidebarStandaloneChatList(
           <SidebarThreadRow
             key={threadKey}
             thread={thread}
+            nestedUnderWorktree={false}
             projectCwd={null}
             orderedProjectThreadKeys={orderedThreadKeys}
             isActive={props.activeRouteThreadKey === threadKey}
