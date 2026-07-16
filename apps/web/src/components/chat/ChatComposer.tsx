@@ -950,7 +950,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentId,
     instanceId: selectedProviderStatus?.instanceId ?? null,
     cwd: gitCwd,
-    enabled: composerTriggerKind === "skill",
+    enabled: settings.enableProviderSkillDiscovery && composerTriggerKind === "skill",
   });
   const providerSkillsTargetKey = `${environmentId ?? ""}\0${selectedProviderStatus?.instanceId ?? ""}\0${gitCwd ?? ""}`;
   const [cachedProviderSkills, setCachedProviderSkills] =
@@ -971,13 +971,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerSkillsTargetKey,
     selectedProviderStatus?.skills,
   ]);
-  const composerProviderSkills = resolveComposerProviderSkills({
-    targetKey: providerSkillsTargetKey,
-    discoveredSkills: providerSkills.data?.skills ?? null,
-    cachedSkills: cachedProviderSkills,
-    snapshotSkills: selectedProviderStatus?.skills,
-    discoveryUnsupported: providerSkills.isUnsupported,
-  });
+  const composerProviderSkills = settings.enableProviderSkillDiscovery
+    ? resolveComposerProviderSkills({
+        targetKey: providerSkillsTargetKey,
+        discoveredSkills: providerSkills.data?.skills ?? null,
+        cachedSkills: cachedProviderSkills,
+        snapshotSkills: selectedProviderStatus?.skills,
+        discoveryUnsupported: providerSkills.isUnsupported,
+      })
+    : (selectedProviderStatus?.skills ?? []);
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
@@ -1118,7 +1120,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const isComposerMenuLoading =
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
-    (composerTriggerKind === "skill" && providerSkills.isPending && composerMenuItems.length === 0);
+    (settings.enableProviderSkillDiscovery &&
+      composerTriggerKind === "skill" &&
+      providerSkills.isPending &&
+      composerMenuItems.length === 0);
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -1854,7 +1859,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     let error: string | null = null;
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
-        error = (await addComposerTextAttachment(file)) ?? error;
+        if (settings.enableTextFileAttachments) {
+          error = (await addComposerTextAttachment(file)) ?? error;
+        }
         continue;
       }
       if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {

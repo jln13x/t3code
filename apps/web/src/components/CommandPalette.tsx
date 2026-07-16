@@ -50,7 +50,7 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import { desktopLocalBackendId, isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
 import { resolveShortcutCommand } from "../keybindings";
 import {
   startNewThreadFromContext,
@@ -337,6 +337,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function CommandPalette({ children }: { children: ReactNode }) {
+  const enableProjectSearch = usePrimarySettings((settings) => settings.enableProjectSearch);
   const [state, dispatch] = useReducer(reduceCommandPaletteUiState, {
     open: false,
     mode: "command",
@@ -370,6 +371,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         },
       });
       if (command !== "commandPalette.toggle" && command !== "filePicker.toggle") return;
+      if (command === "filePicker.toggle" && !enableProjectSearch) return;
       event.preventDefault();
       event.stopPropagation();
       if (command === "filePicker.toggle") toggleFiles();
@@ -377,7 +379,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleCommand, toggleFiles]);
+  }, [enableProjectSearch, keybindings, terminalOpen, toggleCommand, toggleFiles]);
 
   return (
     <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
@@ -385,6 +387,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         <CommandDialog open={state.open} onOpenChange={setOpen}>
           {children}
           <CommandPaletteDialog
+            enableProjectSearch={enableProjectSearch}
             mode={state.mode}
             open={state.open}
             openIntent={state.openIntent}
@@ -398,6 +401,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
 }
 
 function CommandPaletteDialog(props: {
+  readonly enableProjectSearch: boolean;
   readonly open: boolean;
   readonly mode: "command" | "files";
   readonly openIntent: CommandPaletteOpenIntent | null;
@@ -408,7 +412,7 @@ function CommandPaletteDialog(props: {
     return null;
   }
 
-  if (props.mode === "files") {
+  if (props.mode === "files" && props.enableProjectSearch) {
     return <ProjectFilePicker setOpen={props.setOpen} />;
   }
 

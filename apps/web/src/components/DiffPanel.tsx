@@ -35,7 +35,7 @@ import {
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { useClientSettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
@@ -178,7 +178,7 @@ const DIFF_PANEL_UNSAFE_CSS = `
 interface DiffPanelProps {
   mode?: DiffPanelMode;
   composerDraftTarget: ScopedThreadRef | DraftId;
-  initialGitScope: "branch" | "unstaged";
+  initialGitScope?: "branch" | "unstaged";
 }
 
 export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
@@ -186,11 +186,15 @@ export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 export default function DiffPanel({
   mode = "inline",
   composerDraftTarget,
-  initialGitScope: initialGitScopeProp,
+  initialGitScope: initialGitScopeProp = "branch",
 }: DiffPanelProps) {
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
-  const [initialGitScope] = useState(initialGitScopeProp);
+  const enablePersonalDiffWorkflow = usePrimarySettings(
+    (serverSettings) => serverSettings.enablePersonalDiffWorkflow,
+  );
+  const [personalInitialGitScope] = useState(initialGitScopeProp);
+  const initialGitScope = enablePersonalDiffWorkflow ? personalInitialGitScope : "branch";
   const [diffRenderMode, setDiffRenderMode] = useState<DiffRenderMode>("stacked");
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
@@ -216,7 +220,9 @@ export default function DiffPanel({
         }
       : null,
   );
-  const activeCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
+  const activeCwd = enablePersonalDiffWorkflow
+    ? (activeThread?.worktreePath ?? activeProject?.workspaceRoot)
+    : activeProject?.workspaceRoot;
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(activeThread?.environmentId ?? null),
   );
@@ -280,11 +286,13 @@ export default function DiffPanel({
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
   const latestTurn = orderedTurnDiffSummaries[0];
-  const diffPreviewCacheKey = JSON.stringify({
-    latestTurnId: latestTurn?.turnId ?? null,
-    localGeneration: gitStatusQuery.data?.localGeneration ?? null,
-    remoteRefHash: gitStatusQuery.data?.remoteRefHash ?? null,
-  });
+  const diffPreviewCacheKey = enablePersonalDiffWorkflow
+    ? JSON.stringify({
+        latestTurnId: latestTurn?.turnId ?? null,
+        localGeneration: gitStatusQuery.data?.localGeneration ?? null,
+        remoteRefHash: gitStatusQuery.data?.remoteRefHash ?? null,
+      })
+    : null;
   const selectedScopeLabel =
     selectedTurnId === null
       ? selectedGitScope === "unstaged"
@@ -331,7 +339,7 @@ export default function DiffPanel({
     selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          cacheKey: diffPreviewCacheKey,
+          ...(diffPreviewCacheKey ? { cacheKey: diffPreviewCacheKey } : {}),
           input: {
             cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
@@ -349,7 +357,7 @@ export default function DiffPanel({
     shouldRetryBranchDiffAtEnvironmentCwd && activeThread && serverConfig
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          cacheKey: diffPreviewCacheKey,
+          ...(diffPreviewCacheKey ? { cacheKey: diffPreviewCacheKey } : {}),
           input: {
             cwd: serverConfig.cwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),

@@ -2163,7 +2163,9 @@ function ChatViewContent(props: ChatViewProps) {
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
   const initialDiffPanelGitScope =
-    gitStatusQuery.data?.hasWorkingTreeChanges === true ? "unstaged" : "branch";
+    settings.enablePersonalDiffWorkflow && gitStatusQuery.data?.hasWorkingTreeChanges === true
+      ? "unstaged"
+      : "branch";
   const diffPanelGitStatusResolutionKey = gitStatusQuery.data ? "resolved" : "pending";
   const terminalShortcutLabelOptions = useMemo(
     () => ({
@@ -3735,7 +3737,7 @@ function ChatViewContent(props: ChatViewProps) {
       if (!command) return;
 
       if (command === "project.searchContents") {
-        if (!activeProject || !activeWorkspaceRoot) return;
+        if (!settings.enableProjectSearch || !activeProject || !activeWorkspaceRoot) return;
         event.preventDefault();
         event.stopPropagation();
         setProjectSearchOpen(true);
@@ -3854,6 +3856,7 @@ function ChatViewContent(props: ChatViewProps) {
     toggleTerminalVisibility,
     composerRef,
     activeWorkspaceRoot,
+    settings.enableProjectSearch,
   ]);
 
   const onRevertToTurnCount = useCallback(
@@ -5053,7 +5056,11 @@ function ChatViewContent(props: ChatViewProps) {
     ) : activeRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
-          key={`${activeThreadKey}:${diffPanelGitStatusResolutionKey}`}
+          key={
+            settings.enablePersonalDiffWorkflow
+              ? `${activeThreadKey}:${diffPanelGitStatusResolutionKey}`
+              : activeThreadKey
+          }
           mode="embedded"
           composerDraftTarget={composerDraftTarget}
           initialGitScope={initialDiffPanelGitScope}
@@ -5098,7 +5105,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-      {activeProject && activeWorkspaceRoot ? (
+      {settings.enableProjectSearch && activeProject && activeWorkspaceRoot ? (
         <ProjectContentSearchDialog
           environmentId={activeProject.environmentId}
           cwd={activeWorkspaceRoot}
@@ -5170,6 +5177,7 @@ function ChatViewContent(props: ChatViewProps) {
               {/* Messages — LegendList handles virtualization and scrolling internally */}
               <MessagesTimeline
                 key={activeThread.id}
+                enableGeneratedImageRendering={settings.enableGeneratedImageRendering}
                 isWorking={isWorking}
                 activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}

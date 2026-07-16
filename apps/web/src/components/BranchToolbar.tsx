@@ -13,6 +13,7 @@ import { memo, useMemo } from "react";
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { useProject, useThread } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
+import { usePrimarySettings } from "../hooks/useSettings";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -250,6 +251,9 @@ export const BranchToolbar = memo(function BranchToolbar({
   availableEnvironments,
   onEnvironmentChange,
 }: BranchToolbarProps) {
+  const enableCheckoutAwareThreadCreation = usePrimarySettings(
+    (settings) => settings.enableCheckoutAwareThreadCreation,
+  );
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -278,12 +282,14 @@ export const BranchToolbar = memo(function BranchToolbar({
   const envModeLocked = envLocked || (serverThread !== null && persistedWorktreePath !== null);
   const branchState = useAllBranches({
     environmentId,
-    cwd: activeProject?.workspaceRoot ?? null,
+    cwd: enableCheckoutAwareThreadCreation ? (activeProject?.workspaceRoot ?? null) : null,
   });
   const activeBranch =
     activeThreadBranchOverride ?? serverThread?.branch ?? draftThread?.branch ?? null;
   const workspaceOptions = useMemo(() => {
-    if (!activeProject) return { mainCheckout: null, existingWorktrees: [] };
+    if (!enableCheckoutAwareThreadCreation || !activeProject) {
+      return { mainCheckout: null, existingWorktrees: [] };
+    }
     const options = deriveWorkspaceOptions(
       branchState.data?.refs ?? [],
       activeProject.workspaceRoot,
@@ -296,7 +302,13 @@ export const BranchToolbar = memo(function BranchToolbar({
       activeBranch,
       projectWorkspaceRoot: activeProject.workspaceRoot,
     });
-  }, [activeBranch, activeProject, activeWorktreePath, branchState.data]);
+  }, [
+    activeBranch,
+    activeProject,
+    activeWorktreePath,
+    branchState.data,
+    enableCheckoutAwareThreadCreation,
+  ]);
 
   const showEnvironmentPicker = Boolean(
     availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,

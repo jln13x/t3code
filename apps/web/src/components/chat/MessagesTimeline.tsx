@@ -121,6 +121,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface TimelineRowSharedState {
+  enableGeneratedImageRendering: boolean;
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
@@ -153,6 +154,7 @@ const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "d
 // ---------------------------------------------------------------------------
 
 interface MessagesTimelineProps {
+  enableGeneratedImageRendering?: boolean;
   isWorking: boolean;
   activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
@@ -186,6 +188,7 @@ interface MessagesTimelineProps {
 // ---------------------------------------------------------------------------
 
 export const MessagesTimeline = memo(function MessagesTimeline({
+  enableGeneratedImageRendering = true,
   isWorking,
   activeTurnInProgress,
   activeTurnStartedAt,
@@ -408,6 +411,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
+      enableGeneratedImageRendering,
       timestampFormat,
       routeThreadKey,
       threadRef: parseScopedThreadKey(routeThreadKey),
@@ -423,6 +427,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onToggleWorkGroup,
     }),
     [
+      enableGeneratedImageRendering,
       timestampFormat,
       routeThreadKey,
       markdownCwd,
@@ -985,9 +990,11 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           text={messageText}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}
-          artifactTurnId={row.message.turnId ?? undefined}
-          artifactMessageId={row.message.id}
-          onImageExpand={ctx.onImageExpand}
+          artifactTurnId={
+            ctx.enableGeneratedImageRendering ? (row.message.turnId ?? undefined) : undefined
+          }
+          artifactMessageId={ctx.enableGeneratedImageRendering ? row.message.id : undefined}
+          onImageExpand={ctx.enableGeneratedImageRendering ? ctx.onImageExpand : undefined}
           isStreaming={Boolean(row.message.streaming)}
           skills={ctx.skills}
         />

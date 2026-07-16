@@ -509,6 +509,10 @@ export const make = Effect.gen(function* () {
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
+  const forkPullRequestsEnabled = serverSettingsService.getSettings.pipe(
+    Effect.map((settings) => settings.enableForkPullRequests),
+    Effect.orElseSucceed(() => true),
+  );
   const randomUUIDv4 = (cwd: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.mapError(
@@ -845,6 +849,7 @@ export const make = Effect.gen(function* () {
     const shouldProbeLocalBranchSelector =
       headBranchFromUpstream.length === 0 || headBranch === details.branch;
 
+    const enableForkPullRequests = yield* forkPullRequestsEnabled;
     const [remoteRepository, upstreamRepository, originRepository] = yield* Effect.all(
       [
         resolveRemoteRepositoryContext(cwd, remoteName),
@@ -855,7 +860,9 @@ export const make = Effect.gen(function* () {
     );
 
     const targetRepository =
-      upstreamRepository.repositoryNameWithOwner !== null ? upstreamRepository : originRepository;
+      enableForkPullRequests && upstreamRepository.repositoryNameWithOwner !== null
+        ? upstreamRepository
+        : originRepository;
     const isCrossRepository =
       remoteRepository.repositoryNameWithOwner !== null &&
       targetRepository.repositoryNameWithOwner !== null
@@ -1106,9 +1113,13 @@ export const make = Effect.gen(function* () {
     baseBranch: string,
   ) {
     const provider = yield* sourceControlProvider(cwd);
-    const targetCloneUrls = provider.getTargetRepositoryCloneUrls
-      ? yield* provider.getTargetRepositoryCloneUrls({ cwd }).pipe(Effect.orElseSucceed(() => null))
-      : null;
+    const enableForkPullRequests = yield* forkPullRequestsEnabled;
+    const targetCloneUrls =
+      enableForkPullRequests && provider.getTargetRepositoryCloneUrls
+        ? yield* provider
+            .getTargetRepositoryCloneUrls({ cwd })
+            .pipe(Effect.orElseSucceed(() => null))
+        : null;
     if (targetCloneUrls) {
       const originUrl = yield* readConfigValueNullable(cwd, "remote.origin.url");
       const targetMatchesOrigin =

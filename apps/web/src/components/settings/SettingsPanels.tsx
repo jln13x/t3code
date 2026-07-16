@@ -18,7 +18,7 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
@@ -109,6 +109,84 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+type PersonalFeatureFlagName = Extract<
+  keyof UnifiedSettings,
+  | "enableStandaloneChats"
+  | "enableSidebarWorktreeNavigation"
+  | "enableCheckoutAwareThreadCreation"
+  | "enableCompletionSounds"
+  | "enableForkPullRequests"
+  | "enableProviderSkillDiscovery"
+  | "enableTextFileAttachments"
+  | "enableGeneratedImageRendering"
+  | "enableProjectSearch"
+  | "enablePersonalDiffWorkflow"
+>;
+
+const PERSONAL_FEATURE_SETTINGS = [
+  {
+    key: "enableCompletionSounds",
+    title: "Completion and attention sounds",
+    description: "Play a sound when a turn completes or needs attention.",
+  },
+  {
+    key: "enableStandaloneChats",
+    title: "Standalone chats",
+    description: "Allow conversations that are not attached to a project.",
+  },
+  {
+    key: "enableSidebarWorktreeNavigation",
+    title: "Sidebar worktree navigation",
+    description: "Open a new chat directly from a sidebar worktree group.",
+  },
+  {
+    key: "enableCheckoutAwareThreadCreation",
+    title: "Checkout-aware thread creation",
+    description: "Carry the selected checkout into new threads and expose existing worktrees.",
+  },
+  {
+    key: "enableForkPullRequests",
+    title: "Fork-aware pull requests",
+    description: "Target the upstream repository when working from a fork.",
+  },
+  {
+    key: "enableProviderSkillDiscovery",
+    title: "Project provider skills",
+    description: "Discover provider skills for the active project and worktree.",
+  },
+  {
+    key: "enableTextFileAttachments",
+    title: "Text file attachments",
+    description: "Attach Markdown and other text files to a prompt.",
+  },
+  {
+    key: "enableGeneratedImageRendering",
+    title: "Generated image rendering",
+    description: "Render generated image artifacts inline in chat.",
+  },
+  {
+    key: "enableProjectSearch",
+    title: "Project search",
+    description: "Enable the project file picker and global content search.",
+  },
+  {
+    key: "enablePersonalDiffWorkflow",
+    title: "Working-change diff workflow",
+    description: "Prefer working changes and keep diffs scoped to the active worktree.",
+  },
+] as const satisfies ReadonlyArray<{
+  readonly key: PersonalFeatureFlagName;
+  readonly title: string;
+  readonly description: string;
+}>;
+
+function personalFeaturePatch(
+  key: PersonalFeatureFlagName,
+  enabled: boolean,
+): Partial<UnifiedSettings> {
+  return { [key]: enabled };
+}
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
@@ -395,9 +473,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
-      ...(settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds
-        ? ["Completion sound"]
-        : []),
       ...(settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar
         ? ["Auto-open task panel"]
         : []),
@@ -425,6 +500,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Delete confirmation"]
         : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
+      ...PERSONAL_FEATURE_SETTINGS.filter(
+        ({ key }) => settings[key] !== DEFAULT_UNIFIED_SETTINGS[key],
+      ).map(({ title }) => title),
     ],
     [
       isGitWritingModelDirty,
@@ -441,6 +519,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
       settings.wordWrap,
+      settings.enableStandaloneChats,
+      settings.enableSidebarWorktreeNavigation,
+      settings.enableCheckoutAwareThreadCreation,
+      settings.enableForkPullRequests,
+      settings.enableProviderSkillDiscovery,
+      settings.enableTextFileAttachments,
+      settings.enableGeneratedImageRendering,
+      settings.enableProjectSearch,
+      settings.enablePersonalDiffWorkflow,
       theme,
     ],
   );
@@ -471,6 +558,15 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+      enableStandaloneChats: DEFAULT_UNIFIED_SETTINGS.enableStandaloneChats,
+      enableSidebarWorktreeNavigation: DEFAULT_UNIFIED_SETTINGS.enableSidebarWorktreeNavigation,
+      enableCheckoutAwareThreadCreation: DEFAULT_UNIFIED_SETTINGS.enableCheckoutAwareThreadCreation,
+      enableForkPullRequests: DEFAULT_UNIFIED_SETTINGS.enableForkPullRequests,
+      enableProviderSkillDiscovery: DEFAULT_UNIFIED_SETTINGS.enableProviderSkillDiscovery,
+      enableTextFileAttachments: DEFAULT_UNIFIED_SETTINGS.enableTextFileAttachments,
+      enableGeneratedImageRendering: DEFAULT_UNIFIED_SETTINGS.enableGeneratedImageRendering,
+      enableProjectSearch: DEFAULT_UNIFIED_SETTINGS.enableProjectSearch,
+      enablePersonalDiffWorkflow: DEFAULT_UNIFIED_SETTINGS.enablePersonalDiffWorkflow,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);
@@ -616,32 +712,6 @@ export function GeneralSettingsPanel() {
               checked={settings.wordWrap}
               onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
               aria-label="Wrap code, tables, diffs, and file previews by default"
-            />
-          }
-        />
-
-        <SettingsRow
-          title="Completion sound"
-          description="Play a sound when a turn completes."
-          resetAction={
-            settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds ? (
-              <SettingResetButton
-                label="completion sound"
-                onClick={() =>
-                  updateSettings({
-                    enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.enableCompletionSounds}
-              onCheckedChange={(checked) =>
-                updateSettings({ enableCompletionSounds: Boolean(checked) })
-              }
-              aria-label="Play a sound when a turn completes"
             />
           }
         />
@@ -1001,6 +1071,44 @@ export function GeneralSettingsPanel() {
             </Button>
           }
         />
+      </SettingsSection>
+    </SettingsPageContainer>
+  );
+}
+
+export function PersonalFeatureFlagsSettingsPanel() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+
+  return (
+    <SettingsPageContainer>
+      <SettingsSection title="Personal fork feature flags">
+        {PERSONAL_FEATURE_SETTINGS.map(({ key, title, description }) => (
+          <SettingsRow
+            key={key}
+            title={title}
+            description={description}
+            resetAction={
+              settings[key] !== DEFAULT_UNIFIED_SETTINGS[key] ? (
+                <SettingResetButton
+                  label={title.toLowerCase()}
+                  onClick={() =>
+                    updateSettings(personalFeaturePatch(key, DEFAULT_UNIFIED_SETTINGS[key]))
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Switch
+                checked={settings[key]}
+                onCheckedChange={(checked) =>
+                  updateSettings(personalFeaturePatch(key, Boolean(checked)))
+                }
+                aria-label={title}
+              />
+            }
+          />
+        ))}
       </SettingsSection>
     </SettingsPageContainer>
   );

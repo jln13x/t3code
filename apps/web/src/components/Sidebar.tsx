@@ -69,7 +69,11 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import {
+  useClientSettings,
+  usePrimarySettings,
+  useUpdateClientSettings,
+} from "~/hooks/useSettings";
 import { APP_STAGE_LABEL } from "../branding";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
 import { useComposerDraftStore } from "../composerDraftStore";
@@ -915,6 +919,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
 });
 
 interface SidebarProjectThreadListProps {
+  enableSidebarWorktreeNavigation: boolean;
   projectKey: string;
   projectExpanded: boolean;
   hasOverflowingThreads: boolean;
@@ -969,6 +974,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   props: SidebarProjectThreadListProps,
 ) {
   const {
+    enableSidebarWorktreeNavigation,
     projectKey,
     projectExpanded,
     hasOverflowingThreads,
@@ -1136,22 +1142,41 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         ? renderedThreads.map((thread) => renderThread(thread))
         : null}
       {shouldShowThreadPanel && threadGroupingMode === "worktree"
-        ? renderedThreadGroups.flatMap((group) => [
-            <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-              <button
-                type="button"
-                className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label={`Start a new chat in ${group.label}`}
-                onClick={() => handleWorktreeGroupClick(group)}
-              >
-                <span className="truncate">{group.label}</span>
+        ? renderedThreadGroups.flatMap((group) => {
+            const label =
+              enableSidebarWorktreeNavigation || group.label !== "Main"
+                ? group.label
+                : "Main checkout";
+            const labelContent = (
+              <>
+                <span className="truncate">{label}</span>
                 <span className="shrink-0 tabular-nums text-muted-foreground/35">
                   {group.threads.length}
                 </span>
-              </button>
-            </SidebarMenuSubItem>,
-            ...group.threads.map((thread) => renderThread(thread, true)),
-          ])
+              </>
+            );
+            return [
+              <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
+                {enableSidebarWorktreeNavigation ? (
+                  <button
+                    type="button"
+                    className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={`Start a new chat in ${label}`}
+                    onClick={() => handleWorktreeGroupClick(group)}
+                  >
+                    {labelContent}
+                  </button>
+                ) : (
+                  <div className="flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+                    {labelContent}
+                  </div>
+                )}
+              </SidebarMenuSubItem>,
+              ...group.threads.map((thread) =>
+                renderThread(thread, enableSidebarWorktreeNavigation),
+              ),
+            ];
+          })
         : null}
 
       {projectExpanded && hasOverflowingThreads && !isThreadListExpanded && (
@@ -1565,6 +1590,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
   const threadGroupingMode = useClientSettings<SidebarThreadGroupingMode>(
     (settings) => settings.sidebarThreadGroupingMode,
+  );
+  const enableSidebarWorktreeNavigation = usePrimarySettings(
+    (settings) => settings.enableSidebarWorktreeNavigation,
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -2727,6 +2755,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       </div>
 
       <SidebarProjectThreadList
+        enableSidebarWorktreeNavigation={enableSidebarWorktreeNavigation}
         projectKey={project.projectKey}
         projectExpanded={projectExpanded}
         hasOverflowingThreads={hasOverflowingThreads}
@@ -3319,6 +3348,7 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  showStandaloneChats: boolean;
   standaloneThreads: readonly SidebarThreadSummary[];
   onNewStandaloneChat: () => void;
   navigateToThread: (threadRef: ScopedThreadRef) => void;
@@ -3364,6 +3394,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    showStandaloneChats,
     standaloneThreads,
     onNewStandaloneChat,
     navigateToThread,
@@ -3565,44 +3596,46 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         )}
       </SidebarGroup>
-      <SidebarGroup className="px-2 pt-1 pb-2">
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Chats
-          </span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="New chat"
-                  data-testid="sidebar-new-chat-trigger"
-                  className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                  onClick={onNewStandaloneChat}
-                />
-              }
-            >
-              <SquarePenIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="right">New standalone chat</TooltipPopup>
-          </Tooltip>
-        </div>
-        {standaloneThreads.length > 0 ? (
-          <SidebarStandaloneChatList
-            threads={standaloneThreads}
-            activeRouteThreadKey={routeThreadKey}
-            archiveThread={archiveThread}
-            deleteThread={deleteThread}
-            navigateToThread={navigateToThread}
-          />
-        ) : (
-          <SidebarMenu>
-            <li className="px-2 py-2 text-xs text-muted-foreground/50">
-              Start a conversation without a project.
-            </li>
-          </SidebarMenu>
-        )}
-      </SidebarGroup>
+      {showStandaloneChats ? (
+        <SidebarGroup className="px-2 pt-1 pb-2">
+          <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              Chats
+            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="New chat"
+                    data-testid="sidebar-new-chat-trigger"
+                    className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                    onClick={onNewStandaloneChat}
+                  />
+                }
+              >
+                <SquarePenIcon className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="right">New standalone chat</TooltipPopup>
+            </Tooltip>
+          </div>
+          {standaloneThreads.length > 0 ? (
+            <SidebarStandaloneChatList
+              threads={standaloneThreads}
+              activeRouteThreadKey={routeThreadKey}
+              archiveThread={archiveThread}
+              deleteThread={deleteThread}
+              navigateToThread={navigateToThread}
+            />
+          ) : (
+            <SidebarMenu>
+              <li className="px-2 py-2 text-xs text-muted-foreground/50">
+                Start a conversation without a project.
+              </li>
+            </SidebarMenu>
+          )}
+        </SidebarGroup>
+      ) : null}
     </SidebarContent>
   );
 });
@@ -3631,6 +3664,7 @@ export default function Sidebar() {
   const sidebarThreadGroupingMode = useClientSettings((s) => s.sidebarThreadGroupingMode);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
+  const enableStandaloneChats = usePrimarySettings((settings) => settings.enableStandaloneChats);
   const updateSettings = useUpdateClientSettings();
   const {
     defaultNewWorktreesStartFromOrigin,
@@ -4360,6 +4394,7 @@ export default function Sidebar() {
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
             projectsLength={projects.length}
+            showStandaloneChats={enableStandaloneChats}
             standaloneThreads={visibleStandaloneThreads}
             onNewStandaloneChat={handleNewStandaloneChat}
             navigateToThread={navigateToThread}

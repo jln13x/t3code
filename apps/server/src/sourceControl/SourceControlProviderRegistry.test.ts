@@ -8,6 +8,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsRepositoryDetectionError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import type * as VcsDriver from "../vcs/VcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -41,6 +42,7 @@ function makeRegistry(input: {
   readonly process?: Partial<VcsProcess.VcsProcess["Service"]>;
   readonly resolve?: VcsDriverRegistry.VcsDriverRegistry["Service"]["resolve"];
   readonly github?: Partial<GitHubCli.GitHubCli["Service"]>;
+  readonly enableForkPullRequests?: boolean;
 }) {
   const driver = {
     listRemotes: () =>
@@ -96,6 +98,9 @@ function makeRegistry(input: {
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-source-control-registry-test-",
         }).pipe(Layer.provide(NodeServices.layer)),
+        ServerSettings.layerTest({
+          enableForkPullRequests: input.enableForkPullRequests ?? true,
+        }),
       ),
     ),
   );
@@ -284,6 +289,31 @@ it.effect("prefers the upstream repository context for conventional GitHub forks
 
     assert.strictEqual(defaultBranch, "main");
     assert.strictEqual(repository, "T3Tools/t3code");
+  }),
+);
+
+it.effect("uses the origin repository context when fork pull requests are disabled", () =>
+  Effect.gen(function* () {
+    let repository: string | undefined;
+    const registry = yield* makeRegistry({
+      enableForkPullRequests: false,
+      remotes: [
+        { name: "origin", url: "git@github.com:contributor/t3code.git" },
+        { name: "upstream", url: "git@github.com:T3Tools/t3code.git" },
+      ],
+      github: {
+        getDefaultBranch: (input) => {
+          repository = input.repository;
+          return Effect.succeed("main");
+        },
+      },
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+    const defaultBranch = yield* provider.getDefaultBranch({ cwd: "/repo" });
+
+    assert.strictEqual(defaultBranch, "main");
+    assert.strictEqual(repository, undefined);
   }),
 );
 

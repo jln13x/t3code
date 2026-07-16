@@ -31,7 +31,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { vcsEnvironment } from "../state/vcs";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
-import { useClientSettings } from "./useSettings";
+import { useClientSettings, usePrimarySettings } from "./useSettings";
 import { resolveProjectMainCheckout } from "./useHandleNewThread.logic";
 
 export function useNewThreadHandler() {
@@ -193,6 +193,9 @@ export function useNewThreadHandler() {
 }
 
 export function useHandleNewThread() {
+  const enableCheckoutAwareThreadCreation = usePrimarySettings(
+    (settings) => settings.enableCheckoutAwareThreadCreation,
+  );
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const routeTarget = useParams({
     strict: false,
@@ -241,8 +244,10 @@ export function useHandleNewThread() {
       )
     : undefined;
   const activeProjectBranches = useBranches({
-    environmentId: newThreadProject?.environmentId ?? null,
-    cwd: newThreadProject?.workspaceRoot ?? null,
+    environmentId: enableCheckoutAwareThreadCreation
+      ? (newThreadProject?.environmentId ?? null)
+      : null,
+    cwd: enableCheckoutAwareThreadCreation ? (newThreadProject?.workspaceRoot ?? null) : null,
   });
   const activeProjectMainCheckout = useMemo(() => {
     if (!newThreadProject || !activeProjectBranches.data) return undefined;
@@ -254,6 +259,7 @@ export function useHandleNewThread() {
   }, [activeProjectBranches.data, newThreadProject]);
   const resolveDefaultMainCheckout = useCallback(
     async (projectRef: ScopedProjectRef) => {
+      if (!enableCheckoutAwareThreadCreation) return undefined;
       const project = projects.find(
         (candidate) =>
           candidate.environmentId === projectRef.environmentId &&
@@ -282,6 +288,7 @@ export function useHandleNewThread() {
     [
       activeProjectBranches.data,
       activeProjectMainCheckout,
+      enableCheckoutAwareThreadCreation,
       listRefs,
       newThreadProjectRef,
       projects,
@@ -311,11 +318,19 @@ export function useHandleNewThread() {
     activeDraftThread,
     activeThread,
     defaultProjectRef,
-    defaultThreadEnvMode: defaultProjectSettings.defaultThreadEnvMode,
-    defaultNewWorktreesStartFromOrigin: defaultProjectSettings.newWorktreesStartFromOrigin,
+    defaultThreadEnvMode: enableCheckoutAwareThreadCreation
+      ? defaultProjectSettings.defaultThreadEnvMode
+      : undefined,
+    defaultNewWorktreesStartFromOrigin: enableCheckoutAwareThreadCreation
+      ? defaultProjectSettings.newWorktreesStartFromOrigin
+      : undefined,
     handleNewThread,
-    resolveDefaultMainCheckout,
-    resolveNewThreadDefaults,
+    resolveDefaultMainCheckout: enableCheckoutAwareThreadCreation
+      ? resolveDefaultMainCheckout
+      : undefined,
+    resolveNewThreadDefaults: enableCheckoutAwareThreadCreation
+      ? resolveNewThreadDefaults
+      : undefined,
     routeThreadRef,
   };
 }
