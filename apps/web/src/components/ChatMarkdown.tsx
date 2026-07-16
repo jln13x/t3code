@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { DiffsHighlighter, getSharedHighlighter, SupportedLanguages } from "@pierre/diffs";
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -9,7 +8,7 @@ import {
   Minimize2Icon,
   WrapTextIcon,
 } from "lucide-react";
-import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import type { MessageId, ScopedThreadRef, ServerProviderSkill, TurnId } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -40,6 +39,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
+import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { hasSpecificPierreIconForFileName, syntheticFileNameForLanguageId } from "../pierre-icons";
@@ -53,6 +53,7 @@ import { useOpenInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
+import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
 import {
@@ -83,32 +84,17 @@ import {
   openUrlInPreview,
   BrowserPreviewUnavailableError,
 } from "../browser/openFileInPreview";
-
-class CodeHighlightErrorBoundary extends React.Component<
-  { fallback: ReactNode; children: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { fallback: ReactNode; children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
+import { useAssetUrl } from "../assets/assetUrls";
+import { normalizeGeneratedImageReference } from "./ChatMarkdown.logic";
+import { RenderErrorBoundary } from "./RenderErrorBoundary";
 
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
+  artifactTurnId?: TurnId | undefined;
+  artifactMessageId?: MessageId | undefined;
+  onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
@@ -140,7 +126,6 @@ const highlightedCodeCache = new LRUCache<string>(
   MAX_HIGHLIGHT_CACHE_ENTRIES,
   MAX_HIGHLIGHT_CACHE_MEMORY_BYTES,
 );
-const highlighterPromiseCache = new Map<string, Promise<DiffsHighlighter>>();
 
 function findTaskListMarkerOffset(markdown: string, listItemStart: number): number | null {
   const firstLineEnd = markdown.indexOf("\n", listItemStart);
@@ -271,8 +256,12 @@ function extractCodeBlock(
 
   const onlyChild = childNodes[0];
   if (
-    !isValidElement<{ className?: string; children?: ReactNode }>(onlyChild) ||
-    onlyChild.type !== "code"
+    !isValidElement<{
+      className?: string;
+      children?: ReactNode;
+      node?: { tagName?: unknown };
+    }>(onlyChild) ||
+    (onlyChild.type !== "code" && onlyChild.props.node?.tagName !== "code")
   ) {
     return null;
   }
@@ -289,27 +278,6 @@ function createHighlightCacheKey(code: string, language: string, themeName: Diff
 
 function estimateHighlightedSize(html: string, code: string): number {
   return Math.max(html.length * 2, code.length * 3);
-}
-
-function getHighlighterPromise(language: string): Promise<DiffsHighlighter> {
-  const cached = highlighterPromiseCache.get(language);
-  if (cached) return cached;
-
-  const promise = getSharedHighlighter({
-    themes: [resolveDiffThemeName("dark"), resolveDiffThemeName("light")],
-    langs: [language as SupportedLanguages],
-    preferredHighlighter: "shiki-js",
-  }).catch((err) => {
-    highlighterPromiseCache.delete(language);
-    if (language === "text") {
-      // "text" itself failed — Shiki cannot initialize at all, surface the error
-      throw err;
-    }
-    // Language not supported by Shiki — fall back to "text"
-    return getHighlighterPromise("text");
-  });
-  highlighterPromiseCache.set(language, promise);
-  return promise;
 }
 
 function readInitialWordWrapSetting(): boolean {
@@ -701,7 +669,7 @@ function UncachedShikiCodeBlock({
   cacheKey,
   isStreaming,
 }: UncachedShikiCodeBlockProps) {
-  const highlighter = use(getHighlighterPromise(language));
+  const highlighter = use(getSyntaxHighlighterPromise(language));
   const highlightedHtml = useMemo(() => {
     try {
       return highlighter.codeToHtml(code, { lang: language, theme: themeName });
@@ -745,6 +713,14 @@ interface MarkdownFileLinkProps {
   onOpen: (targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>;
   onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   className?: string | undefined;
+}
+
+interface MarkdownThreadArtifactImageProps extends React.ComponentProps<"code"> {
+  threadRef: ScopedThreadRef;
+  turnId: TurnId;
+  messageId: MessageId;
+  reference: string;
+  onImageExpand: (preview: ExpandedImagePreview) => void;
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
@@ -1226,6 +1202,54 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   );
 }, areMarkdownFileLinkPropsEqual);
 
+const MarkdownThreadArtifactImage = memo(function MarkdownThreadArtifactImage({
+  threadRef,
+  turnId,
+  messageId,
+  reference,
+  onImageExpand,
+  children,
+  ...codeProps
+}: MarkdownThreadArtifactImageProps) {
+  const imageUrl = useAssetUrl(threadRef.environmentId, {
+    _tag: "thread-artifact",
+    threadId: threadRef.threadId,
+    turnId,
+    messageId,
+    path: reference,
+  });
+
+  if (!imageUrl) {
+    return <code {...codeProps}>{children}</code>;
+  }
+
+  return (
+    <span
+      className="my-2.5 flex w-1/4 max-w-full flex-col items-start gap-1.5"
+      data-markdown-copy={`\`${reference}\``}
+    >
+      <button
+        type="button"
+        className="block w-full max-w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Preview ${reference}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onImageExpand({ images: [{ src: imageUrl, name: reference }], index: 0 });
+        }}
+      >
+        <img
+          src={imageUrl}
+          alt={reference}
+          loading="lazy"
+          className="block max-h-[32rem] w-full max-w-full object-contain"
+        />
+      </button>
+      <code {...codeProps}>{children}</code>
+    </span>
+  );
+});
+
 function areMarkdownFileLinkPropsEqual(
   previous: Readonly<MarkdownFileLinkProps>,
   next: Readonly<MarkdownFileLinkProps>,
@@ -1251,6 +1275,9 @@ function ChatMarkdown({
   text,
   cwd,
   threadRef,
+  artifactTurnId,
+  artifactMessageId,
+  onImageExpand,
   onTaskListChange,
   isStreaming = false,
   skills = EMPTY_MARKDOWN_SKILLS,
@@ -1503,6 +1530,37 @@ function ChatMarkdown({
           />
         );
       },
+      code({ node, className: codeClassName, children, ...props }) {
+        const artifactReference = codeClassName
+          ? null
+          : normalizeGeneratedImageReference(plainHastText(node) ?? "");
+        if (
+          !artifactReference ||
+          !threadRef ||
+          !artifactTurnId ||
+          !artifactMessageId ||
+          !onImageExpand
+        ) {
+          return (
+            <code {...props} className={codeClassName}>
+              {children}
+            </code>
+          );
+        }
+        return (
+          <MarkdownThreadArtifactImage
+            {...props}
+            className={codeClassName}
+            threadRef={threadRef}
+            turnId={artifactTurnId}
+            messageId={artifactMessageId}
+            reference={artifactReference}
+            onImageExpand={onImageExpand}
+          >
+            {children}
+          </MarkdownThreadArtifactImage>
+        );
+      },
       table({ node: _node, ...props }) {
         return <MarkdownTable {...props} />;
       },
@@ -1524,7 +1582,7 @@ function ChatMarkdown({
             fenceTitle={fenceTitle}
             theme={resolvedTheme}
           >
-            <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
+            <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
               <Suspense fallback={<pre {...props}>{children}</pre>}>
                 <SuspenseShikiCodeBlock
                   className={codeBlock.className}
@@ -1533,17 +1591,20 @@ function ChatMarkdown({
                   isStreaming={isStreaming}
                 />
               </Suspense>
-            </CodeHighlightErrorBoundary>
+            </RenderErrorBoundary>
           </MarkdownCodeBlock>
         );
       },
     }),
     [
       diffThemeName,
+      artifactTurnId,
+      artifactMessageId,
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
       onTaskListChange,
+      onImageExpand,
       openInPreferredEditor,
       openExternalLinkInPreview,
       openMarkdownFileInPreview,
