@@ -191,6 +191,14 @@ export async function startNewThreadFromContext(
     return false;
   }
 
+  if (
+    context.defaultThreadEnvMode !== undefined &&
+    (context.activeThread !== undefined || context.activeDraftThread !== null)
+  ) {
+    await context.handleNewThread(projectRef, buildContextualThreadOptions(context));
+    return true;
+  }
+
   await startNewThreadInProjectFromContext(context, projectRef);
   return true;
 }

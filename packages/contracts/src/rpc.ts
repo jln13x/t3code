@@ -21,6 +21,8 @@ import {
   GitCommandError,
   VcsCreateRefInput,
   VcsCreateRefResult,
+  VcsRenameBranchInput,
+  VcsRenameBranchResult,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
   VcsInitInput,
@@ -179,6 +181,7 @@ export const WS_METHODS = {
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
   vcsCreateRef: "vcs.createRef",
+  vcsRenameBranch: "vcs.renameBranch",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
 
@@ -483,6 +486,12 @@ export const WsVcsCreateRefRpc = Rpc.make(WS_METHODS.vcsCreateRef, {
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
+export const WsVcsRenameBranchRpc = Rpc.make(WS_METHODS.vcsRenameBranch, {
+  payload: VcsRenameBranchInput,
+  success: VcsRenameBranchResult,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+});
+
 export const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
   payload: VcsSwitchRefInput,
   success: VcsSwitchRefResult,
@@ -745,6 +754,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
+  WsVcsRenameBranchRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,

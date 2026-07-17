@@ -1,6 +1,8 @@
 import type {
   VcsCreateRefInput,
   VcsCreateRefResult,
+  VcsRenameBranchInput,
+  VcsRenameBranchResult,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
   VcsInitInput,
@@ -1187,6 +1189,7 @@ export interface EnvironmentApi {
     createWorktree: (input: VcsCreateWorktreeInput) => Promise<VcsCreateWorktreeResult>;
     removeWorktree: (input: VcsRemoveWorktreeInput) => Promise<void>;
     createRef: (input: VcsCreateRefInput) => Promise<VcsCreateRefResult>;
+    renameBranch: (input: VcsRenameBranchInput) => Promise<VcsRenameBranchResult>;
     switchRef: (input: VcsSwitchRefInput) => Promise<VcsSwitchRefResult>;
     init: (input: VcsInitInput) => Promise<void>;
     pull: (input: VcsPullInput) => Promise<VcsPullResult>;

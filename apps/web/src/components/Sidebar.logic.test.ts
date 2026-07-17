@@ -27,6 +27,7 @@ import {
   orderSidebarThreadsByWorktree,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
+  resolveProjectTitleClassName,
   resolveSidebarNewThreadEnvMode,
   resolveSidebarNewThreadSeedContext,
   resolveSidebarStageBadgeLabel,
@@ -894,6 +895,7 @@ describe("resolveThreadRowClassName", () => {
     const className = resolveThreadRowClassName({
       isActive: true,
       isSelected: true,
+      hasUnseenCompletion: false,
     });
     expect(className).toContain("bg-primary/22");
     expect(className).toContain("hover:bg-primary/26");
@@ -905,6 +907,7 @@ describe("resolveThreadRowClassName", () => {
     const className = resolveThreadRowClassName({
       isActive: false,
       isSelected: true,
+      hasUnseenCompletion: false,
     });
     expect(className).toContain("bg-primary/15");
     expect(className).toContain("hover:bg-primary/19");
@@ -916,9 +919,42 @@ describe("resolveThreadRowClassName", () => {
     const className = resolveThreadRowClassName({
       isActive: true,
       isSelected: false,
+      hasUnseenCompletion: false,
     });
     expect(className).toContain("bg-accent/85");
     expect(className).toContain("hover:bg-accent");
+  });
+
+  it("slightly dims threads that are neither active nor selected", () => {
+    const className = resolveThreadRowClassName({
+      isActive: false,
+      isSelected: false,
+      hasUnseenCompletion: false,
+    });
+    expect(className).toContain("text-muted-foreground/80");
+    expect(className).toContain("hover:text-foreground");
+  });
+
+  it("fully emphasizes an unseen completed thread", () => {
+    const className = resolveThreadRowClassName({
+      isActive: false,
+      isSelected: false,
+      hasUnseenCompletion: true,
+    });
+    expect(className).toContain("text-foreground");
+    expect(className).not.toContain("text-muted-foreground/80");
+  });
+});
+
+describe("resolveProjectTitleClassName", () => {
+  it("keeps ordinary project titles subtle", () => {
+    expect(resolveProjectTitleClassName(false)).toContain("text-foreground/80");
+  });
+
+  it("fully emphasizes projects with unseen completed work", () => {
+    const className = resolveProjectTitleClassName(true);
+    expect(className).toContain("text-foreground");
+    expect(className).not.toContain("text-foreground/80");
   });
 });
 

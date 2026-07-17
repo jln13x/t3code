@@ -206,6 +206,12 @@ export function createVcsEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
     }),
+    renameBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:rename-branch",
+      tag: WS_METHODS.vcsRenameBranch,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
     switchRef: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:switch-ref",
       tag: WS_METHODS.vcsSwitchRef,

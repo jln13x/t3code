@@ -159,6 +159,7 @@ import {
   orderSidebarThreadsByWorktree,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
+  resolveProjectTitleClassName,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
@@ -175,7 +176,6 @@ import {
   prStatusIndicator,
   resolveThreadPr,
   ThreadStatusLabel,
-  ThreadWorktreeIndicator,
   terminalStatusFromRunningIds,
 } from "./ThreadStatusIndicators";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
@@ -713,6 +713,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
+          hasUnseenCompletion: threadStatus?.label === "Completed",
         })} native-sidebar-thread-row relative isolate`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
@@ -791,7 +792,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               </TooltipPopup>
             </Tooltip>
           )}
-          <ThreadWorktreeIndicator thread={thread} />
           {terminalStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -1016,6 +1016,18 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   } = props;
   const showMoreButtonRender = useMemo(() => <button type="button" />, []);
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
+  const renameBranch = useAtomCommand(vcsEnvironment.renameBranch, { reportFailure: false });
+  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
+  const [branchRenameTarget, setBranchRenameTarget] = useState<{
+    environmentId: SidebarThreadSummary["environmentId"];
+    oldBranch: string;
+    threads: readonly SidebarThreadSummary[];
+    worktreePath: string;
+  } | null>(null);
+  const [branchRenameTitle, setBranchRenameTitle] = useState("");
+  const [isBranchRenamePending, setIsBranchRenamePending] = useState(false);
   const workspaceRefTargets = useMemo(
     () =>
       threadGroupingMode === "worktree" && shouldShowThreadPanel
@@ -1070,25 +1082,101 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     [renderedThreads, workspaceIdentities],
   );
 
-  const handleWorktreeGroupClick = useCallback(
+  const resolveWorktreeGroupContext = useCallback(
     (group: (typeof renderedThreadGroups)[number]) => {
       const thread = group.threads[0];
-      if (!thread || thread.projectId === null) return;
+      if (!thread || thread.projectId === null) return null;
       const workspaceIdentity = workspaceIdentities.find(
         (identity) =>
           identity.environmentId === thread.environmentId &&
           identity.projectId === thread.projectId,
       );
       const worktreePath = thread.worktreePath ?? workspaceIdentity?.projectCheckoutPath ?? null;
-      void handleNewThread(scopeProjectRef(thread.environmentId, thread.projectId), {
-        branch: thread.branch,
-        worktreePath,
-        envMode: group.label === "Main" ? "local" : "worktree",
-        startFromOrigin: false,
-      });
+      return { projectId: thread.projectId, thread, worktreePath };
     },
-    [handleNewThread, workspaceIdentities],
+    [workspaceIdentities],
   );
+  const handleWorktreeGroupMenu = useCallback(
+    (group: (typeof renderedThreadGroups)[number], position: { x: number; y: number }) => {
+      const context = resolveWorktreeGroupContext(group);
+      const api = readLocalApi();
+      if (!context || !api) return;
+
+      void (async () => {
+        const clicked = await api.contextMenu.show(
+          [
+            { id: "new-chat", label: "New chat here" },
+            {
+              id: "rename-branch",
+              label: "Rename branch…",
+              disabled: context.worktreePath === null || context.thread.branch === null,
+            },
+          ],
+          position,
+        );
+        if (clicked === "new-chat") {
+          void handleNewThread(scopeProjectRef(context.thread.environmentId, context.projectId), {
+            branch: context.thread.branch,
+            worktreePath: context.worktreePath,
+            envMode: group.label === "Main" ? "local" : "worktree",
+            startFromOrigin: false,
+          });
+          return;
+        }
+        if (clicked === "rename-branch" && context.worktreePath && context.thread.branch) {
+          setBranchRenameTarget({
+            environmentId: context.thread.environmentId,
+            oldBranch: context.thread.branch,
+            threads: group.threads,
+            worktreePath: context.worktreePath,
+          });
+          setBranchRenameTitle(context.thread.branch);
+        }
+      })();
+    },
+    [handleNewThread, resolveWorktreeGroupContext],
+  );
+  const submitBranchRename = useCallback(async () => {
+    const target = branchRenameTarget;
+    const newBranch = branchRenameTitle.trim();
+    if (!target || !newBranch || isBranchRenamePending) return;
+    setIsBranchRenamePending(true);
+    const result = await renameBranch({
+      environmentId: target.environmentId,
+      input: {
+        cwd: target.worktreePath,
+        oldBranch: target.oldBranch,
+        newBranch,
+      },
+    });
+    if (result._tag === "Success") {
+      await Promise.all(
+        target.threads.map((thread) =>
+          updateThreadMetadata({
+            environmentId: thread.environmentId,
+            input: { threadId: thread.id, branch: result.value.branch },
+          }),
+        ),
+      );
+      setBranchRenameTarget(null);
+    } else if (!isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to rename branch",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    }
+    setIsBranchRenamePending(false);
+  }, [
+    branchRenameTarget,
+    branchRenameTitle,
+    isBranchRenamePending,
+    renameBranch,
+    updateThreadMetadata,
+  ]);
 
   const renderThread = (thread: SidebarThreadSummary, nestedUnderWorktree = false) => {
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
@@ -1125,95 +1213,159 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   };
 
   return (
-    <SidebarMenuSub
-      ref={attachThreadListAutoAnimateRef}
-      className="native-sidebar-project-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
-    >
-      {shouldShowThreadPanel && showEmptyThreadState ? (
-        <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
-          <div
-            data-thread-selection-safe
-            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
-          >
-            <span>No threads yet</span>
-          </div>
-        </SidebarMenuSubItem>
-      ) : null}
-      {shouldShowThreadPanel && threadGroupingMode === "separate"
-        ? renderedThreads.map((thread) => renderThread(thread))
-        : null}
-      {shouldShowThreadPanel && threadGroupingMode === "worktree"
-        ? renderedThreadGroups.flatMap((group) => {
-            const label =
-              enableSidebarWorktreeNavigation || group.label !== "Main"
-                ? group.label
-                : "Main checkout";
-            const labelContent = (
-              <>
-                <span className="truncate">{label}</span>
-                <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
-                  {group.threads.length}
-                </span>
-              </>
-            );
-            return [
-              <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-                {enableSidebarWorktreeNavigation ? (
-                  <button
-                    type="button"
-                    className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-label={`Start a new chat in ${label}`}
-                    onClick={() => handleWorktreeGroupClick(group)}
-                  >
-                    {labelContent}
-                  </button>
-                ) : (
-                  <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
-                    {labelContent}
-                  </div>
-                )}
-              </SidebarMenuSubItem>,
-              ...group.threads.map((thread) =>
-                renderThread(thread, enableSidebarWorktreeNavigation),
-              ),
-            ];
-          })
-        : null}
+    <>
+      <SidebarMenuSub
+        ref={attachThreadListAutoAnimateRef}
+        className="native-sidebar-project-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
+      >
+        {shouldShowThreadPanel && showEmptyThreadState ? (
+          <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
+            <div
+              data-thread-selection-safe
+              className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
+            >
+              <span>No threads yet</span>
+            </div>
+          </SidebarMenuSubItem>
+        ) : null}
+        {shouldShowThreadPanel && threadGroupingMode === "separate"
+          ? renderedThreads.map((thread) => renderThread(thread))
+          : null}
+        {shouldShowThreadPanel && threadGroupingMode === "worktree"
+          ? renderedThreadGroups.flatMap((group) => {
+              const label =
+                enableSidebarWorktreeNavigation || group.label !== "Main"
+                  ? group.label
+                  : "Main checkout";
+              const labelContent = (
+                <>
+                  <span className="truncate">{label}</span>
+                  <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
+                    {group.threads.length}
+                  </span>
+                </>
+              );
+              return [
+                <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
+                  {enableSidebarWorktreeNavigation ? (
+                    <button
+                      type="button"
+                      className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                      aria-label={`Open actions for ${label}`}
+                      onClick={(event) =>
+                        handleWorktreeGroupMenu(group, {
+                          x: event.clientX,
+                          y: event.clientY,
+                        })
+                      }
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        handleWorktreeGroupMenu(group, {
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
+                    >
+                      {labelContent}
+                    </button>
+                  ) : (
+                    <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+                      {labelContent}
+                    </div>
+                  )}
+                </SidebarMenuSubItem>,
+                ...group.threads.map((thread) =>
+                  renderThread(thread, enableSidebarWorktreeNavigation),
+                ),
+              ];
+            })
+          : null}
 
-      {projectExpanded && hasOverflowingThreads && !isThreadListExpanded && (
-        <SidebarMenuSubItem className="w-full">
-          <SidebarMenuSubButton
-            render={showMoreButtonRender}
-            data-thread-selection-safe
-            size="sm"
-            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
-            onClick={() => {
-              expandThreadListForProject(projectKey);
-            }}
-          >
-            <span className="flex min-w-0 flex-1 items-center gap-2">
-              {hiddenThreadStatus && <ThreadStatusLabel status={hiddenThreadStatus} compact />}
-              <span>Show more</span>
-            </span>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      )}
-      {projectExpanded && hasOverflowingThreads && isThreadListExpanded && (
-        <SidebarMenuSubItem className="w-full">
-          <SidebarMenuSubButton
-            render={showLessButtonRender}
-            data-thread-selection-safe
-            size="sm"
-            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
-            onClick={() => {
-              collapseThreadListForProject(projectKey);
-            }}
-          >
-            <span>Show less</span>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      )}
-    </SidebarMenuSub>
+        {projectExpanded && hasOverflowingThreads && !isThreadListExpanded && (
+          <SidebarMenuSubItem className="w-full">
+            <SidebarMenuSubButton
+              render={showMoreButtonRender}
+              data-thread-selection-safe
+              size="sm"
+              className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+              onClick={() => {
+                expandThreadListForProject(projectKey);
+              }}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                {hiddenThreadStatus && <ThreadStatusLabel status={hiddenThreadStatus} compact />}
+                <span>Show more</span>
+              </span>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        )}
+        {projectExpanded && hasOverflowingThreads && isThreadListExpanded && (
+          <SidebarMenuSubItem className="w-full">
+            <SidebarMenuSubButton
+              render={showLessButtonRender}
+              data-thread-selection-safe
+              size="sm"
+              className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+              onClick={() => {
+                collapseThreadListForProject(projectKey);
+              }}
+            >
+              <span>Show less</span>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        )}
+      </SidebarMenuSub>
+      <Dialog
+        open={branchRenameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isBranchRenamePending) setBranchRenameTarget(null);
+        }}
+      >
+        <DialogPopup className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename branch</DialogTitle>
+            <DialogDescription>
+              Rename {branchRenameTarget?.oldBranch ?? "this branch"} for this worktree.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <input
+              autoFocus
+              value={branchRenameTitle}
+              onChange={(event) => setBranchRenameTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitBranchRename();
+                }
+              }}
+              disabled={isBranchRenamePending}
+              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24"
+              aria-label="New branch name"
+            />
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBranchRenameTarget(null)}
+              disabled={isBranchRenamePending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitBranchRename()}
+              disabled={
+                isBranchRenamePending ||
+                branchRenameTitle.trim().length === 0 ||
+                branchRenameTitle.trim() === branchRenameTarget?.oldBranch
+              }
+            >
+              {isBranchRenamePending ? "Renaming…" : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
   );
 });
 
@@ -1732,7 +1884,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [project.memberProjects],
   );
 
-  const { projectStatus, visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
+  const {
+    projectHasUnseenCompletion,
+    projectStatus,
+    visibleProjectThreads,
+    orderedProjectThreadKeys,
+  } = useMemo(() => {
     const lastVisitedAtByThreadKey = new Map(
       projectThreads.map((thread, index) => [
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
@@ -1754,9 +1911,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       projectThreads.filter((thread) => thread.archivedAt === null),
       threadSortOrder,
     );
-    const projectStatus = resolveProjectStatusIndicator(
-      visibleProjectThreads.map((thread) => resolveProjectThreadStatus(thread)),
+    const visibleProjectThreadStatuses = visibleProjectThreads.map((thread) =>
+      resolveProjectThreadStatus(thread),
     );
+    const projectStatus = resolveProjectStatusIndicator(visibleProjectThreadStatuses);
     const orderedVisibleProjectThreads =
       threadGroupingMode === "worktree"
         ? orderSidebarThreadsByWorktree(visibleProjectThreads, fallbackWorkspaceIdentities)
@@ -1764,6 +1922,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     return {
       orderedProjectThreadKeys: orderedVisibleProjectThreads.map((thread) =>
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      ),
+      projectHasUnseenCompletion: visibleProjectThreadStatuses.some(
+        (status) => status?.label === "Completed",
       ),
       projectStatus,
       visibleProjectThreads,
@@ -2693,7 +2854,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           )}
           <ProjectFavicon environmentId={project.environmentId} cwd={project.workspaceRoot} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="native-sidebar-project-title truncate text-[13px] font-medium text-foreground/90">
+            <span className={resolveProjectTitleClassName(projectHasUnseenCompletion)}>
               {project.displayName}
             </span>
             {project.environmentPresence === "remote-only" &&
