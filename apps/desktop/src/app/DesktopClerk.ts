@@ -82,6 +82,10 @@ export function createDesktopClerkBridge(stateDir: string, isDevelopment: boolea
   });
 }
 
+export function shouldRequestDesktopSingleInstanceLock(platform: NodeJS.Platform): boolean {
+  return platform !== "darwin";
+}
+
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   yield* Effect.acquireRelease(
@@ -113,21 +117,23 @@ export const make = Effect.gen(function* () {
       const context = yield* Effect.context<ElectronWindow.ElectronWindow>();
       const runPromise = Effect.runPromiseWith(context);
 
-      if (!(yield* electronApp.requestSingleInstanceLock)) {
-        yield* electronApp.quit;
-        return yield* Effect.interrupt;
-      }
+      if (shouldRequestDesktopSingleInstanceLock(environment.platform)) {
+        if (!(yield* electronApp.requestSingleInstanceLock)) {
+          yield* electronApp.quit;
+          return yield* Effect.interrupt;
+        }
 
-      yield* electronApp.on("second-instance", () => {
-        void runPromise(
-          Effect.gen(function* () {
-            const mainWindow = yield* electronWindow.currentMainOrFirst;
-            if (Option.isSome(mainWindow)) {
-              yield* electronWindow.reveal(mainWindow.value);
-            }
-          }),
-        );
-      });
+        yield* electronApp.on("second-instance", () => {
+          void runPromise(
+            Effect.gen(function* () {
+              const mainWindow = yield* electronWindow.currentMainOrFirst;
+              if (Option.isSome(mainWindow)) {
+                yield* electronWindow.reveal(mainWindow.value);
+              }
+            }),
+          );
+        });
+      }
     }).pipe(Effect.withSpan("desktop.clerk.configure")),
   });
 });

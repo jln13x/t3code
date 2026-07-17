@@ -13,7 +13,6 @@ import * as Path from "effect/Path";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
-import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;
@@ -80,19 +79,15 @@ const APP_BASE_NAME = "T3 Code";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
-  readonly appVersion: string;
 }): DesktopAppStageLabel {
   if (input.isDevelopment) {
     return "Dev";
   }
 
-  return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Alpha";
+  return "Fork";
 }
 
-function resolveDesktopAppBranding(input: {
-  readonly isDevelopment: boolean;
-  readonly appVersion: string;
-}): DesktopAppBranding {
+function resolveDesktopAppBranding(input: { readonly isDevelopment: boolean }): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
     baseName: APP_BASE_NAME,
@@ -152,12 +147,11 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const appRoot = input.isPackaged ? input.appPath : rootDir;
   const branding = resolveDesktopAppBranding({
     isDevelopment,
-    appVersion: input.appVersion,
   });
   const displayName = branding.displayName;
   const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
-  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
-  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code-fork";
+  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Fork)";
   const resourcesPath = input.resourcesPath;
 
   return DesktopEnvironment.of({
@@ -197,7 +191,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code.fork",
     ),
     linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
     linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",

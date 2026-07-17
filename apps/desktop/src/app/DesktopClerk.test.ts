@@ -53,6 +53,12 @@ describe("DesktopClerk", () => {
     assert.equal(DesktopClerk.resolveDesktopClerkFrontendApiHostname("invalid"), undefined);
   });
 
+  it("lets macOS use its bundle-scoped single-instance enforcement", () => {
+    assert.isFalse(DesktopClerk.shouldRequestDesktopSingleInstanceLock("darwin"));
+    assert.isTrue(DesktopClerk.shouldRequestDesktopSingleInstanceLock("linux"));
+    assert.isTrue(DesktopClerk.shouldRequestDesktopSingleInstanceLock("win32"));
+  });
+
   it.effect("acquires and releases the SDK bridge with the layer", () => {
     const cleanup = vi.fn();
     storageMock.mockReturnValue(storageAdapter);
