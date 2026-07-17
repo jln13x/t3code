@@ -6,12 +6,12 @@ import { isElectron } from "../env";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { usePrimarySettings } from "../hooks/useSettings";
 import ThreadSidebar from "./Sidebar";
+import { resolveThreadSidebarPresentation } from "./AppSidebarLayout.logic";
 import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
-const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
-const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
@@ -55,6 +55,8 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
+  const sidebarPresentation = resolveThreadSidebarPresentation(enableNativeMacSidebar);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
@@ -62,10 +64,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       ? getWindowFullscreenState()
       : false;
   });
-  const macosWindowControlsStyle =
-    isMacosDesktop && !isWindowFullscreen
-      ? ({ "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET } as CSSProperties)
-      : undefined;
+  const sidebarProviderStyle = {
+    "--sidebar-width": sidebarPresentation.defaultWidth,
+    ...(isMacosDesktop && !isWindowFullscreen
+      ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
+      : {}),
+  } as CSSProperties;
 
   useEffect(() => {
     if (!isMacosDesktop) return;
@@ -102,16 +106,16 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={macosWindowControlsStyle}>
+    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
       <Sidebar
         side="left"
         collapsible="offcanvas"
-        className="border-r border-border bg-card text-foreground"
+        className={sidebarPresentation.className}
         resizable={{
-          minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+          minWidth: sidebarPresentation.minWidth,
           shouldAcceptWidth: ({ nextWidth, wrapper }) =>
             wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+          storageKey: sidebarPresentation.storageKey,
         }}
       >
         <ThreadSidebar />

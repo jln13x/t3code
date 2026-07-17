@@ -46,6 +46,7 @@ describe("ClientSettings completion sound", () => {
 describe("personal fork feature flags", () => {
   const flagNames = [
     "enableStandaloneChats",
+    "enableNativeMacSidebar",
     "enableSidebarWorktreeNavigation",
     "enableCheckoutAwareThreadCreation",
     "enableForkPullRequests",
