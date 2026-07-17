@@ -14,3 +14,9 @@ Turning a flag off preserves upstream behavior.
 | Inline generated-image rendering   | `enableGeneratedImageRendering`     | On      |
 | Project file and content search    | `enableProjectSearch`               | On      |
 | Working-change diff workflow       | `enablePersonalDiffWorkflow`        | On      |
+
+## Checkout-aware thread creation
+
+- With New worktree selected, creating a chat from an existing worktree seeds the draft from that
+  worktree's branch without reusing its path. Creating a chat for a different project still uses that
+  project's main branch.
