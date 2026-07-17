@@ -139,6 +139,24 @@ function buildContextualThreadOptions(context: ChatThreadActionContext): NewThre
   };
 }
 
+function resolveActiveWorktreeBranch(
+  context: ChatThreadActionContext,
+  projectRef: ScopedProjectRef,
+): string | null {
+  const candidates = [context.activeThread, context.activeDraftThread];
+  for (const candidate of candidates) {
+    if (
+      candidate?.environmentId === projectRef.environmentId &&
+      candidate.projectId === projectRef.projectId &&
+      candidate.worktreePath &&
+      candidate.branch
+    ) {
+      return candidate.branch;
+    }
+  }
+  return null;
+}
+
 export async function startNewThreadInProjectFromContext(
   context: ChatThreadActionContext,
   projectRef: ScopedProjectRef,
@@ -150,9 +168,12 @@ export async function startNewThreadInProjectFromContext(
   }
 
   const threadEnvMode = defaults.envMode;
-  const mainCheckout = await resolveMainCheckout(context, projectRef);
+  const activeWorktreeBranch =
+    threadEnvMode === "worktree" ? resolveActiveWorktreeBranch(context, projectRef) : null;
+  const mainCheckout =
+    activeWorktreeBranch === null ? await resolveMainCheckout(context, projectRef) : null;
   await context.handleNewThread(projectRef, {
-    branch: mainCheckout?.branch ?? null,
+    branch: activeWorktreeBranch ?? mainCheckout?.branch ?? null,
     worktreePath: threadEnvMode === "local" ? (mainCheckout?.path ?? null) : null,
     envMode: threadEnvMode,
     startFromOrigin: resolveNewDraftStartFromOrigin({
