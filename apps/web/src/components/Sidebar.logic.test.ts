@@ -25,6 +25,7 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   orderSidebarThreadsByWorktree,
+  resolveSidebarWorktreeThreadGroups,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
@@ -39,6 +40,13 @@ import {
 } from "./Sidebar.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+type WorktreeThread = {
+  readonly environmentId: string;
+  readonly projectId: string | null;
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+};
 
 describe("groupSidebarThreadsByWorktree", () => {
   it("groups threads sharing a worktree and labels the group with its branch", () => {
@@ -215,6 +223,79 @@ describe("groupSidebarThreadsByWorktree", () => {
         threads: [implicitThread, explicitThread],
       },
     ]);
+  });
+
+  it("keeps registered worktrees visible when they have no threads", () => {
+    expect(
+      resolveSidebarWorktreeThreadGroups<WorktreeThread>(
+        [],
+        [
+          {
+            environmentId: "local",
+            projectId: "project",
+            projectCheckoutPath: "/repo",
+            projectCheckoutLabel: "main",
+            mainCheckoutPath: "/repo",
+          },
+        ],
+        [
+          {
+            environmentId: "local",
+            projectId: "project",
+            branch: "feature/empty",
+            path: "/repo/.t3/worktrees/empty",
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        key: "local:worktree:/repo/.t3/worktrees/empty",
+        label: "feature/empty",
+        threads: [],
+        environmentId: "local",
+        projectId: "project",
+        branch: "feature/empty",
+        worktreePath: "/repo/.t3/worktrees/empty",
+        isMainCheckout: false,
+      },
+    ]);
+  });
+
+  it("merges a registered worktree into its matching thread group", () => {
+    const thread = {
+      environmentId: "local",
+      projectId: "project",
+      branch: "feature/shared",
+      worktreePath: "/repo/.t3/worktrees/shared",
+    };
+    const groups = resolveSidebarWorktreeThreadGroups<WorktreeThread>(
+      [],
+      [],
+      [
+        {
+          environmentId: "local",
+          projectId: "project",
+          branch: "feature/shared",
+          path: "/repo/.t3/worktrees/shared",
+        },
+      ],
+    );
+    const withThread = resolveSidebarWorktreeThreadGroups<WorktreeThread>(
+      [thread],
+      [],
+      [
+        {
+          environmentId: "local",
+          projectId: "project",
+          branch: "feature/shared",
+          path: "/repo/.t3/worktrees/shared",
+        },
+      ],
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(withThread).toHaveLength(1);
+    expect(withThread[0]?.threads).toEqual([thread]);
   });
 });
 
@@ -925,14 +1006,14 @@ describe("resolveThreadRowClassName", () => {
     expect(className).toContain("hover:bg-accent");
   });
 
-  it("slightly dims threads that are neither active nor selected", () => {
+  it("dims threads that are neither active nor selected", () => {
     const className = resolveThreadRowClassName({
       isActive: false,
       isSelected: false,
       hasUnseenCompletion: false,
     });
-    expect(className).toContain("text-muted-foreground/80");
-    expect(className).toContain("hover:text-foreground");
+    expect(className).toContain("text-muted-foreground/55");
+    expect(className).toContain("hover:text-muted-foreground/70");
   });
 
   it("fully emphasizes an unseen completed thread", () => {
@@ -942,7 +1023,17 @@ describe("resolveThreadRowClassName", () => {
       hasUnseenCompletion: true,
     });
     expect(className).toContain("text-foreground");
-    expect(className).not.toContain("text-muted-foreground/80");
+    expect(className).not.toContain("text-muted-foreground/55");
+  });
+
+  it("keeps selection styling while dimming a selected, unfocused thread", () => {
+    const className = resolveThreadRowClassName({
+      isActive: false,
+      isSelected: true,
+      hasUnseenCompletion: false,
+    });
+    expect(className).toContain("bg-primary/15");
+    expect(className).toContain("text-muted-foreground/55");
   });
 });
 

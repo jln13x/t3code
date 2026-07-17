@@ -515,7 +515,7 @@ body {
   height: 38px;
   border-radius: 10px;
   padding-inline: 10px 8px;
-  color: #1d1d1f;
+  color: rgb(29 29 31 / 52%);
   font-weight: 400;
   transition:
     background-color 140ms ease,
@@ -523,6 +523,14 @@ body {
 }
 
 .dark .native-macos-sidebar .native-sidebar-thread-row {
+  color: rgb(255 255 255 / 52%);
+}
+
+.native-macos-sidebar .native-sidebar-thread-row[data-finished="true"] {
+  color: #1d1d1f;
+}
+
+.dark .native-macos-sidebar .native-sidebar-thread-row[data-finished="true"] {
   color: #ffffff;
 }
 
@@ -539,23 +547,17 @@ body {
 
 .native-macos-sidebar .native-sidebar-thread-row:hover {
   background: rgb(0 0 0 / 6%);
-  color: #000000;
 }
 
 .dark .native-macos-sidebar .native-sidebar-thread-row:hover {
   background: rgb(255 255 255 / 8%);
-  color: #ffffff;
 }
 
 .native-macos-sidebar .native-sidebar-thread-title {
-  color: #1d1d1f;
+  color: inherit;
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
-}
-
-.dark .native-macos-sidebar .native-sidebar-thread-title {
-  color: #ffffff;
 }
 
 .native-macos-sidebar [data-thread-status-label] {

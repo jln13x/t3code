@@ -133,6 +133,7 @@ import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
+import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import {
   legacyProjectCwdPreferenceKey,
   resolveProjectExpanded,
@@ -152,7 +153,6 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
   getSidebarThreadIdsToPrewarm,
-  groupSidebarThreadsByWorktree,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -161,6 +161,7 @@ import {
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorktreeThreadGroups,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
@@ -710,6 +711,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
+        data-finished={threadStatus?.label === "Completed"}
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
@@ -1017,6 +1019,8 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const showMoreButtonRender = useMemo(() => <button type="button" />, []);
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
   const renameBranch = useAtomCommand(vcsEnvironment.renameBranch, { reportFailure: false });
+  const removeWorktree = useAtomCommand(vcsEnvironment.removeWorktree, { reportFailure: false });
+  const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -1028,6 +1032,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   } | null>(null);
   const [branchRenameTitle, setBranchRenameTitle] = useState("");
   const [isBranchRenamePending, setIsBranchRenamePending] = useState(false);
+  const [removedWorktreeKeys, setRemovedWorktreeKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const workspaceRefTargets = useMemo(
     () =>
       threadGroupingMode === "worktree" && shouldShowThreadPanel
@@ -1077,24 +1084,119 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       }),
     [workspaceRefResults],
   );
+  const workspaceWorktrees = useMemo(
+    () =>
+      workspaceRefResults.flatMap(({ member, result }) => {
+        const data = Option.getOrNull(AsyncResult.value(result));
+        if (!data) return [];
+        return data.refs.flatMap((ref) => {
+          const path = ref.worktreePath?.trim();
+          if (!path || ref.isRemote) return [];
+          const key = `${member.environmentId}:${member.id}:${path}`;
+          if (removedWorktreeKeys.has(key)) return [];
+          return [
+            {
+              environmentId: member.environmentId,
+              projectId: member.id,
+              branch: ref.name,
+              path,
+            },
+          ];
+        });
+      }),
+    [removedWorktreeKeys, workspaceRefResults],
+  );
   const renderedThreadGroups = useMemo(
-    () => groupSidebarThreadsByWorktree(renderedThreads, workspaceIdentities),
-    [renderedThreads, workspaceIdentities],
+    () =>
+      resolveSidebarWorktreeThreadGroups(
+        renderedThreads,
+        workspaceIdentities,
+        enableSidebarWorktreeNavigation ? workspaceWorktrees : [],
+      ),
+    [enableSidebarWorktreeNavigation, renderedThreads, workspaceIdentities, workspaceWorktrees],
   );
 
   const resolveWorktreeGroupContext = useCallback(
     (group: (typeof renderedThreadGroups)[number]) => {
-      const thread = group.threads[0];
-      if (!thread || thread.projectId === null) return null;
-      const workspaceIdentity = workspaceIdentities.find(
-        (identity) =>
-          identity.environmentId === thread.environmentId &&
-          identity.projectId === thread.projectId,
+      if (group.projectId === null) return null;
+      const projectMember = projectMembers.find(
+        (member) => member.environmentId === group.environmentId && member.id === group.projectId,
       );
-      const worktreePath = thread.worktreePath ?? workspaceIdentity?.projectCheckoutPath ?? null;
-      return { projectId: thread.projectId, thread, worktreePath };
+      if (!projectMember) return null;
+      return {
+        projectId: group.projectId,
+        environmentId: group.environmentId,
+        branch: group.branch,
+        worktreePath: group.worktreePath,
+        projectCwd: projectMember.workspaceRoot,
+        isMainCheckout: group.isMainCheckout,
+        isEmpty: group.threads.length === 0,
+      };
     },
-    [workspaceIdentities],
+    [projectMembers],
+  );
+  const archiveWorktreeGroup = useCallback(
+    async (group: (typeof renderedThreadGroups)[number]) => {
+      const context = resolveWorktreeGroupContext(group);
+      const api = readLocalApi();
+      if (!context || !api || context.isMainCheckout || !context.worktreePath) return;
+
+      const displayPath = formatWorktreePathForDisplay(context.worktreePath);
+      const threadWarning = context.isEmpty
+        ? ""
+        : `\n\n${group.threads.length} thread${group.threads.length === 1 ? "" : "s"} will remain in the sidebar but will no longer have this checkout.`;
+      const confirmation = await settlePromise(() =>
+        api.dialogs.confirm(
+          [
+            `Archive worktree "${group.label}"?`,
+            `This will delete ${displayPath} and remove its Git worktree registration.${threadWarning}`,
+          ].join("\n"),
+        ),
+      );
+      if (confirmation._tag === "Failure" || !confirmation.value) return;
+
+      const removeResult = await removeWorktree({
+        environmentId: context.environmentId,
+        input: {
+          cwd: context.projectCwd,
+          path: context.worktreePath,
+          force: true,
+        },
+      });
+      if (removeResult._tag === "Failure") {
+        const error = squashAtomCommandFailure(removeResult);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to archive worktree",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+        return;
+      }
+      setRemovedWorktreeKeys(
+        (keys) =>
+          new Set([
+            ...keys,
+            `${context.environmentId}:${context.projectId}:${context.worktreePath}`,
+          ]),
+      );
+      const refreshResult = await refreshVcsStatus({
+        environmentId: context.environmentId,
+        input: { cwd: context.projectCwd },
+      });
+      if (refreshResult._tag === "Failure") {
+        const error = squashAtomCommandFailure(refreshResult);
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: "Worktree archived, but Git status could not refresh",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+    },
+    [refreshVcsStatus, removeWorktree, resolveWorktreeGroupContext],
   );
   const handleWorktreeGroupMenu = useCallback(
     (group: (typeof renderedThreadGroups)[number], position: { x: number; y: number }) => {
@@ -1109,32 +1211,47 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             {
               id: "rename-branch",
               label: "Rename branch…",
-              disabled: context.worktreePath === null || context.thread.branch === null,
+              disabled: context.worktreePath === null || context.branch === null,
             },
+            ...(!context.isEmpty && !context.isMainCheckout && context.worktreePath
+              ? [{ id: "archive-worktree", label: "Archive worktree…" }]
+              : []),
           ],
           position,
         );
         if (clicked === "new-chat") {
-          void handleNewThread(scopeProjectRef(context.thread.environmentId, context.projectId), {
-            branch: context.thread.branch,
+          void handleNewThread(scopeProjectRef(context.environmentId, context.projectId), {
+            branch: context.branch,
             worktreePath: context.worktreePath,
             envMode: group.label === "Main" ? "local" : "worktree",
             startFromOrigin: false,
           });
           return;
         }
-        if (clicked === "rename-branch" && context.worktreePath && context.thread.branch) {
+        if (clicked === "rename-branch" && context.worktreePath && context.branch) {
           setBranchRenameTarget({
-            environmentId: context.thread.environmentId,
-            oldBranch: context.thread.branch,
+            environmentId: context.environmentId,
+            oldBranch: context.branch,
             threads: group.threads,
             worktreePath: context.worktreePath,
           });
-          setBranchRenameTitle(context.thread.branch);
+          setBranchRenameTitle(context.branch);
+          return;
+        }
+        if (clicked === "archive-worktree") {
+          void archiveWorktreeGroup(group);
         }
       })();
     },
-    [handleNewThread, resolveWorktreeGroupContext],
+    [archiveWorktreeGroup, handleNewThread, resolveWorktreeGroupContext],
+  );
+  const handleEmptyWorktreeArchive = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, group: (typeof renderedThreadGroups)[number]) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void archiveWorktreeGroup(group);
+    },
+    [archiveWorktreeGroup],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1237,6 +1354,11 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 enableSidebarWorktreeNavigation || group.label !== "Main"
                   ? group.label
                   : "Main checkout";
+              const canArchiveOnHover =
+                enableSidebarWorktreeNavigation &&
+                group.threads.length === 0 &&
+                !group.isMainCheckout &&
+                group.worktreePath !== null;
               const labelContent = (
                 <>
                   <span className="truncate">{label}</span>
@@ -1248,26 +1370,49 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               return [
                 <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
                   {enableSidebarWorktreeNavigation ? (
-                    <button
-                      type="button"
-                      className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                      aria-label={`Open actions for ${label}`}
-                      onClick={(event) =>
-                        handleWorktreeGroupMenu(group, {
-                          x: event.clientX,
-                          y: event.clientY,
-                        })
-                      }
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        handleWorktreeGroupMenu(group, {
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                    >
-                      {labelContent}
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pr-8 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                        aria-label={`Open actions for ${label}`}
+                        onClick={(event) =>
+                          handleWorktreeGroupMenu(group, {
+                            x: event.clientX,
+                            y: event.clientY,
+                          })
+                        }
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          handleWorktreeGroupMenu(group, {
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                      >
+                        {labelContent}
+                      </button>
+                      {canArchiveOnHover ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
+                                <button
+                                  type="button"
+                                  data-thread-selection-safe
+                                  data-testid={`worktree-archive-${group.key}`}
+                                  aria-label={`Archive worktree ${label}`}
+                                  className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                                  onClick={(event) => handleEmptyWorktreeArchive(event, group)}
+                                >
+                                  <ArchiveIcon className="size-3.5" />
+                                </button>
+                              </div>
+                            }
+                          />
+                          <TooltipPopup side="top">Archive worktree</TooltipPopup>
+                        </Tooltip>
+                      ) : null}
+                    </div>
                   ) : (
                     <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
                       {labelContent}
