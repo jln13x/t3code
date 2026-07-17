@@ -5,6 +5,7 @@ Turning a flag off preserves upstream behavior.
 | Feature                            | Flag                                | Default |
 | ---------------------------------- | ----------------------------------- | ------- |
 | Projectless standalone chats       | `enableStandaloneChats`             | On      |
+| Native macOS sidebar               | `enableNativeMacSidebar`            | On      |
 | Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`   | On      |
 | Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation` | On      |
 | Completion and attention sounds    | `enableCompletionSounds`            | On      |

@@ -113,6 +113,7 @@ const TIMESTAMP_FORMAT_LABELS = {
 type PersonalFeatureFlagName = Extract<
   keyof UnifiedSettings,
   | "enableStandaloneChats"
+  | "enableNativeMacSidebar"
   | "enableSidebarWorktreeNavigation"
   | "enableCheckoutAwareThreadCreation"
   | "enableCompletionSounds"
@@ -134,6 +135,11 @@ const PERSONAL_FEATURE_SETTINGS = [
     key: "enableStandaloneChats",
     title: "Standalone chats",
     description: "Allow conversations that are not attached to a project.",
+  },
+  {
+    key: "enableNativeMacSidebar",
+    title: "Native macOS sidebar",
+    description: "Use the wider, spacious macOS-inspired sidebar presentation.",
   },
   {
     key: "enableSidebarWorktreeNavigation",
@@ -520,6 +526,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.timestampFormat,
       settings.wordWrap,
       settings.enableStandaloneChats,
+      settings.enableNativeMacSidebar,
       settings.enableSidebarWorktreeNavigation,
       settings.enableCheckoutAwareThreadCreation,
       settings.enableForkPullRequests,
@@ -559,6 +566,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
       enableStandaloneChats: DEFAULT_UNIFIED_SETTINGS.enableStandaloneChats,
+      enableNativeMacSidebar: DEFAULT_UNIFIED_SETTINGS.enableNativeMacSidebar,
       enableSidebarWorktreeNavigation: DEFAULT_UNIFIED_SETTINGS.enableSidebarWorktreeNavigation,
       enableCheckoutAwareThreadCreation: DEFAULT_UNIFIED_SETTINGS.enableCheckoutAwareThreadCreation,
       enableForkPullRequests: DEFAULT_UNIFIED_SETTINGS.enableForkPullRequests,

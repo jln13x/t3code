@@ -713,14 +713,15 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} native-sidebar-thread-row relative isolate`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
         <div
-          className={`flex min-w-0 flex-1 items-center gap-1.5 text-left ${nestedUnderWorktree ? "pl-3" : ""}`}
+          className={`native-sidebar-thread-content flex min-w-0 flex-1 items-center gap-1.5 text-left ${nestedUnderWorktree ? "pl-3" : ""}`}
+          data-nested-under-worktree={nestedUnderWorktree}
         >
           {prStatus && (
             <Tooltip>
@@ -756,7 +757,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-[13px]"
+                    className="native-sidebar-thread-title min-w-0 flex-1 truncate text-[13px]"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -810,7 +811,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
             </Tooltip>
           )}
           <div
-            className={`flex min-w-12 justify-end ${
+            className={`native-sidebar-thread-tail flex min-w-12 justify-end ${
               isRemoteThread ? "max-sm:min-w-24" : "max-sm:min-w-20"
             }`}
           >
@@ -1126,7 +1127,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   return (
     <SidebarMenuSub
       ref={attachThreadListAutoAnimateRef}
-      className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
+      className="native-sidebar-project-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
     >
       {shouldShowThreadPanel && showEmptyThreadState ? (
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
@@ -1150,7 +1151,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             const labelContent = (
               <>
                 <span className="truncate">{label}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground/35">
+                <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
                   {group.threads.length}
                 </span>
               </>
@@ -1160,14 +1161,14 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 {enableSidebarWorktreeNavigation ? (
                   <button
                     type="button"
-                    className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                    className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                     aria-label={`Start a new chat in ${label}`}
                     onClick={() => handleWorktreeGroupClick(group)}
                   >
                     {labelContent}
                   </button>
                 ) : (
-                  <div className="flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+                  <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
                     {labelContent}
                   </div>
                 )}
@@ -1489,7 +1490,7 @@ const SidebarStandaloneChatList = memo(function SidebarStandaloneChatList(
   );
 
   return (
-    <SidebarMenuSub className="mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5">
+    <SidebarMenuSub className="native-sidebar-chat-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5">
       {props.threads.map((thread) => {
         const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
         return (
@@ -2652,7 +2653,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className={`gap-2 px-2 py-1.5 pr-8 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground max-sm:pr-14 ${
+          className={`native-sidebar-project-row gap-2 px-2 py-1.5 pr-8 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground max-sm:pr-14 ${
             isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
           }`}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
@@ -2692,9 +2693,27 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           )}
           <ProjectFavicon environmentId={project.environmentId} cwd={project.workspaceRoot} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-foreground/90">
+            <span className="native-sidebar-project-title truncate text-[13px] font-medium text-foreground/90">
               {project.displayName}
             </span>
+            {project.environmentPresence === "remote-only" &&
+            !project.allRemoteMembersAreDesktopLocal ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      aria-label="Cloud project"
+                      className="native-sidebar-cloud-indicator hidden shrink-0 items-center justify-center text-[#0a84ff]"
+                    />
+                  }
+                >
+                  <CloudIcon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  Cloud project: {project.remoteEnvironmentLabels.join(", ")}
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
             {project.groupedProjectCount > 1 ? (
               <span className="shrink-0 text-[10px] text-muted-foreground/60">
                 {project.groupedProjectCount} projects
@@ -2715,7 +2734,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                       ? "Local sandbox project"
                       : "Remote project"
                   }
-                  className="pointer-events-none absolute top-1 right-1.5 inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-opacity duration-150 max-sm:right-7 group-hover/project-header:opacity-0 group-focus-within/project-header:opacity-0 max-sm:group-hover/project-header:opacity-100 max-sm:group-focus-within/project-header:opacity-100"
+                  className="native-sidebar-legacy-environment-badge pointer-events-none absolute top-1 right-1.5 inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-opacity duration-150 max-sm:right-7 group-hover/project-header:opacity-0 group-focus-within/project-header:opacity-0 max-sm:group-hover/project-header:opacity-100 max-sm:group-focus-within/project-header:opacity-100"
                 />
               }
             >
@@ -3312,6 +3331,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
 });
 
 interface SidebarProjectsContentProps {
+  enableNativeMacSidebar: boolean;
   showArm64IntelBuildWarning: boolean;
   arm64IntelBuildWarningDescription: string | null;
   desktopUpdateButtonAction: "download" | "install" | "none";
@@ -3358,6 +3378,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
   const {
+    enableNativeMacSidebar,
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
     desktopUpdateButtonAction,
@@ -3432,8 +3453,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
 
   return (
-    <SidebarContent className="gap-0">
-      <SidebarGroup className="px-2 pt-2 pb-1">
+    <SidebarContent className="native-sidebar-content gap-0">
+      <SidebarGroup className="native-sidebar-search-group px-2 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <CommandDialogTrigger
@@ -3480,10 +3501,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <LocalSecondaryStatus />
-      <SidebarGroup className="px-2 py-2">
+      <SidebarGroup className="native-sidebar-projects-group px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[11px] font-medium tracking-wide text-muted-foreground/70">
-            projects
+          <span className="native-sidebar-section-label text-[11px] font-medium tracking-wide text-muted-foreground/70">
+            {enableNativeMacSidebar ? "Projects" : "projects"}
           </span>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
@@ -3597,9 +3618,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         )}
       </SidebarGroup>
       {showStandaloneChats ? (
-        <SidebarGroup className="px-2 pt-1 pb-2">
+        <SidebarGroup className="native-sidebar-chats-group px-2 pt-1 pb-2">
           <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <span className="native-sidebar-section-label text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               Chats
             </span>
             <Tooltip>
@@ -3665,6 +3686,7 @@ export default function Sidebar() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
   const enableStandaloneChats = usePrimarySettings((settings) => settings.enableStandaloneChats);
+  const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const updateSettings = useUpdateClientSettings();
   const {
     defaultNewWorktreesStartFromOrigin,
@@ -4358,6 +4380,7 @@ export default function Sidebar() {
       ) : (
         <>
           <SidebarProjectsContent
+            enableNativeMacSidebar={enableNativeMacSidebar}
             showArm64IntelBuildWarning={showArm64IntelBuildWarning}
             arm64IntelBuildWarningDescription={arm64IntelBuildWarningDescription}
             desktopUpdateButtonAction={desktopUpdateButtonAction}

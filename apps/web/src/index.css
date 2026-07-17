@@ -369,6 +369,220 @@ body {
   padding: 0;
 }
 
+/* Personal fork: a restrained macOS navigator treatment for the primary
+   sidebar. The class is feature-flagged at the layout boundary so the shared
+   sidebar primitives and the upstream presentation remain untouched. */
+.native-macos-sidebar {
+  --sidebar: #ececec;
+  --sidebar-foreground: #1d1d1f;
+  --sidebar-accent: rgb(0 0 0 / 7%);
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: rgb(0 0 0 / 10%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+.dark .native-macos-sidebar {
+  --sidebar: #292929;
+  --sidebar-foreground: #ffffff;
+  --sidebar-accent: rgb(255 255 255 / 10%);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 9%);
+}
+
+.native-macos-sidebar.surface-grain,
+.native-macos-sidebar .surface-grain {
+  background-image: none;
+}
+
+.native-macos-sidebar .native-sidebar-content {
+  padding-bottom: 8px;
+}
+
+.native-macos-sidebar .native-sidebar-search-group {
+  padding: 14px 16px 4px;
+}
+
+.native-macos-sidebar .native-sidebar-search-group [data-sidebar="menu-button"] {
+  height: 38px;
+  border-radius: 10px;
+  padding-inline: 10px;
+}
+
+.native-macos-sidebar .native-sidebar-projects-group {
+  padding: 22px 16px 8px;
+}
+
+.native-macos-sidebar .native-sidebar-chats-group {
+  padding: 22px 16px 20px;
+}
+
+.native-macos-sidebar .native-sidebar-section-label {
+  color: rgb(0 0 0 / 48%);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 20px;
+  text-transform: none;
+}
+
+.dark .native-macos-sidebar .native-sidebar-section-label {
+  color: rgb(255 255 255 / 46%);
+}
+
+.native-macos-sidebar .native-sidebar-projects-group > div:first-child,
+.native-macos-sidebar .native-sidebar-chats-group > div:first-child {
+  margin-bottom: 8px;
+  padding-inline: 8px 6px;
+}
+
+.native-macos-sidebar .native-sidebar-projects-group [data-sidebar="menu"],
+.native-macos-sidebar .native-sidebar-chats-group [data-sidebar="menu"] {
+  gap: 4px;
+}
+
+.native-macos-sidebar .native-sidebar-project-row {
+  height: 40px;
+  border-radius: 10px;
+  padding-block: 0;
+  padding-left: 10px;
+}
+
+.native-macos-sidebar .native-sidebar-project-title {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dark .native-macos-sidebar .native-sidebar-project-title {
+  color: #ffffff;
+}
+
+.native-macos-sidebar .native-sidebar-cloud-indicator {
+  display: inline-flex;
+}
+
+.native-macos-sidebar .native-sidebar-legacy-environment-badge {
+  display: none;
+}
+
+.native-macos-sidebar .native-sidebar-project-thread-list,
+.native-macos-sidebar .native-sidebar-chat-thread-list {
+  width: 100%;
+  margin: 2px 0 8px;
+  border-left: 0;
+  padding-block: 2px;
+}
+
+.native-macos-sidebar .native-sidebar-project-thread-list {
+  padding-inline: 18px 0;
+}
+
+.native-macos-sidebar .native-sidebar-chat-thread-list {
+  padding-inline: 0;
+}
+
+.native-macos-sidebar [data-thread-item] {
+  margin-block: 2px;
+}
+
+.native-macos-sidebar .native-sidebar-thread-content[data-nested-under-worktree="true"] {
+  padding-left: 0;
+}
+
+.native-macos-sidebar .native-sidebar-worktree-label {
+  height: 30px;
+  margin-top: 4px;
+  padding-inline: 10px;
+  color: rgb(0 0 0 / 60%);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.dark .native-macos-sidebar .native-sidebar-worktree-label {
+  color: rgb(255 255 255 / 64%);
+}
+
+.native-macos-sidebar .native-sidebar-worktree-count {
+  color: rgb(0 0 0 / 34%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-worktree-count {
+  color: rgb(255 255 255 / 34%);
+}
+
+.native-macos-sidebar .native-sidebar-thread-row {
+  height: 38px;
+  border-radius: 10px;
+  padding-inline: 10px 8px;
+  color: #1d1d1f;
+  font-weight: 400;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.dark .native-macos-sidebar .native-sidebar-thread-row {
+  color: #ffffff;
+}
+
+.native-macos-sidebar .native-sidebar-thread-row[data-active="true"] {
+  background: rgb(0 0 0 / 8%);
+  color: #000000;
+  font-weight: 400;
+}
+
+.dark .native-macos-sidebar .native-sidebar-thread-row[data-active="true"] {
+  background: rgb(255 255 255 / 11%);
+  color: #ffffff;
+}
+
+.native-macos-sidebar .native-sidebar-thread-row:hover {
+  background: rgb(0 0 0 / 6%);
+  color: #000000;
+}
+
+.dark .native-macos-sidebar .native-sidebar-thread-row:hover {
+  background: rgb(255 255 255 / 8%);
+  color: #ffffff;
+}
+
+.native-macos-sidebar .native-sidebar-thread-title {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.dark .native-macos-sidebar .native-sidebar-thread-title {
+  color: #ffffff;
+}
+
+.native-macos-sidebar [data-thread-status-label] {
+  width: 12px;
+  height: 12px;
+  gap: 0;
+}
+
+.native-macos-sidebar [data-thread-status-label] > span:first-child {
+  width: 7px;
+  height: 7px;
+}
+
+.native-macos-sidebar [data-thread-status-label="full"] > span:last-child {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .native-macos-sidebar .native-sidebar-thread-tail {
+    min-width: 0;
+  }
+}
+
+.native-macos-sidebar .native-sidebar-thread-row .text-\[10px\].tabular-nums {
+  display: none;
+}
+
 html,
 body {
   min-height: calc(100svh + env(safe-area-inset-top));

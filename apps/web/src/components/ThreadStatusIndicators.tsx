@@ -143,6 +143,7 @@ export function ThreadStatusLabel({
           render={
             <span
               aria-label={status.label}
+              data-thread-status-label="compact"
               className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
             />
           }
@@ -164,6 +165,7 @@ export function ThreadStatusLabel({
         render={
           <span
             aria-label={status.label}
+            data-thread-status-label="full"
             className={`inline-flex items-center gap-1 text-[10px] ${status.colorClass}`}
           />
         }
