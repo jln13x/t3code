@@ -175,6 +175,18 @@ export const VcsCreateRefResult = Schema.Struct({
 });
 export type VcsCreateRefResult = typeof VcsCreateRefResult.Type;
 
+export const VcsRenameBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  oldBranch: TrimmedNonEmptyStringSchema,
+  newBranch: TrimmedNonEmptyStringSchema,
+});
+export type VcsRenameBranchInput = typeof VcsRenameBranchInput.Type;
+
+export const VcsRenameBranchResult = Schema.Struct({
+  branch: TrimmedNonEmptyStringSchema,
+});
+export type VcsRenameBranchResult = typeof VcsRenameBranchResult.Type;
+
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,

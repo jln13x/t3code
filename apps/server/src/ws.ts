@@ -1724,6 +1724,12 @@ const makeWsRpcLayer = (
             gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
             { "rpc.aggregate": "vcs" },
           ),
+        [WS_METHODS.vcsRenameBranch]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsRenameBranch,
+            gitWorkflow.renameBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
         [WS_METHODS.vcsSwitchRef]: (input) =>
           observeRpcEffect(
             WS_METHODS.vcsSwitchRef,

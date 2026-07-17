@@ -31,3 +31,7 @@ Turning a flag off preserves upstream behavior.
 - With New worktree selected, creating a chat from an existing worktree seeds the draft from that
   worktree's branch without reusing its path. Creating a chat for a different project still uses that
   project's main branch.
+- Cmd+N from an active chat preserves that chat's checkout mode, branch, and worktree path. From
+  outside a chat it continues to use the configured project defaults.
+- With sidebar worktree navigation enabled, clicking or right-clicking a worktree label opens an
+  actions menu for starting a chat in that checkout or renaming its branch.

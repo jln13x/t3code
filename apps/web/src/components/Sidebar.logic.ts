@@ -417,6 +417,7 @@ export function isContextMenuPointerDown(input: {
 export function resolveThreadRowClassName(input: {
   isActive: boolean;
   isSelected: boolean;
+  hasUnseenCompletion: boolean;
 }): string {
   const baseClassName =
     "h-6 w-full translate-x-0 cursor-pointer justify-start px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:h-7";
@@ -442,7 +443,18 @@ export function resolveThreadRowClassName(input: {
     );
   }
 
-  return cn(baseClassName, "text-muted-foreground hover:bg-accent hover:text-foreground");
+  if (input.hasUnseenCompletion) {
+    return cn(baseClassName, "text-foreground hover:bg-accent hover:text-foreground");
+  }
+
+  return cn(baseClassName, "text-muted-foreground/80 hover:bg-accent hover:text-foreground");
+}
+
+export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): string {
+  return cn(
+    "native-sidebar-project-title truncate text-[13px] font-medium",
+    hasUnseenCompletion ? "text-foreground" : "text-foreground/80",
+  );
 }
 
 export function resolveThreadStatusPill(input: {
