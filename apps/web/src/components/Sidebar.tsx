@@ -1371,16 +1371,8 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
                   {enableSidebarWorktreeNavigation ? (
                     <div className="relative">
-                      <button
-                        type="button"
-                        className="native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pr-8 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                        aria-label={`Open actions for ${label}`}
-                        onClick={(event) =>
-                          handleWorktreeGroupMenu(group, {
-                            x: event.clientX,
-                            y: event.clientY,
-                          })
-                        }
+                      <div
+                        className="native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pr-8 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                         onContextMenu={(event) => {
                           event.preventDefault();
                           handleWorktreeGroupMenu(group, {
@@ -1390,7 +1382,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                         }}
                       >
                         {labelContent}
-                      </button>
+                      </div>
                       {canArchiveOnHover ? (
                         <Tooltip>
                           <TooltipTrigger

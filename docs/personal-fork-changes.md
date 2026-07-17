@@ -33,8 +33,8 @@ Turning a flag off preserves upstream behavior.
   project's main branch.
 - Cmd+N from an active chat preserves that chat's checkout mode, branch, and worktree path. From
   outside a chat it continues to use the configured project defaults.
-- With sidebar worktree navigation enabled, clicking or right-clicking a worktree label opens an
-  actions menu for starting a chat in that checkout or renaming its branch.
+- With sidebar worktree navigation enabled, right-clicking a worktree label opens an actions menu
+  for starting a chat in that checkout or renaming its branch.
 
 ## Native macOS sidebar
 
