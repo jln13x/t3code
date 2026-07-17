@@ -24,6 +24,31 @@ export interface SidebarWorktreeThreadGroup<TThread> {
   readonly threads: readonly TThread[];
 }
 
+export interface SidebarWorktreeDescriptor<
+  TEnvironmentId extends string = string,
+  TProjectId extends string = string,
+> {
+  readonly environmentId: TEnvironmentId;
+  readonly projectId: TProjectId;
+  readonly branch: string | null;
+  readonly path: string;
+}
+
+export interface ResolvedSidebarWorktreeThreadGroup<
+  TThread extends {
+    readonly environmentId: string;
+    readonly projectId: string | null;
+    readonly branch: string | null;
+    readonly worktreePath: string | null;
+  },
+> extends SidebarWorktreeThreadGroup<TThread> {
+  readonly environmentId: TThread["environmentId"];
+  readonly projectId: TThread["projectId"];
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly isMainCheckout: boolean;
+}
+
 export interface SidebarWorkspaceIdentity {
   readonly environmentId: string;
   readonly projectId: string;
@@ -54,8 +79,43 @@ export function groupSidebarThreadsByWorktree<
 >(
   threads: readonly TThread[],
   workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
+  worktrees: readonly SidebarWorktreeDescriptor<
+    TThread["environmentId"],
+    Exclude<TThread["projectId"], null>
+  >[] = [],
 ): SidebarWorktreeThreadGroup<TThread>[] {
-  const groups = new Map<string, { label: string; threads: TThread[] }>();
+  return resolveSidebarWorktreeThreadGroups(threads, workspaceIdentities, worktrees).map(
+    ({ key, label, threads }) => ({ key, label, threads }),
+  );
+}
+
+export function resolveSidebarWorktreeThreadGroups<
+  TThread extends {
+    readonly environmentId: string;
+    readonly projectId: string | null;
+    readonly branch: string | null;
+    readonly worktreePath: string | null;
+  },
+>(
+  threads: readonly TThread[],
+  workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
+  worktrees: readonly SidebarWorktreeDescriptor<
+    TThread["environmentId"],
+    Exclude<TThread["projectId"], null>
+  >[] = [],
+): ResolvedSidebarWorktreeThreadGroup<TThread>[] {
+  const groups = new Map<
+    string,
+    {
+      label: string;
+      threads: TThread[];
+      environmentId: TThread["environmentId"];
+      projectId: TThread["projectId"];
+      branch: string | null;
+      worktreePath: string | null;
+      isMainCheckout: boolean;
+    }
+  >();
 
   for (const thread of threads) {
     const workspaceIdentity = workspaceIdentities.find(
@@ -90,6 +150,37 @@ export function groupSidebarThreadsByWorktree<
               "Project checkout")
             : thread.branch?.trim() || "Project checkout",
       threads: [thread],
+      environmentId: thread.environmentId,
+      projectId: thread.projectId,
+      branch: thread.branch,
+      worktreePath: effectivePath,
+      isMainCheckout,
+    });
+  }
+
+  for (const worktree of worktrees) {
+    const workspaceIdentity = workspaceIdentities.find(
+      (identity) =>
+        identity.environmentId === worktree.environmentId &&
+        identity.projectId === worktree.projectId,
+    );
+    const normalizedPath = normalizeWorkspacePath(worktree.path);
+    const key = `${worktree.environmentId}:worktree:${normalizedPath}`;
+    if (groups.has(key)) continue;
+    const isMainCheckout =
+      workspaceIdentity?.mainCheckoutPath !== null &&
+      workspaceIdentity?.mainCheckoutPath !== undefined &&
+      normalizedPath === normalizeWorkspacePath(workspaceIdentity.mainCheckoutPath);
+    groups.set(key, {
+      label: isMainCheckout
+        ? "Main"
+        : worktree.branch?.trim() || worktreeDisplayName(worktree.path),
+      threads: [],
+      environmentId: worktree.environmentId,
+      projectId: worktree.projectId,
+      branch: worktree.branch,
+      worktreePath: worktree.path,
+      isMainCheckout,
     });
   }
 
@@ -432,7 +523,7 @@ export function resolveThreadRowClassName(input: {
   if (input.isSelected) {
     return cn(
       baseClassName,
-      "bg-primary/15 text-foreground hover:bg-primary/19 hover:text-foreground dark:bg-primary/22 dark:hover:bg-primary/28",
+      "bg-primary/15 text-muted-foreground/55 hover:bg-primary/19 hover:text-muted-foreground/70 dark:bg-primary/22 dark:hover:bg-primary/28",
     );
   }
 
@@ -447,7 +538,10 @@ export function resolveThreadRowClassName(input: {
     return cn(baseClassName, "text-foreground hover:bg-accent hover:text-foreground");
   }
 
-  return cn(baseClassName, "text-muted-foreground/80 hover:bg-accent hover:text-foreground");
+  return cn(
+    baseClassName,
+    "text-muted-foreground/55 hover:bg-accent hover:text-muted-foreground/70",
+  );
 }
 
 export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): string {

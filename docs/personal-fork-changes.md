@@ -35,3 +35,12 @@ Turning a flag off preserves upstream behavior.
   outside a chat it continues to use the configured project defaults.
 - With sidebar worktree navigation enabled, clicking or right-clicking a worktree label opens an
   actions menu for starting a chat in that checkout or renaming its branch.
+
+## Native macOS sidebar
+
+- Inactive thread titles are subdued so the focused thread and newly completed threads retain the
+  strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
+- With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
+  is archived. Empty non-main worktrees reveal the standard archive action on hover; populated
+  worktrees keep that action in their context menu. Archiving deletes the checkout and its Git
+  registration.
