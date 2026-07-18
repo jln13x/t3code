@@ -1400,6 +1400,12 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               });
               const labelContent = (
                 <>
+                  {enableNativeMacSidebar ? (
+                    <GitBranchIcon
+                      aria-hidden="true"
+                      className="native-sidebar-worktree-icon size-3.5 shrink-0"
+                    />
+                  ) : null}
                   <span className="truncate">{label}</span>
                   <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
                     {group.threads.length}

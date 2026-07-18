@@ -523,6 +523,14 @@ body {
   color: rgb(255 255 255 / 34%);
 }
 
+.native-macos-sidebar .native-sidebar-worktree-icon {
+  color: rgb(0 0 0 / 42%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-worktree-icon {
+  color: rgb(255 255 255 / 42%);
+}
+
 .native-macos-sidebar .native-sidebar-worktree-count {
   color: rgb(0 0 0 / 34%);
 }
@@ -532,7 +540,7 @@ body {
 }
 
 .native-macos-sidebar .native-sidebar-thread-row {
-  height: 38px;
+  height: 44px;
   border-radius: 10px;
   padding-inline: 10px 8px;
   color: rgb(29 29 31 / 52%);
