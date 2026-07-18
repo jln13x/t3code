@@ -40,6 +40,22 @@ Turning a flag off preserves upstream behavior.
 
 - Inactive thread titles are subdued so the focused thread and newly completed threads retain the
   strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
-- With sidebar worktree navigation enabled, worktree groups are shown only while they contain an
-  active thread. Archiving the last thread requires confirmation and leaves the checkout and its Git
-  registration intact. Populated non-main worktrees retain their archive action in the context menu.
+- Project titles use regular weight and remain subdued until one of their threads has an unseen
+  completion. Worktree labels remain quieter than inactive thread titles so conversation names
+  carry more visual weight.
+- Light mode uses dark, regular-weight conversation text with progressively softer project and
+  worktree context. Worktree labels use the same 14px size as thread titles instead of appearing
+  disabled or undersized.
+- Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
+  Conversation rows use a taller click target, and standalone worktree rows include a branch icon.
+  Worktree labels omit redundant thread counts. Empty worktrees remain standalone rows so they are
+  still available for new-chat and archive actions. Turning off the native sidebar flag restores
+  the upstream grouped layout and counts.
+- The native layout omits the generic "No threads yet" row and the redundant main-checkout label;
+  main-checkout threads render as plain conversation titles. Actionable worktree rows use a pointer
+  cursor. Turning the flag off restores those upstream labels.
+- With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
+  is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
+  registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
+  keeps the explicit worktree-archive action in its context menu, which deletes the checkout and its
+  Git registration.

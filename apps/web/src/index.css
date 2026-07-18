@@ -417,7 +417,7 @@ body {
 }
 
 .native-macos-sidebar .native-sidebar-section-label {
-  color: rgb(0 0 0 / 48%);
+  color: rgb(0 0 0 / 40%);
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0;
@@ -448,12 +448,21 @@ body {
 }
 
 .native-macos-sidebar .native-sidebar-project-title {
-  color: #1d1d1f;
+  color: rgb(29 29 31 / 72%);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
+  transition: color 140ms ease;
 }
 
 .dark .native-macos-sidebar .native-sidebar-project-title {
+  color: rgb(255 255 255 / 58%);
+}
+
+.native-macos-sidebar .native-sidebar-project-title-unseen {
+  color: #1d1d1f;
+}
+
+.dark .native-macos-sidebar .native-sidebar-project-title-unseen {
   color: #ffffff;
 }
 
@@ -493,29 +502,34 @@ body {
   height: 30px;
   margin-top: 4px;
   padding-inline: 10px;
-  color: rgb(0 0 0 / 60%);
-  font-size: 13px;
-  font-weight: 500;
+  color: rgb(29 29 31 / 64%);
+  font-size: 14px;
+  font-weight: 400;
   line-height: 20px;
 }
 
 .dark .native-macos-sidebar .native-sidebar-worktree-label {
-  color: rgb(255 255 255 / 64%);
+  color: rgb(255 255 255 / 44%);
 }
 
-.native-macos-sidebar .native-sidebar-worktree-count {
-  color: rgb(0 0 0 / 34%);
+.native-macos-sidebar .native-sidebar-empty-worktree-label {
+  height: 30px;
+  margin-top: 2px;
 }
 
-.dark .native-macos-sidebar .native-sidebar-worktree-count {
-  color: rgb(255 255 255 / 34%);
+.native-macos-sidebar .native-sidebar-worktree-icon {
+  color: rgb(29 29 31 / 58%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-worktree-icon {
+  color: rgb(255 255 255 / 42%);
 }
 
 .native-macos-sidebar .native-sidebar-thread-row {
-  height: 38px;
+  height: 44px;
   border-radius: 10px;
   padding-inline: 10px 8px;
-  color: rgb(29 29 31 / 52%);
+  color: rgb(29 29 31 / 80%);
   font-weight: 400;
   transition:
     background-color 140ms ease,
@@ -541,7 +555,7 @@ body {
 }
 
 .dark .native-macos-sidebar .native-sidebar-thread-row[data-active="true"] {
-  background: rgb(255 255 255 / 11%);
+  background: rgb(255 255 255 / 8%);
   color: #ffffff;
 }
 
@@ -558,6 +572,62 @@ body {
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
+}
+
+.native-macos-sidebar .native-sidebar-inline-worktree-icon,
+.native-macos-sidebar .native-sidebar-inline-worktree {
+  color: rgb(29 29 31 / 56%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-inline-worktree-icon,
+.dark .native-macos-sidebar .native-sidebar-inline-worktree {
+  color: rgb(255 255 255 / 44%);
+}
+
+.native-macos-sidebar .native-sidebar-inline-worktree {
+  font-weight: 500;
+}
+
+.native-macos-sidebar .native-sidebar-inline-worktree-separator {
+  color: rgb(29 29 31 / 48%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-inline-worktree-separator {
+  color: rgb(255 255 255 / 32%);
+}
+
+.native-macos-sidebar .native-sidebar-inline-worktree ~ .native-sidebar-thread-title-segment {
+  color: rgb(29 29 31 / 80%);
+}
+
+.dark .native-macos-sidebar .native-sidebar-inline-worktree ~ .native-sidebar-thread-title-segment {
+  color: rgb(255 255 255 / 60%);
+}
+
+.native-macos-sidebar
+  .native-sidebar-thread-row[data-active="true"]
+  .native-sidebar-thread-title-segment {
+  color: #000000;
+}
+
+.dark
+  .native-macos-sidebar
+  .native-sidebar-thread-row[data-active="true"]
+  .native-sidebar-thread-title-segment {
+  color: #ffffff;
+}
+
+.native-macos-sidebar
+  .native-sidebar-thread-row[data-finished="true"]
+  .native-sidebar-thread-title-segment {
+  color: #1d1d1f;
+}
+
+.dark
+  .native-macos-sidebar
+  .native-sidebar-thread-row[data-finished="true"]
+  .native-sidebar-thread-title-segment {
+  color: #ffffff;
 }
 
 .native-macos-sidebar [data-thread-status-label] {

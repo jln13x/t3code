@@ -21,6 +21,7 @@ import {
   getVisibleThreadsForProject,
   groupSidebarThreadsByWorktree,
   hasUnseenCompletion,
+  formatSidebarThreadDisplayTitle,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -35,6 +36,8 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
+  resolveSidebarWorktreeLabelMode,
+  shouldShowSidebarEmptyThreadState,
   sortProjectsForSidebar,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
@@ -983,13 +986,94 @@ describe("resolveThreadRowClassName", () => {
 
 describe("resolveProjectTitleClassName", () => {
   it("keeps ordinary project titles subtle", () => {
-    expect(resolveProjectTitleClassName(false)).toContain("text-foreground/80");
+    const className = resolveProjectTitleClassName(false);
+    expect(className).toContain("native-sidebar-project-title-idle");
+    expect(className).toContain("text-foreground/80");
   });
 
   it("fully emphasizes projects with unseen completed work", () => {
     const className = resolveProjectTitleClassName(true);
+    expect(className).toContain("native-sidebar-project-title-unseen");
     expect(className).toContain("text-foreground");
     expect(className).not.toContain("text-foreground/80");
+  });
+});
+
+describe("resolveSidebarWorktreeLabelMode", () => {
+  it("inlines populated non-main worktrees in the native sidebar", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: false,
+        threadGroupingMode: "worktree",
+        threadCount: 1,
+      }),
+    ).toBe("inline");
+  });
+
+  it("hides the redundant main checkout label in the native sidebar", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: true,
+        threadGroupingMode: "worktree",
+        threadCount: 0,
+      }),
+    ).toBe("hidden");
+  });
+
+  it("preserves upstream grouping when the native sidebar is disabled", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: false,
+        isMainCheckout: true,
+        threadGroupingMode: "worktree",
+        threadCount: 1,
+      }),
+    ).toBe("header");
+  });
+
+  it("keeps empty non-main worktrees as standalone rows", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: false,
+        threadGroupingMode: "worktree",
+        threadCount: 0,
+      }),
+    ).toBe("header");
+  });
+});
+
+describe("shouldShowSidebarEmptyThreadState", () => {
+  it("hides the generic empty message in the native sidebar", () => {
+    expect(
+      shouldShowSidebarEmptyThreadState({
+        enableNativeMacSidebar: true,
+        showEmptyThreadState: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("preserves the upstream empty message when the native sidebar is disabled", () => {
+    expect(
+      shouldShowSidebarEmptyThreadState({
+        enableNativeMacSidebar: false,
+        showEmptyThreadState: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("formatSidebarThreadDisplayTitle", () => {
+  it("combines the worktree and thread names", () => {
+    expect(formatSidebarThreadDisplayTitle("art-15915", "Use historic conversions")).toBe(
+      "art-15915: Use historic conversions",
+    );
+  });
+
+  it("keeps standalone thread titles unchanged", () => {
+    expect(formatSidebarThreadDisplayTitle(null, "General chat")).toBe("General chat");
   });
 });
 

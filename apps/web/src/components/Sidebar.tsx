@@ -56,6 +56,7 @@ import {
   CloudIcon,
   ContainerIcon,
   FolderPlusIcon,
+  GitBranchIcon,
   Globe2Icon,
   LoaderIcon,
   SearchIcon,
@@ -153,6 +154,7 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
   getSidebarThreadIdsToPrewarm,
+  formatSidebarThreadDisplayTitle,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -165,6 +167,8 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
+  resolveSidebarWorktreeLabelMode,
+  shouldShowSidebarEmptyThreadState,
   sortProjectsForSidebar,
   type ThreadStatusPill,
   useThreadJumpHintVisibility,
@@ -343,6 +347,8 @@ function buildThreadJumpLabelMap(input: {
 interface SidebarThreadRowProps {
   thread: SidebarThreadSummary;
   nestedUnderWorktree: boolean;
+  worktreeLabel: string | null;
+  onWorktreeContextMenu?: (event: React.MouseEvent<HTMLSpanElement>) => void;
   projectCwd: string | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
@@ -405,6 +411,8 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     openPrLink,
     thread,
     nestedUnderWorktree,
+    worktreeLabel,
+    onWorktreeContextMenu,
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
@@ -504,6 +512,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     : !isThreadRunning
       ? "pointer-events-none transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0"
       : "pointer-events-none";
+  const threadDisplayTitle = formatSidebarThreadDisplayTitle(worktreeLabel, thread.title);
   const clearConfirmingArchive = useCallback(() => {
     setConfirmingArchiveThreadKey((current) => (current === threadKey ? null : current));
   }, [setConfirmingArchiveThreadKey, threadKey]);
@@ -726,6 +735,12 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
           className={`native-sidebar-thread-content flex min-w-0 flex-1 items-center gap-1.5 text-left ${nestedUnderWorktree ? "pl-3" : ""}`}
           data-nested-under-worktree={nestedUnderWorktree}
         >
+          {worktreeLabel ? (
+            <GitBranchIcon
+              aria-hidden="true"
+              className="native-sidebar-inline-worktree-icon size-3.5 shrink-0"
+            />
+          ) : null}
           {prStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -763,12 +778,23 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                     className="native-sidebar-thread-title min-w-0 flex-1 truncate text-[13px]"
                     data-testid={`thread-title-${thread.id}`}
                   >
-                    {thread.title}
+                    {worktreeLabel ? (
+                      <>
+                        <span
+                          className="native-sidebar-inline-worktree"
+                          onContextMenu={onWorktreeContextMenu}
+                        >
+                          {worktreeLabel}
+                        </span>
+                        <span className="native-sidebar-inline-worktree-separator">: </span>
+                      </>
+                    ) : null}
+                    <span className="native-sidebar-thread-title-segment">{thread.title}</span>
                   </span>
                 }
               />
               <TooltipPopup side="top" className="max-w-80 whitespace-normal leading-tight">
-                {thread.title}
+                {threadDisplayTitle}
               </TooltipPopup>
             </Tooltip>
           )}
@@ -922,6 +948,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
 });
 
 interface SidebarProjectThreadListProps {
+  enableNativeMacSidebar: boolean;
   enableSidebarWorktreeNavigation: boolean;
   projectKey: string;
   projectExpanded: boolean;
@@ -977,6 +1004,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   props: SidebarProjectThreadListProps,
 ) {
   const {
+    enableNativeMacSidebar,
     enableSidebarWorktreeNavigation,
     projectKey,
     projectExpanded,
@@ -1247,13 +1275,20 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     updateThreadMetadata,
   ]);
 
-  const renderThread = (thread: SidebarThreadSummary, nestedUnderWorktree = false) => {
+  const renderThread = (
+    thread: SidebarThreadSummary,
+    nestedUnderWorktree = false,
+    worktreeLabel: string | null = null,
+    onWorktreeContextMenu?: (event: React.MouseEvent<HTMLSpanElement>) => void,
+  ) => {
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
     return (
       <SidebarThreadRow
         key={threadKey}
         thread={thread}
         nestedUnderWorktree={nestedUnderWorktree}
+        worktreeLabel={worktreeLabel}
+        {...(onWorktreeContextMenu ? { onWorktreeContextMenu } : {})}
         projectCwd={projectCwd}
         orderedProjectThreadKeys={orderedProjectThreadKeys}
         isActive={activeRouteThreadKey === threadKey}
@@ -1287,7 +1322,8 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         ref={attachThreadListAutoAnimateRef}
         className="native-sidebar-project-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
       >
-        {shouldShowThreadPanel && showEmptyThreadState ? (
+        {shouldShowThreadPanel &&
+        shouldShowSidebarEmptyThreadState({ enableNativeMacSidebar, showEmptyThreadState }) ? (
           <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
             <div
               data-thread-selection-safe
@@ -1306,20 +1342,34 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 enableSidebarWorktreeNavigation || group.label !== "Main"
                   ? group.label
                   : "Main checkout";
+              const worktreeLabelMode = resolveSidebarWorktreeLabelMode({
+                enableNativeMacSidebar,
+                isMainCheckout: group.isMainCheckout,
+                threadGroupingMode,
+                threadCount: group.threads.length,
+              });
               const labelContent = (
                 <>
+                  {enableNativeMacSidebar ? (
+                    <GitBranchIcon
+                      aria-hidden="true"
+                      className="native-sidebar-worktree-icon size-3.5 shrink-0"
+                    />
+                  ) : null}
                   <span className="truncate">{label}</span>
-                  <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
-                    {group.threads.length}
-                  </span>
+                  {!enableNativeMacSidebar ? (
+                    <span className="shrink-0 tabular-nums text-muted-foreground/35">
+                      {group.threads.length}
+                    </span>
+                  ) : null}
                 </>
               );
-              return [
-                <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-                  {enableSidebarWorktreeNavigation ? (
-                    <div className="relative">
+              const worktreeLabelRow =
+                worktreeLabelMode !== "header" ? null : (
+                  <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
+                    {enableSidebarWorktreeNavigation ? (
                       <div
-                        className="native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${enableNativeMacSidebar ? "cursor-pointer" : ""} ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
                         onContextMenu={(event) => {
                           event.preventDefault();
                           handleWorktreeGroupMenu(group, {
@@ -1330,15 +1380,33 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                       >
                         {labelContent}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
-                      {labelContent}
-                    </div>
-                  )}
-                </SidebarMenuSubItem>,
+                    ) : (
+                      <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+                        {labelContent}
+                      </div>
+                    )}
+                  </SidebarMenuSubItem>
+                );
+              const handleInlineWorktreeContextMenu =
+                worktreeLabelMode === "inline"
+                  ? (event: React.MouseEvent<HTMLSpanElement>) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleWorktreeGroupMenu(group, {
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }
+                  : undefined;
+              return [
+                ...(worktreeLabelRow ? [worktreeLabelRow] : []),
                 ...group.threads.map((thread) =>
-                  renderThread(thread, enableSidebarWorktreeNavigation),
+                  renderThread(
+                    thread,
+                    enableSidebarWorktreeNavigation && worktreeLabelMode === "header",
+                    worktreeLabelMode === "inline" ? label : null,
+                    handleInlineWorktreeContextMenu,
+                  ),
                 ),
               ];
             })
@@ -1713,6 +1781,7 @@ const SidebarStandaloneChatList = memo(function SidebarStandaloneChatList(
             key={threadKey}
             thread={thread}
             nestedUnderWorktree={false}
+            worktreeLabel={null}
             projectCwd={null}
             orderedProjectThreadKeys={orderedThreadKeys}
             isActive={props.activeRouteThreadKey === threadKey}
@@ -1810,6 +1879,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const enableSidebarWorktreeNavigation = usePrimarySettings(
     (settings) => settings.enableSidebarWorktreeNavigation,
   );
+  const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
@@ -2998,6 +3068,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       </div>
 
       <SidebarProjectThreadList
+        enableNativeMacSidebar={enableNativeMacSidebar}
         enableSidebarWorktreeNavigation={enableSidebarWorktreeNavigation}
         projectKey={project.projectKey}
         projectExpanded={projectExpanded}
