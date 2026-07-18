@@ -448,12 +448,21 @@ body {
 }
 
 .native-macos-sidebar .native-sidebar-project-title {
-  color: #1d1d1f;
+  color: rgb(29 29 31 / 68%);
   font-size: 14px;
   font-weight: 600;
+  transition: color 140ms ease;
 }
 
 .dark .native-macos-sidebar .native-sidebar-project-title {
+  color: rgb(255 255 255 / 68%);
+}
+
+.native-macos-sidebar .native-sidebar-project-title-unseen {
+  color: #1d1d1f;
+}
+
+.dark .native-macos-sidebar .native-sidebar-project-title-unseen {
   color: #ffffff;
 }
 
@@ -493,14 +502,14 @@ body {
   height: 30px;
   margin-top: 4px;
   padding-inline: 10px;
-  color: rgb(0 0 0 / 60%);
+  color: rgb(0 0 0 / 44%);
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
 }
 
 .dark .native-macos-sidebar .native-sidebar-worktree-label {
-  color: rgb(255 255 255 / 64%);
+  color: rgb(255 255 255 / 44%);
 }
 
 .native-macos-sidebar .native-sidebar-worktree-count {

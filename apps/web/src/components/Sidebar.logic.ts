@@ -547,7 +547,9 @@ export function resolveThreadRowClassName(input: {
 export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): string {
   return cn(
     "native-sidebar-project-title truncate text-[13px] font-medium",
-    hasUnseenCompletion ? "text-foreground" : "text-foreground/80",
+    hasUnseenCompletion
+      ? "native-sidebar-project-title-unseen text-foreground"
+      : "native-sidebar-project-title-idle text-foreground/80",
   );
 }
 

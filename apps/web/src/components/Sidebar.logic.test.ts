@@ -1039,11 +1039,14 @@ describe("resolveThreadRowClassName", () => {
 
 describe("resolveProjectTitleClassName", () => {
   it("keeps ordinary project titles subtle", () => {
-    expect(resolveProjectTitleClassName(false)).toContain("text-foreground/80");
+    const className = resolveProjectTitleClassName(false);
+    expect(className).toContain("native-sidebar-project-title-idle");
+    expect(className).toContain("text-foreground/80");
   });
 
   it("fully emphasizes projects with unseen completed work", () => {
     const className = resolveProjectTitleClassName(true);
+    expect(className).toContain("native-sidebar-project-title-unseen");
     expect(className).toContain("text-foreground");
     expect(className).not.toContain("text-foreground/80");
   });
