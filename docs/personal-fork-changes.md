@@ -44,8 +44,9 @@ Turning a flag off preserves upstream behavior.
   remain quieter than inactive thread titles so conversation names carry more visual weight.
 - Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
   Conversation rows use a taller click target, and standalone worktree rows include a branch icon.
-  Empty worktrees remain standalone rows so they are still available for new-chat and archive
-  actions. Turning off the native sidebar flag restores the upstream grouped layout.
+  Worktree labels omit redundant thread counts. Empty worktrees remain standalone rows so they are
+  still available for new-chat and archive actions. Turning off the native sidebar flag restores
+  the upstream grouped layout and counts.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
   is archived. Worktree rows do not show inline archive buttons; every non-main worktree keeps the
   archive action in its context menu. Archiving deletes the checkout and its Git registration.

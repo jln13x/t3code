@@ -1394,9 +1394,11 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                     />
                   ) : null}
                   <span className="truncate">{label}</span>
-                  <span className="native-sidebar-worktree-count shrink-0 tabular-nums text-muted-foreground/35">
-                    {group.threads.length}
-                  </span>
+                  {!enableNativeMacSidebar ? (
+                    <span className="shrink-0 tabular-nums text-muted-foreground/35">
+                      {group.threads.length}
+                    </span>
+                  ) : null}
                 </>
               );
               const worktreeLabelRow = inlineWorktreeLabel ? null : (
