@@ -40,8 +40,9 @@ Turning a flag off preserves upstream behavior.
 
 - Inactive thread titles are subdued so the focused thread and newly completed threads retain the
   strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
-- Project titles are subdued until one of their threads has an unseen completion. Worktree labels
-  remain quieter than inactive thread titles so conversation names carry more visual weight.
+- Project titles use regular weight and remain subdued until one of their threads has an unseen
+  completion. Worktree labels remain quieter than inactive thread titles so conversation names
+  carry more visual weight.
 - Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
   Conversation rows use a taller click target, and standalone worktree rows include a branch icon.
   Worktree labels omit redundant thread counts. Empty worktrees remain standalone rows so they are

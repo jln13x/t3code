@@ -448,14 +448,14 @@ body {
 }
 
 .native-macos-sidebar .native-sidebar-project-title {
-  color: rgb(29 29 31 / 68%);
+  color: rgb(29 29 31 / 58%);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
   transition: color 140ms ease;
 }
 
 .dark .native-macos-sidebar .native-sidebar-project-title {
-  color: rgb(255 255 255 / 68%);
+  color: rgb(255 255 255 / 58%);
 }
 
 .native-macos-sidebar .native-sidebar-project-title-unseen {
