@@ -36,7 +36,8 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
-  shouldInlineSidebarWorktreeLabel,
+  resolveSidebarWorktreeLabelMode,
+  shouldShowSidebarEmptyThreadState,
   sortProjectsForSidebar,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
@@ -1054,35 +1055,69 @@ describe("resolveProjectTitleClassName", () => {
   });
 });
 
-describe("shouldInlineSidebarWorktreeLabel", () => {
-  it("flattens populated worktree groups only in the native sidebar", () => {
+describe("resolveSidebarWorktreeLabelMode", () => {
+  it("inlines populated non-main worktrees in the native sidebar", () => {
     expect(
-      shouldInlineSidebarWorktreeLabel({
+      resolveSidebarWorktreeLabelMode({
         enableNativeMacSidebar: true,
+        isMainCheckout: false,
         threadGroupingMode: "worktree",
         threadCount: 1,
       }),
-    ).toBe(true);
+    ).toBe("inline");
+  });
+
+  it("hides the redundant main checkout label in the native sidebar", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: true,
+        threadGroupingMode: "worktree",
+        threadCount: 0,
+      }),
+    ).toBe("hidden");
   });
 
   it("preserves upstream grouping when the native sidebar is disabled", () => {
     expect(
-      shouldInlineSidebarWorktreeLabel({
+      resolveSidebarWorktreeLabelMode({
         enableNativeMacSidebar: false,
+        isMainCheckout: true,
         threadGroupingMode: "worktree",
         threadCount: 1,
+      }),
+    ).toBe("header");
+  });
+
+  it("keeps empty non-main worktrees as standalone rows", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: false,
+        threadGroupingMode: "worktree",
+        threadCount: 0,
+      }),
+    ).toBe("header");
+  });
+});
+
+describe("shouldShowSidebarEmptyThreadState", () => {
+  it("hides the generic empty message in the native sidebar", () => {
+    expect(
+      shouldShowSidebarEmptyThreadState({
+        enableNativeMacSidebar: true,
+        showEmptyThreadState: true,
       }),
     ).toBe(false);
   });
 
-  it("keeps empty worktrees as standalone rows", () => {
+  it("preserves the upstream empty message when the native sidebar is disabled", () => {
     expect(
-      shouldInlineSidebarWorktreeLabel({
-        enableNativeMacSidebar: true,
-        threadGroupingMode: "worktree",
-        threadCount: 0,
+      shouldShowSidebarEmptyThreadState({
+        enableNativeMacSidebar: false,
+        showEmptyThreadState: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

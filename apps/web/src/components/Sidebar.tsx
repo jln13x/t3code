@@ -167,7 +167,8 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
-  shouldInlineSidebarWorktreeLabel,
+  resolveSidebarWorktreeLabelMode,
+  shouldShowSidebarEmptyThreadState,
   sortProjectsForSidebar,
   type ThreadStatusPill,
   useThreadJumpHintVisibility,
@@ -1361,7 +1362,8 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         ref={attachThreadListAutoAnimateRef}
         className="native-sidebar-project-thread-list mx-0.5 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1 py-0 sm:mx-1 sm:px-1.5"
       >
-        {shouldShowThreadPanel && showEmptyThreadState ? (
+        {shouldShowThreadPanel &&
+        shouldShowSidebarEmptyThreadState({ enableNativeMacSidebar, showEmptyThreadState }) ? (
           <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
             <div
               data-thread-selection-safe
@@ -1380,8 +1382,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 enableSidebarWorktreeNavigation || group.label !== "Main"
                   ? group.label
                   : "Main checkout";
-              const inlineWorktreeLabel = shouldInlineSidebarWorktreeLabel({
+              const worktreeLabelMode = resolveSidebarWorktreeLabelMode({
                 enableNativeMacSidebar,
+                isMainCheckout: group.isMainCheckout,
                 threadGroupingMode,
                 threadCount: group.threads.length,
               });
@@ -1401,45 +1404,47 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                   ) : null}
                 </>
               );
-              const worktreeLabelRow = inlineWorktreeLabel ? null : (
-                <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-                  {enableSidebarWorktreeNavigation ? (
-                    <div
-                      className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        handleWorktreeGroupMenu(group, {
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                    >
-                      {labelContent}
-                    </div>
-                  ) : (
-                    <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
-                      {labelContent}
-                    </div>
-                  )}
-                </SidebarMenuSubItem>
-              );
-              const handleInlineWorktreeContextMenu = inlineWorktreeLabel
-                ? (event: React.MouseEvent<HTMLSpanElement>) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    handleWorktreeGroupMenu(group, {
-                      x: event.clientX,
-                      y: event.clientY,
-                    });
-                  }
-                : undefined;
+              const worktreeLabelRow =
+                worktreeLabelMode !== "header" ? null : (
+                  <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
+                    {enableSidebarWorktreeNavigation ? (
+                      <div
+                        className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${enableNativeMacSidebar ? "cursor-pointer" : ""} ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          handleWorktreeGroupMenu(group, {
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                      >
+                        {labelContent}
+                      </div>
+                    ) : (
+                      <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
+                        {labelContent}
+                      </div>
+                    )}
+                  </SidebarMenuSubItem>
+                );
+              const handleInlineWorktreeContextMenu =
+                worktreeLabelMode === "inline"
+                  ? (event: React.MouseEvent<HTMLSpanElement>) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleWorktreeGroupMenu(group, {
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }
+                  : undefined;
               return [
                 ...(worktreeLabelRow ? [worktreeLabelRow] : []),
                 ...group.threads.map((thread) =>
                   renderThread(
                     thread,
-                    enableSidebarWorktreeNavigation && !inlineWorktreeLabel,
-                    inlineWorktreeLabel ? label : null,
+                    enableSidebarWorktreeNavigation && worktreeLabelMode === "header",
+                    worktreeLabelMode === "inline" ? label : null,
                     handleInlineWorktreeContextMenu,
                   ),
                 ),

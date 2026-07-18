@@ -553,14 +553,22 @@ export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): stri
   );
 }
 
-export function shouldInlineSidebarWorktreeLabel(input: {
+export function resolveSidebarWorktreeLabelMode(input: {
   enableNativeMacSidebar: boolean;
+  isMainCheckout: boolean;
   threadGroupingMode: "separate" | "worktree";
   threadCount: number;
+}): "header" | "hidden" | "inline" {
+  if (!input.enableNativeMacSidebar || input.threadGroupingMode !== "worktree") return "header";
+  if (input.isMainCheckout) return "hidden";
+  return input.threadCount > 0 ? "inline" : "header";
+}
+
+export function shouldShowSidebarEmptyThreadState(input: {
+  enableNativeMacSidebar: boolean;
+  showEmptyThreadState: boolean;
 }): boolean {
-  return (
-    input.enableNativeMacSidebar && input.threadGroupingMode === "worktree" && input.threadCount > 0
-  );
+  return input.showEmptyThreadState && !input.enableNativeMacSidebar;
 }
 
 export function formatSidebarThreadDisplayTitle(
