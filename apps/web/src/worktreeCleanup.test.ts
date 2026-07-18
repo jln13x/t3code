@@ -2,7 +2,11 @@ import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools
 import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
-import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "./worktreeCleanup";
+import {
+  formatWorktreePathForDisplay,
+  getLastThreadWorktreeArchiveConfirmationMessage,
+  getOrphanedWorktreePathForThread,
+} from "./worktreeCleanup";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
@@ -106,5 +110,46 @@ describe("formatWorktreePathForDisplay", () => {
   it("ignores trailing slashes", () => {
     const result = formatWorktreePathForDisplay("/tmp/custom-worktrees/my-worktree/");
     expect(result).toBe("my-worktree");
+  });
+});
+
+describe("getLastThreadWorktreeArchiveConfirmationMessage", () => {
+  it("warns that archiving the final thread hides but preserves its worktree", () => {
+    const result = getLastThreadWorktreeArchiveConfirmationMessage(
+      [makeThread({ worktreePath: "/tmp/custom-worktrees/my-worktree" })],
+      ThreadId.make("thread-1"),
+      true,
+    );
+
+    expect(result).toBe(
+      [
+        'Archive the last chat in worktree "my-worktree"?',
+        "The worktree will no longer appear in the sidebar. Its files and Git registration will stay on disk.",
+      ].join("\n"),
+    );
+  });
+
+  it("does not warn when another thread remains in the worktree", () => {
+    const threads = [
+      makeThread({ worktreePath: "/tmp/custom-worktrees/my-worktree" }),
+      makeThread({
+        id: ThreadId.make("thread-2"),
+        worktreePath: "/tmp/custom-worktrees/my-worktree",
+      }),
+    ];
+
+    expect(
+      getLastThreadWorktreeArchiveConfirmationMessage(threads, ThreadId.make("thread-1"), true),
+    ).toBeNull();
+  });
+
+  it("preserves upstream archive behavior when worktree navigation is disabled", () => {
+    expect(
+      getLastThreadWorktreeArchiveConfirmationMessage(
+        [makeThread({ worktreePath: "/tmp/custom-worktrees/my-worktree" })],
+        ThreadId.make("thread-1"),
+        false,
+      ),
+    ).toBeNull();
   });
 });

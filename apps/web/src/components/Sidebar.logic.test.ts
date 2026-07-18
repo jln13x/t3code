@@ -225,7 +225,7 @@ describe("groupSidebarThreadsByWorktree", () => {
     ]);
   });
 
-  it("keeps registered worktrees visible when they have no threads", () => {
+  it("does not create a worktree group when there are no threads", () => {
     expect(
       resolveSidebarWorktreeThreadGroups<WorktreeThread>(
         [],
@@ -238,64 +238,8 @@ describe("groupSidebarThreadsByWorktree", () => {
             mainCheckoutPath: "/repo",
           },
         ],
-        [
-          {
-            environmentId: "local",
-            projectId: "project",
-            branch: "feature/empty",
-            path: "/repo/.t3/worktrees/empty",
-          },
-        ],
       ),
-    ).toEqual([
-      {
-        key: "local:worktree:/repo/.t3/worktrees/empty",
-        label: "feature/empty",
-        threads: [],
-        environmentId: "local",
-        projectId: "project",
-        branch: "feature/empty",
-        worktreePath: "/repo/.t3/worktrees/empty",
-        isMainCheckout: false,
-      },
-    ]);
-  });
-
-  it("merges a registered worktree into its matching thread group", () => {
-    const thread = {
-      environmentId: "local",
-      projectId: "project",
-      branch: "feature/shared",
-      worktreePath: "/repo/.t3/worktrees/shared",
-    };
-    const groups = resolveSidebarWorktreeThreadGroups<WorktreeThread>(
-      [],
-      [],
-      [
-        {
-          environmentId: "local",
-          projectId: "project",
-          branch: "feature/shared",
-          path: "/repo/.t3/worktrees/shared",
-        },
-      ],
-    );
-    const withThread = resolveSidebarWorktreeThreadGroups<WorktreeThread>(
-      [thread],
-      [],
-      [
-        {
-          environmentId: "local",
-          projectId: "project",
-          branch: "feature/shared",
-          path: "/repo/.t3/worktrees/shared",
-        },
-      ],
-    );
-
-    expect(groups).toHaveLength(1);
-    expect(withThread).toHaveLength(1);
-    expect(withThread[0]?.threads).toEqual([thread]);
+    ).toEqual([]);
   });
 });
 
