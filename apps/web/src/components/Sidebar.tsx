@@ -1032,9 +1032,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   } | null>(null);
   const [branchRenameTitle, setBranchRenameTitle] = useState("");
   const [isBranchRenamePending, setIsBranchRenamePending] = useState(false);
-  const [removedWorktreeKeys, setRemovedWorktreeKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const workspaceRefTargets = useMemo(
     () =>
       threadGroupingMode === "worktree" && shouldShowThreadPanel
@@ -1084,36 +1081,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       }),
     [workspaceRefResults],
   );
-  const workspaceWorktrees = useMemo(
-    () =>
-      workspaceRefResults.flatMap(({ member, result }) => {
-        const data = Option.getOrNull(AsyncResult.value(result));
-        if (!data) return [];
-        return data.refs.flatMap((ref) => {
-          const path = ref.worktreePath?.trim();
-          if (!path || ref.isRemote) return [];
-          const key = `${member.environmentId}:${member.id}:${path}`;
-          if (removedWorktreeKeys.has(key)) return [];
-          return [
-            {
-              environmentId: member.environmentId,
-              projectId: member.id,
-              branch: ref.name,
-              path,
-            },
-          ];
-        });
-      }),
-    [removedWorktreeKeys, workspaceRefResults],
-  );
   const renderedThreadGroups = useMemo(
-    () =>
-      resolveSidebarWorktreeThreadGroups(
-        renderedThreads,
-        workspaceIdentities,
-        enableSidebarWorktreeNavigation ? workspaceWorktrees : [],
-      ),
-    [enableSidebarWorktreeNavigation, renderedThreads, workspaceIdentities, workspaceWorktrees],
+    () => resolveSidebarWorktreeThreadGroups(renderedThreads, workspaceIdentities),
+    [renderedThreads, workspaceIdentities],
   );
 
   const resolveWorktreeGroupContext = useCallback(
@@ -1130,7 +1100,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         worktreePath: group.worktreePath,
         projectCwd: projectMember.workspaceRoot,
         isMainCheckout: group.isMainCheckout,
-        isEmpty: group.threads.length === 0,
       };
     },
     [projectMembers],
@@ -1142,9 +1111,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       if (!context || !api || context.isMainCheckout || !context.worktreePath) return;
 
       const displayPath = formatWorktreePathForDisplay(context.worktreePath);
-      const threadWarning = context.isEmpty
-        ? ""
-        : `\n\n${group.threads.length} thread${group.threads.length === 1 ? "" : "s"} will remain in the sidebar but will no longer have this checkout.`;
+      const threadWarning = `\n\n${group.threads.length} thread${group.threads.length === 1 ? "" : "s"} will remain in the sidebar but will no longer have this checkout.`;
       const confirmation = await settlePromise(() =>
         api.dialogs.confirm(
           [
@@ -1174,13 +1141,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         );
         return;
       }
-      setRemovedWorktreeKeys(
-        (keys) =>
-          new Set([
-            ...keys,
-            `${context.environmentId}:${context.projectId}:${context.worktreePath}`,
-          ]),
-      );
       const refreshResult = await refreshVcsStatus({
         environmentId: context.environmentId,
         input: { cwd: context.projectCwd },
@@ -1213,7 +1173,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               label: "Rename branch…",
               disabled: context.worktreePath === null || context.branch === null,
             },
-            ...(!context.isEmpty && !context.isMainCheckout && context.worktreePath
+            ...(!context.isMainCheckout && context.worktreePath
               ? [{ id: "archive-worktree", label: "Archive worktree…" }]
               : []),
           ],
@@ -1244,14 +1204,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       })();
     },
     [archiveWorktreeGroup, handleNewThread, resolveWorktreeGroupContext],
-  );
-  const handleEmptyWorktreeArchive = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, group: (typeof renderedThreadGroups)[number]) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void archiveWorktreeGroup(group);
-    },
-    [archiveWorktreeGroup],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1354,11 +1306,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 enableSidebarWorktreeNavigation || group.label !== "Main"
                   ? group.label
                   : "Main checkout";
-              const canArchiveOnHover =
-                enableSidebarWorktreeNavigation &&
-                group.threads.length === 0 &&
-                !group.isMainCheckout &&
-                group.worktreePath !== null;
               const labelContent = (
                 <>
                   <span className="truncate">{label}</span>
@@ -1372,7 +1319,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                   {enableSidebarWorktreeNavigation ? (
                     <div className="relative">
                       <div
-                        className="native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pr-8 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        className="native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                         onContextMenu={(event) => {
                           event.preventDefault();
                           handleWorktreeGroupMenu(group, {
@@ -1383,27 +1330,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                       >
                         {labelContent}
                       </div>
-                      {canArchiveOnHover ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                                <button
-                                  type="button"
-                                  data-thread-selection-safe
-                                  data-testid={`worktree-archive-${group.key}`}
-                                  aria-label={`Archive worktree ${label}`}
-                                  className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                                  onClick={(event) => handleEmptyWorktreeArchive(event, group)}
-                                >
-                                  <ArchiveIcon className="size-3.5" />
-                                </button>
-                              </div>
-                            }
-                          />
-                          <TooltipPopup side="top">Archive worktree</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
                     </div>
                   ) : (
                     <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">

@@ -24,16 +24,6 @@ export interface SidebarWorktreeThreadGroup<TThread> {
   readonly threads: readonly TThread[];
 }
 
-export interface SidebarWorktreeDescriptor<
-  TEnvironmentId extends string = string,
-  TProjectId extends string = string,
-> {
-  readonly environmentId: TEnvironmentId;
-  readonly projectId: TProjectId;
-  readonly branch: string | null;
-  readonly path: string;
-}
-
 export interface ResolvedSidebarWorktreeThreadGroup<
   TThread extends {
     readonly environmentId: string;
@@ -79,12 +69,8 @@ export function groupSidebarThreadsByWorktree<
 >(
   threads: readonly TThread[],
   workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
-  worktrees: readonly SidebarWorktreeDescriptor<
-    TThread["environmentId"],
-    Exclude<TThread["projectId"], null>
-  >[] = [],
 ): SidebarWorktreeThreadGroup<TThread>[] {
-  return resolveSidebarWorktreeThreadGroups(threads, workspaceIdentities, worktrees).map(
+  return resolveSidebarWorktreeThreadGroups(threads, workspaceIdentities).map(
     ({ key, label, threads }) => ({ key, label, threads }),
   );
 }
@@ -99,10 +85,6 @@ export function resolveSidebarWorktreeThreadGroups<
 >(
   threads: readonly TThread[],
   workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
-  worktrees: readonly SidebarWorktreeDescriptor<
-    TThread["environmentId"],
-    Exclude<TThread["projectId"], null>
-  >[] = [],
 ): ResolvedSidebarWorktreeThreadGroup<TThread>[] {
   const groups = new Map<
     string,
@@ -154,32 +136,6 @@ export function resolveSidebarWorktreeThreadGroups<
       projectId: thread.projectId,
       branch: thread.branch,
       worktreePath: effectivePath,
-      isMainCheckout,
-    });
-  }
-
-  for (const worktree of worktrees) {
-    const workspaceIdentity = workspaceIdentities.find(
-      (identity) =>
-        identity.environmentId === worktree.environmentId &&
-        identity.projectId === worktree.projectId,
-    );
-    const normalizedPath = normalizeWorkspacePath(worktree.path);
-    const key = `${worktree.environmentId}:worktree:${normalizedPath}`;
-    if (groups.has(key)) continue;
-    const isMainCheckout =
-      workspaceIdentity?.mainCheckoutPath !== null &&
-      workspaceIdentity?.mainCheckoutPath !== undefined &&
-      normalizedPath === normalizeWorkspacePath(workspaceIdentity.mainCheckoutPath);
-    groups.set(key, {
-      label: isMainCheckout
-        ? "Main"
-        : worktree.branch?.trim() || worktreeDisplayName(worktree.path),
-      threads: [],
-      environmentId: worktree.environmentId,
-      projectId: worktree.projectId,
-      branch: worktree.branch,
-      worktreePath: worktree.path,
       isMainCheckout,
     });
   }

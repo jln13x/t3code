@@ -40,7 +40,6 @@ Turning a flag off preserves upstream behavior.
 
 - Inactive thread titles are subdued so the focused thread and newly completed threads retain the
   strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
-- With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
-  is archived. Empty non-main worktrees reveal the standard archive action on hover; populated
-  worktrees keep that action in their context menu. Archiving deletes the checkout and its Git
-  registration.
+- With sidebar worktree navigation enabled, worktree groups are shown only while they contain an
+  active thread. Archiving the last thread requires confirmation and leaves the checkout and its Git
+  registration intact. Populated non-main worktrees retain their archive action in the context menu.
