@@ -43,6 +43,9 @@ Turning a flag off preserves upstream behavior.
 - Project titles use regular weight and remain subdued until one of their threads has an unseen
   completion. Worktree labels remain quieter than inactive thread titles so conversation names
   carry more visual weight.
+- Light mode uses dark, regular-weight conversation text with progressively softer project and
+  worktree context. Worktree labels use the same 14px size as thread titles instead of appearing
+  disabled or undersized.
 - Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
   Conversation rows use a taller click target, and standalone worktree rows include a branch icon.
   Worktree labels omit redundant thread counts. Empty worktrees remain standalone rows so they are
