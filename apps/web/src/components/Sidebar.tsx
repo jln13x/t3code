@@ -1240,7 +1240,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               label: "Rename branch…",
               disabled: context.worktreePath === null || context.branch === null,
             },
-            ...(!context.isEmpty && !context.isMainCheckout && context.worktreePath
+            ...(!context.isMainCheckout && context.worktreePath
               ? [{ id: "archive-worktree", label: "Archive worktree…" }]
               : []),
           ],
@@ -1271,14 +1271,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       })();
     },
     [archiveWorktreeGroup, handleNewThread, resolveWorktreeGroupContext],
-  );
-  const handleEmptyWorktreeArchive = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, group: (typeof renderedThreadGroups)[number]) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void archiveWorktreeGroup(group);
-    },
-    [archiveWorktreeGroup],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1388,11 +1380,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 enableSidebarWorktreeNavigation || group.label !== "Main"
                   ? group.label
                   : "Main checkout";
-              const canArchiveOnHover =
-                enableSidebarWorktreeNavigation &&
-                group.threads.length === 0 &&
-                !group.isMainCheckout &&
-                group.worktreePath !== null;
               const inlineWorktreeLabel = shouldInlineSidebarWorktreeLabel({
                 enableNativeMacSidebar,
                 threadGroupingMode,
@@ -1415,40 +1402,17 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               const worktreeLabelRow = inlineWorktreeLabel ? null : (
                 <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
                   {enableSidebarWorktreeNavigation ? (
-                    <div className="relative">
-                      <div
-                        className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pr-8 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          handleWorktreeGroupMenu(group, {
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
-                      >
-                        {labelContent}
-                      </div>
-                      {canArchiveOnHover ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                                <button
-                                  type="button"
-                                  data-thread-selection-safe
-                                  data-testid={`worktree-archive-${group.key}`}
-                                  aria-label={`Archive worktree ${label}`}
-                                  className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                                  onClick={(event) => handleEmptyWorktreeArchive(event, group)}
-                                >
-                                  <ArchiveIcon className="size-3.5" />
-                                </button>
-                              </div>
-                            }
-                          />
-                          <TooltipPopup side="top">Archive worktree</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
+                    <div
+                      className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        handleWorktreeGroupMenu(group, {
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
+                    >
+                      {labelContent}
                     </div>
                   ) : (
                     <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">

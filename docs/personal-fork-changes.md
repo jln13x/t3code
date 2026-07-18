@@ -47,6 +47,5 @@ Turning a flag off preserves upstream behavior.
   Empty worktrees remain standalone rows so they are still available for new-chat and archive
   actions. Turning off the native sidebar flag restores the upstream grouped layout.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
-  is archived. Empty non-main worktrees reveal the standard archive action on hover; populated
-  worktrees keep that action in their context menu. Archiving deletes the checkout and its Git
-  registration.
+  is archived. Worktree rows do not show inline archive buttons; every non-main worktree keeps the
+  archive action in its context menu. Archiving deletes the checkout and its Git registration.
