@@ -1060,9 +1060,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   } | null>(null);
   const [branchRenameTitle, setBranchRenameTitle] = useState("");
   const [isBranchRenamePending, setIsBranchRenamePending] = useState(false);
-  const [removedWorktreeKeys, setRemovedWorktreeKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const workspaceRefTargets = useMemo(
     () =>
       threadGroupingMode === "worktree" && shouldShowThreadPanel
@@ -1112,36 +1109,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       }),
     [workspaceRefResults],
   );
-  const workspaceWorktrees = useMemo(
-    () =>
-      workspaceRefResults.flatMap(({ member, result }) => {
-        const data = Option.getOrNull(AsyncResult.value(result));
-        if (!data) return [];
-        return data.refs.flatMap((ref) => {
-          const path = ref.worktreePath?.trim();
-          if (!path || ref.isRemote) return [];
-          const key = `${member.environmentId}:${member.id}:${path}`;
-          if (removedWorktreeKeys.has(key)) return [];
-          return [
-            {
-              environmentId: member.environmentId,
-              projectId: member.id,
-              branch: ref.name,
-              path,
-            },
-          ];
-        });
-      }),
-    [removedWorktreeKeys, workspaceRefResults],
-  );
   const renderedThreadGroups = useMemo(
-    () =>
-      resolveSidebarWorktreeThreadGroups(
-        renderedThreads,
-        workspaceIdentities,
-        enableSidebarWorktreeNavigation ? workspaceWorktrees : [],
-      ),
-    [enableSidebarWorktreeNavigation, renderedThreads, workspaceIdentities, workspaceWorktrees],
+    () => resolveSidebarWorktreeThreadGroups(renderedThreads, workspaceIdentities),
+    [renderedThreads, workspaceIdentities],
   );
 
   const resolveWorktreeGroupContext = useCallback(
@@ -1158,7 +1128,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         worktreePath: group.worktreePath,
         projectCwd: projectMember.workspaceRoot,
         isMainCheckout: group.isMainCheckout,
-        isEmpty: group.threads.length === 0,
       };
     },
     [projectMembers],
@@ -1170,9 +1139,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       if (!context || !api || context.isMainCheckout || !context.worktreePath) return;
 
       const displayPath = formatWorktreePathForDisplay(context.worktreePath);
-      const threadWarning = context.isEmpty
-        ? ""
-        : `\n\n${group.threads.length} thread${group.threads.length === 1 ? "" : "s"} will remain in the sidebar but will no longer have this checkout.`;
+      const threadWarning = `\n\n${group.threads.length} thread${group.threads.length === 1 ? "" : "s"} will remain in the sidebar but will no longer have this checkout.`;
       const confirmation = await settlePromise(() =>
         api.dialogs.confirm(
           [
@@ -1202,13 +1169,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         );
         return;
       }
-      setRemovedWorktreeKeys(
-        (keys) =>
-          new Set([
-            ...keys,
-            `${context.environmentId}:${context.projectId}:${context.worktreePath}`,
-          ]),
-      );
       const refreshResult = await refreshVcsStatus({
         environmentId: context.environmentId,
         input: { cwd: context.projectCwd },

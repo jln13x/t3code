@@ -55,5 +55,7 @@ Turning a flag off preserves upstream behavior.
   main-checkout threads render as plain conversation titles. Actionable worktree rows use a pointer
   cursor. Turning the flag off restores those upstream labels.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
-  is archived. Worktree rows do not show inline archive buttons; every non-main worktree keeps the
-  archive action in its context menu. Archiving deletes the checkout and its Git registration.
+  is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
+  registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
+  keeps the explicit worktree-archive action in its context menu, which deletes the checkout and its
+  Git registration.

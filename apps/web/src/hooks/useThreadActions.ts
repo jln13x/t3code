@@ -22,9 +22,13 @@ import { readLocalApi } from "../localApi";
 import { readEnvironmentThreadRefs, readProject, readThreadShell } from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
-import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
+import {
+  formatWorktreePathForDisplay,
+  getLastThreadWorktreeArchiveConfirmationMessage,
+  getOrphanedWorktreePathForThread,
+} from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { useClientSettings } from "./useSettings";
+import { useClientSettings, usePrimarySettings } from "./useSettings";
 import { useAtomCommand } from "../state/use-atom-command";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArchiveBlockedError>()(
@@ -59,6 +63,9 @@ export function useThreadActions() {
   });
   const sidebarThreadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
+  const enableSidebarWorktreeNavigation = usePrimarySettings(
+    (settings) => settings.enableSidebarWorktreeNavigation,
+  );
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
@@ -104,6 +111,28 @@ export function useThreadActions() {
         );
       }
 
+      const threads = readEnvironmentThreadRefs(threadRef.environmentId).flatMap((ref) => {
+        const shell = readThreadShell(ref);
+        return shell === null ? [] : [shell];
+      });
+      const archiveConfirmationMessage = getLastThreadWorktreeArchiveConfirmationMessage(
+        threads,
+        threadRef.threadId,
+        enableSidebarWorktreeNavigation,
+      );
+      const localApi = readLocalApi();
+      if (archiveConfirmationMessage && localApi) {
+        const confirmationResult = await settlePromise(() =>
+          localApi.dialogs.confirm(archiveConfirmationMessage),
+        );
+        if (confirmationResult._tag === "Failure") {
+          return confirmationResult;
+        }
+        if (!confirmationResult.value) {
+          return AsyncResult.success(undefined);
+        }
+      }
+
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToDraft =
         currentRouteThreadRef?.threadId === threadRef.threadId &&
@@ -136,7 +165,13 @@ export function useThreadActions() {
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       return archiveResult;
     },
-    [archiveThreadMutation, getCurrentRouteThreadRef, resolveThreadTarget, router],
+    [
+      archiveThreadMutation,
+      enableSidebarWorktreeNavigation,
+      getCurrentRouteThreadRef,
+      resolveThreadTarget,
+      router,
+    ],
   );
 
   const unarchiveThread = useCallback(
