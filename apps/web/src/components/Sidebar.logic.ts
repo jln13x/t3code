@@ -553,6 +553,23 @@ export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): stri
   );
 }
 
+export function shouldInlineSidebarWorktreeLabel(input: {
+  enableNativeMacSidebar: boolean;
+  threadGroupingMode: "separate" | "worktree";
+  threadCount: number;
+}): boolean {
+  return (
+    input.enableNativeMacSidebar && input.threadGroupingMode === "worktree" && input.threadCount > 0
+  );
+}
+
+export function formatSidebarThreadDisplayTitle(
+  worktreeLabel: string | null,
+  threadTitle: string,
+): string {
+  return worktreeLabel ? `${worktreeLabel}: ${threadTitle}` : threadTitle;
+}
+
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
 }): ThreadStatusPill | null {

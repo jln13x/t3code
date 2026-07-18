@@ -42,6 +42,9 @@ Turning a flag off preserves upstream behavior.
   strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
 - Project titles are subdued until one of their threads has an unseen completion. Worktree labels
   remain quieter than inactive thread titles so conversation names carry more visual weight.
+- Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
+  Empty worktrees remain standalone rows so they are still available for new-chat and archive
+  actions. Turning off the native sidebar flag restores the upstream grouped layout.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
   is archived. Empty non-main worktrees reveal the standard archive action on hover; populated
   worktrees keep that action in their context menu. Archiving deletes the checkout and its Git

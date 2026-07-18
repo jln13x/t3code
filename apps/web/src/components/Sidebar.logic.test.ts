@@ -21,6 +21,7 @@ import {
   getVisibleThreadsForProject,
   groupSidebarThreadsByWorktree,
   hasUnseenCompletion,
+  formatSidebarThreadDisplayTitle,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -35,6 +36,7 @@ import {
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
+  shouldInlineSidebarWorktreeLabel,
   sortProjectsForSidebar,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
@@ -1049,6 +1051,50 @@ describe("resolveProjectTitleClassName", () => {
     expect(className).toContain("native-sidebar-project-title-unseen");
     expect(className).toContain("text-foreground");
     expect(className).not.toContain("text-foreground/80");
+  });
+});
+
+describe("shouldInlineSidebarWorktreeLabel", () => {
+  it("flattens populated worktree groups only in the native sidebar", () => {
+    expect(
+      shouldInlineSidebarWorktreeLabel({
+        enableNativeMacSidebar: true,
+        threadGroupingMode: "worktree",
+        threadCount: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves upstream grouping when the native sidebar is disabled", () => {
+    expect(
+      shouldInlineSidebarWorktreeLabel({
+        enableNativeMacSidebar: false,
+        threadGroupingMode: "worktree",
+        threadCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps empty worktrees as standalone rows", () => {
+    expect(
+      shouldInlineSidebarWorktreeLabel({
+        enableNativeMacSidebar: true,
+        threadGroupingMode: "worktree",
+        threadCount: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("formatSidebarThreadDisplayTitle", () => {
+  it("combines the worktree and thread names", () => {
+    expect(formatSidebarThreadDisplayTitle("art-15915", "Use historic conversions")).toBe(
+      "art-15915: Use historic conversions",
+    );
+  });
+
+  it("keeps standalone thread titles unchanged", () => {
+    expect(formatSidebarThreadDisplayTitle(null, "General chat")).toBe("General chat");
   });
 });
 
