@@ -575,6 +575,14 @@ body {
   line-height: 20px;
 }
 
+.native-macos-sidebar .native-sidebar-thread-row[data-active="true"] .native-sidebar-thread-title,
+.native-macos-sidebar .native-sidebar-thread-row[data-selected="true"] .native-sidebar-thread-title,
+.native-macos-sidebar
+  .native-sidebar-thread-row[data-finished="true"]
+  .native-sidebar-thread-title {
+  font-weight: 500;
+}
+
 .native-macos-sidebar [data-thread-status-label] {
   width: 12px;
   height: 12px;

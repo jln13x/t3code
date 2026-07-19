@@ -47,6 +47,7 @@ describe("personal fork feature flags", () => {
   const flagNames = [
     "enableStandaloneChats",
     "enableNativeMacSidebar",
+    "enableMacosCompletionNotifications",
     "enableSidebarWorktreeNavigation",
     "enableCheckoutAwareThreadCreation",
     "enableForkPullRequests",

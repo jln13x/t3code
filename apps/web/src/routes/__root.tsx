@@ -28,7 +28,11 @@ import {
   toastManager,
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
-import { useClientSettings, useClientSettingsHydrated } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  usePrimarySettings,
+} from "../hooks/useSettings";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKeyFromPath,
@@ -57,7 +61,9 @@ import {
 import {
   captureThreadSoundState,
   captureThreadSoundStateWhileSettingsHydrating,
-  deriveInteractionSoundCues,
+  COMPLETION_SOUND_VOLUME,
+  deriveThreadFeedbackEvents,
+  shouldPostThreadCompletionNotification,
   type ThreadSoundStateByKey,
 } from "../interactionSounds";
 import {
@@ -146,7 +152,7 @@ function RootRouteView() {
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
-        <InteractionSoundCoordinator />
+        <ThreadCompletionFeedbackCoordinator />
         {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
         {appShell}
       </AnchoredToastProvider>
@@ -154,11 +160,30 @@ function RootRouteView() {
   );
 }
 
-function InteractionSoundCoordinator() {
+function ThreadCompletionFeedbackCoordinator() {
   const threads = useThreadShells();
+  const navigate = useNavigate();
   const completionSoundEnabled = useClientSettings((settings) => settings.enableCompletionSounds);
+  const completionNotificationsEnabled = usePrimarySettings(
+    (settings) => settings.enableMacosCompletionNotifications,
+  );
   const settingsHydrated = useClientSettingsHydrated();
   const previousStateRef = useRef<ThreadSoundStateByKey | null>(null);
+
+  useEffect(() => {
+    const subscribe = window.desktopBridge?.onThreadCompletionNotificationClick;
+    if (typeof subscribe !== "function") return;
+
+    return subscribe((threadRef) => {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: threadRef.environmentId,
+          threadId: threadRef.threadId,
+        },
+      });
+    });
+  }, [navigate]);
 
   useEffect(() => {
     if (!settingsHydrated) {
@@ -170,13 +195,32 @@ function InteractionSoundCoordinator() {
     }
 
     const previous = previousStateRef.current;
-    if (completionSoundEnabled && previous !== null) {
-      for (const cue of deriveInteractionSoundCues(previous, threads)) {
-        play(cue);
+    if (previous !== null) {
+      for (const event of deriveThreadFeedbackEvents(previous, threads)) {
+        if (completionSoundEnabled) {
+          play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
+        }
+        const showNotification = window.desktopBridge?.showThreadCompletionNotification;
+        if (
+          event.cue === "success" &&
+          shouldPostThreadCompletionNotification({
+            enabled: completionNotificationsEnabled,
+            desktopBridgeAvailable: typeof showNotification === "function",
+          }) &&
+          showNotification
+        ) {
+          void showNotification({
+            threadRef: {
+              environmentId: event.thread.environmentId,
+              threadId: event.thread.id,
+            },
+            threadTitle: event.thread.title,
+          }).catch(() => undefined);
+        }
       }
     }
     previousStateRef.current = captureThreadSoundState(threads);
-  }, [completionSoundEnabled, settingsHydrated, threads]);
+  }, [completionNotificationsEnabled, completionSoundEnabled, settingsHydrated, threads]);
 
   return null;
 }

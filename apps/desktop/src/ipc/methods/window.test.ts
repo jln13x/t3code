@@ -2,13 +2,20 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
-import { getLocalEnvironmentBootstraps, getWindowFullscreenState } from "./window.ts";
+import * as ElectronNotification from "../../electron/ElectronNotification.ts";
+import { THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL } from "../channels.ts";
+import {
+  getLocalEnvironmentBootstraps,
+  getWindowFullscreenState,
+  showThreadCompletionNotification,
+} from "./window.ts";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",
@@ -145,4 +152,58 @@ describe("getWindowFullscreenState", () => {
       ),
     );
   });
+});
+
+describe("showThreadCompletionNotification", () => {
+  it.effect(
+    "reveals the app and forwards the scoped thread when the notification is clicked",
+    () => {
+      const send = vi.fn();
+      const reveal = vi.fn(() => Effect.void);
+      const window = {
+        webContents: { send },
+      } as unknown as Electron.BrowserWindow;
+
+      return Effect.gen(function* () {
+        assert.isTrue(
+          yield* showThreadCompletionNotification.handler({
+            threadRef: {
+              environmentId: "environment-1",
+              threadId: "thread-1",
+            },
+            threadTitle: "Refactor notifications",
+          }),
+        );
+        yield* Effect.promise(() =>
+          vi.waitFor(() => {
+            assert.equal(reveal.mock.calls.length, 1);
+            assert.deepEqual(send.mock.calls, [
+              [
+                THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL,
+                { environmentId: "environment-1", threadId: "thread-1" },
+              ],
+            ]);
+          }),
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            Layer.mock(ElectronNotification.ElectronNotification)({
+              show: (input) =>
+                Effect.sync(() => {
+                  assert.equal(input.title, "Thread finished");
+                  assert.equal(input.body, "Refactor notifications");
+                  input.onClick();
+                  return true;
+                }),
+            }),
+            Layer.mock(ElectronWindow.ElectronWindow)({
+              currentMainOrFirst: Effect.succeed(Option.some(window)),
+              reveal,
+            }),
+          ),
+        ),
+      );
+    },
+  );
 });
