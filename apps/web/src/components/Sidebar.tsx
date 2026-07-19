@@ -38,7 +38,6 @@ import type {
   SidebarThreadGroupingMode,
   ThreadId,
 } from "@t3tools/contracts";
-import { DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -95,7 +94,7 @@ import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { startNewThreadInProjectFromContext } from "../lib/chatThreadActions";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { sortThreads } from "../lib/threadSort";
-import { isMacPlatform, newThreadId } from "../lib/utils";
+import { isMacPlatform, newDraftId, newThreadId } from "../lib/utils";
 import { readLocalApi } from "../localApi";
 import {
   derivePhysicalProjectKey,
@@ -116,7 +115,6 @@ import { useDesktopUpdateState } from "../state/desktopUpdate";
 import {
   useProject,
   useProjects,
-  useServerConfigs,
   useThreadShells,
   useThreadShellsForProjectRefs,
 } from "../state/entities";
@@ -3939,7 +3937,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function Sidebar() {
   const projects = useProjects();
-  const serverConfigs = useServerConfigs();
   const sidebarThreads = useThreadShells();
   const projectSidebarThreads = useMemo(
     () => sidebarThreads.filter((thread) => thread.projectId !== null),
@@ -4024,7 +4021,6 @@ export default function Sidebar() {
   const shortcutModifiers = useShortcutModifierState();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const createThread = useAtomCommand(threadEnvironment.create, { reportFailure: false });
   const environmentLabelById = useMemo(
     () =>
       new Map(
@@ -4186,42 +4182,25 @@ export default function Sidebar() {
       });
       return;
     }
-    const providers = serverConfigs.get(primaryEnvironmentId)?.providers ?? [];
-    const provider =
-      providers.find(
-        (candidate) => candidate.enabled && candidate.installed && candidate.models.length > 0,
-      ) ?? providers.find((candidate) => candidate.enabled && candidate.installed);
+    const draftId = newDraftId();
     const threadId = newThreadId();
-    const modelSelection = {
-      instanceId: provider?.instanceId ?? ProviderInstanceId.make("codex"),
-      model: provider?.models[0]?.slug ?? DEFAULT_MODEL,
-    };
-    void createThread({
-      environmentId: primaryEnvironmentId,
-      input: {
-        threadId,
-        projectId: null,
-        context: { kind: "standalone" },
-        title: "New chat",
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        branch: null,
-        worktreePath: null,
-      },
-    }).then((result) => {
-      if (result._tag === "Failure") {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add({
-          type: "error",
-          title: "Could not start chat",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
-        });
-        return;
-      }
-      navigateToThread(scopeThreadRef(primaryEnvironmentId, threadId));
+    const draftStore = useComposerDraftStore.getState();
+    draftStore.setStandaloneDraftThreadId(primaryEnvironmentId, draftId, {
+      threadId,
+      createdAt: new Date().toISOString(),
     });
-  }, [createThread, navigateToThread, primaryEnvironmentId, serverConfigs]);
+    draftStore.applyStickyState(draftId);
+    if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
+      clearSelection();
+    }
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void navigate({
+      to: "/draft/$draftId",
+      params: { draftId },
+    });
+  }, [clearSelection, isMobile, navigate, primaryEnvironmentId, setOpenMobile]);
 
   const projectDnDSensors = useSensors(
     useSensor(PointerSensor, {

@@ -1224,7 +1224,7 @@ function ChatViewContent(props: ChatViewProps) {
     [mountedTerminalThreadKeys],
   );
 
-  const fallbackDraftProjectRef = draftThread
+  const fallbackDraftProjectRef = draftThread?.projectId
     ? scopeProjectRef(draftThread.environmentId, draftThread.projectId)
     : null;
   const fallbackDraftProject = useProject(fallbackDraftProjectRef);
@@ -4177,12 +4177,13 @@ function ChatViewContent(props: ChatViewProps) {
     let turnStartSucceeded = false;
     if (failure === null && turnAttachmentsResult._tag === "Success") {
       const bootstrap =
-        (isLocalDraftThread && activeProject) || baseBranchForWorktree
+        isLocalDraftThread || baseBranchForWorktree
           ? {
-              ...(isLocalDraftThread && activeProject
+              ...(isLocalDraftThread
                 ? {
                     createThread: {
-                      projectId: activeProject.id,
+                      projectId: activeProject?.id ?? null,
+                      ...(activeProject ? {} : { context: { kind: "standalone" as const } }),
                       title,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,

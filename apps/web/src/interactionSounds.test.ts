@@ -62,6 +62,33 @@ describe("interaction sounds", () => {
     ]);
   });
 
+  it("plays completion feedback for standalone chats", () => {
+    const running = makeThread({
+      projectId: null,
+      title: "Standalone chat",
+      latestTurn: {
+        turnId: TurnId.make("turn-chat"),
+        state: "running",
+        requestedAt: "2026-07-11T12:00:00.000Z",
+        startedAt: "2026-07-11T12:00:01.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const completed = makeThread({
+      ...running,
+      latestTurn: {
+        ...running.latestTurn!,
+        state: "completed",
+        completedAt: "2026-07-11T12:00:05.000Z",
+      },
+    });
+
+    expect(deriveThreadFeedbackEvents(captureThreadSoundState([running]), [completed])).toEqual([
+      { cue: "success", thread: completed },
+    ]);
+  });
+
   it("plays the completion cue at 110% of its original gain", () => {
     expect(COMPLETION_SOUND_VOLUME).toBe(1.1);
   });
