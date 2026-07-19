@@ -37,6 +37,15 @@ Turning a flag off preserves upstream behavior.
 - With sidebar worktree navigation enabled, right-clicking a worktree label opens an actions menu
   for starting a chat in that checkout or renaming its branch.
 
+## Projectless standalone chats
+
+- Creating a standalone chat opens a local draft immediately, matching project-thread creation;
+  the server thread is materialized atomically with the first message instead of blocking
+  navigation on an empty-thread request.
+- Standalone chats participate in the same desktop completion sounds and macOS notifications as
+  project threads. When agent-activity publishing is enabled, they also publish completion and
+  attention states to connected mobile clients under the generic `Chats` activity group.
+
 ## Native macOS sidebar
 
 - Inactive thread titles are regular weight and subdued. The focused thread, multi-selected
@@ -66,7 +75,8 @@ Turning a flag off preserves upstream behavior.
 ## macOS completion notifications and sounds
 
 - With macOS completion notifications enabled, the Electron host posts a native, silent macOS
-  notification whenever a turn transitions to completed. Clicking it reveals the app and opens the
-  exact environment-scoped thread. Web and non-macOS runtimes retain upstream behavior.
+  notification whenever a project thread or standalone chat transitions to completed. Clicking it
+  reveals the app and opens the exact environment-scoped conversation. Web and non-macOS runtimes
+  retain upstream behavior.
 - The synthesized completion cue plays at 110% of its original gain; attention cues retain their
   original gain. Disabling completion sounds preserves the upstream silent behavior.

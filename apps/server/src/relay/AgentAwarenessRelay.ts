@@ -53,6 +53,20 @@ export class AgentAwarenessRelay extends Context.Service<
   }
 >()("t3/relay/AgentAwarenessRelay") {}
 
+const STANDALONE_CHATS_ACTIVITY_GROUP = { title: "Chats" } as const;
+
+function threadAwareness(input: {
+  readonly environmentId: EnvironmentId;
+  readonly thread: OrchestrationThreadShell;
+  readonly project: Pick<OrchestrationProjectShell, "title"> | null;
+}) {
+  return projectThreadAwareness({
+    environmentId: input.environmentId,
+    project: input.project ?? STANDALONE_CHATS_ACTIVITY_GROUP,
+    thread: input.thread,
+  });
+}
+
 export function eventThreadId(event: OrchestrationEvent): ThreadId | null {
   const payload = event.payload as { readonly threadId?: unknown };
   if (typeof payload.threadId === "string") {
@@ -246,6 +260,19 @@ export function resolveAgentAwarenessRelayPublishSnapshot(input: {
       reason: "thread-not-found",
     };
   }
+  if (input.thread.value.projectId === null) {
+    return {
+      projectId: null,
+      state: sanitizeRelayAgentActivityState(
+        threadAwareness({
+          environmentId: input.environmentId,
+          project: null,
+          thread: input.thread.value,
+        }),
+      ),
+      reason: "snapshot",
+    };
+  }
   if (Option.isNone(input.project)) {
     return {
       projectId: input.thread.value.projectId,
@@ -256,7 +283,7 @@ export function resolveAgentAwarenessRelayPublishSnapshot(input: {
   return {
     projectId: input.thread.value.projectId,
     state: sanitizeRelayAgentActivityState(
-      projectThreadAwareness({
+      threadAwareness({
         environmentId: input.environmentId,
         project: input.project.value,
         thread: input.thread.value,
@@ -275,14 +302,20 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
   return input.threads
     .filter((thread) => {
       if (thread.projectId === null) {
-        return false;
+        return (
+          threadAwareness({
+            environmentId: input.environmentId,
+            project: null,
+            thread,
+          }) !== null
+        );
       }
       const project = projectById.get(thread.projectId);
       if (!project) {
         return false;
       }
       return (
-        projectThreadAwareness({
+        threadAwareness({
           environmentId: input.environmentId,
           project,
           thread,
