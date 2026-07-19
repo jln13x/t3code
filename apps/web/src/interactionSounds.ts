@@ -1,6 +1,12 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 
 export type InteractionSoundCue = "bloom" | "success";
+export const COMPLETION_SOUND_VOLUME = 1.1;
+
+export interface ThreadFeedbackEvent {
+  readonly cue: InteractionSoundCue;
+  readonly thread: EnvironmentThreadShell;
+}
 
 interface ThreadSoundState {
   readonly completedTurn: string | null;
@@ -58,24 +64,38 @@ export function captureThreadSoundStateWhileSettingsHydrating(
   return merged;
 }
 
-export function deriveInteractionSoundCues(
+export function deriveThreadFeedbackEvents(
   previous: ThreadSoundStateByKey,
   threads: ReadonlyArray<EnvironmentThreadShell>,
-): InteractionSoundCue[] {
-  const cues: InteractionSoundCue[] = [];
+): ThreadFeedbackEvent[] {
+  const events: ThreadFeedbackEvent[] = [];
 
   for (const thread of threads) {
     const prior = previous.get(threadKey(thread));
     const nextCompletedTurn = completedTurn(thread);
 
     if (prior && nextCompletedTurn !== null && prior.completedTurn !== nextCompletedTurn) {
-      cues.push("success");
+      events.push({ cue: "success", thread });
     }
     const hasPendingUserAction = thread.hasPendingUserInput || thread.hasPendingApprovals;
     if (prior && hasPendingUserAction && !prior.hasPendingUserAction) {
-      cues.push("bloom");
+      events.push({ cue: "bloom", thread });
     }
   }
 
-  return cues;
+  return events;
+}
+
+export function deriveInteractionSoundCues(
+  previous: ThreadSoundStateByKey,
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+): InteractionSoundCue[] {
+  return deriveThreadFeedbackEvents(previous, threads).map((event) => event.cue);
+}
+
+export function shouldPostThreadCompletionNotification(input: {
+  readonly enabled: boolean;
+  readonly desktopBridgeAvailable: boolean;
+}): boolean {
+  return input.enabled && input.desktopBridgeAvailable;
 }

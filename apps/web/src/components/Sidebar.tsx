@@ -162,6 +162,7 @@ import {
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorktreeNewThreadOptions,
   resolveSidebarWorktreeThreadGroups,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
@@ -716,6 +717,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
         data-finished={threadStatus?.label === "Completed"}
+        data-selected={isSelected}
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
@@ -1161,6 +1163,22 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     },
     [refreshVcsStatus, removeWorktree, resolveWorktreeGroupContext],
   );
+  const startThreadInWorktreeGroup = useCallback(
+    (group: (typeof renderedThreadGroups)[number]) => {
+      const context = resolveWorktreeGroupContext(group);
+      if (!context) return;
+      const options = resolveSidebarWorktreeNewThreadOptions({
+        enableSidebarWorktreeNavigation,
+        branch: context.branch,
+        worktreePath: context.worktreePath,
+        isMainCheckout: context.isMainCheckout,
+      });
+      if (!options) return;
+
+      void handleNewThread(scopeProjectRef(context.environmentId, context.projectId), options);
+    },
+    [enableSidebarWorktreeNavigation, handleNewThread, resolveWorktreeGroupContext],
+  );
   const handleWorktreeGroupMenu = useCallback(
     (group: (typeof renderedThreadGroups)[number], position: { x: number; y: number }) => {
       const context = resolveWorktreeGroupContext(group);
@@ -1183,12 +1201,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
           position,
         );
         if (clicked === "new-chat") {
-          void handleNewThread(scopeProjectRef(context.environmentId, context.projectId), {
-            branch: context.branch,
-            worktreePath: context.worktreePath,
-            envMode: group.label === "Main" ? "local" : "worktree",
-            startFromOrigin: false,
-          });
+          startThreadInWorktreeGroup(group);
           return;
         }
         if (clicked === "rename-branch" && context.worktreePath && context.branch) {
@@ -1206,7 +1219,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         }
       })();
     },
-    [archiveWorktreeGroup, handleNewThread, resolveWorktreeGroupContext],
+    [archiveWorktreeGroup, resolveWorktreeGroupContext, startThreadInWorktreeGroup],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1339,7 +1352,18 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                   <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
                     {enableSidebarWorktreeNavigation ? (
                       <div
-                        className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${enableNativeMacSidebar ? "cursor-pointer" : ""} ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`New chat in ${label}`}
+                        className={`native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                        onClick={() => {
+                          startThreadInWorktreeGroup(group);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          startThreadInWorktreeGroup(group);
+                        }}
                         onContextMenu={(event) => {
                           event.preventDefault();
                           handleWorktreeGroupMenu(group, {

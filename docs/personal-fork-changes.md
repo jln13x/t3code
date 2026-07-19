@@ -2,19 +2,20 @@
 
 Turning a flag off preserves upstream behavior.
 
-| Feature                            | Flag                                | Default |
-| ---------------------------------- | ----------------------------------- | ------- |
-| Projectless standalone chats       | `enableStandaloneChats`             | On      |
-| Native macOS sidebar               | `enableNativeMacSidebar`            | On      |
-| Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`   | On      |
-| Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation` | On      |
-| Completion and attention sounds    | `enableCompletionSounds`            | On      |
-| Fork-aware pull requests           | `enableForkPullRequests`            | On      |
-| Project provider skill discovery   | `enableProviderSkillDiscovery`      | On      |
-| Markdown and text file attachments | `enableTextFileAttachments`         | On      |
-| Inline generated-image rendering   | `enableGeneratedImageRendering`     | On      |
-| Project file and content search    | `enableProjectSearch`               | On      |
-| Working-change diff workflow       | `enablePersonalDiffWorkflow`        | On      |
+| Feature                            | Flag                                 | Default |
+| ---------------------------------- | ------------------------------------ | ------- |
+| Projectless standalone chats       | `enableStandaloneChats`              | On      |
+| Native macOS sidebar               | `enableNativeMacSidebar`             | On      |
+| macOS completion notifications     | `enableMacosCompletionNotifications` | On      |
+| Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`    | On      |
+| Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation`  | On      |
+| Completion and attention sounds    | `enableCompletionSounds`             | On      |
+| Fork-aware pull requests           | `enableForkPullRequests`             | On      |
+| Project provider skill discovery   | `enableProviderSkillDiscovery`       | On      |
+| Markdown and text file attachments | `enableTextFileAttachments`          | On      |
+| Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
+| Project file and content search    | `enableProjectSearch`                | On      |
+| Working-change diff workflow       | `enablePersonalDiffWorkflow`         | On      |
 
 ## Desktop fork identity
 
@@ -38,8 +39,9 @@ Turning a flag off preserves upstream behavior.
 
 ## Native macOS sidebar
 
-- Inactive thread titles are subdued so the focused thread and newly completed threads retain the
-  strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
+- Inactive thread titles are regular weight and subdued. The focused thread, multi-selected
+  threads, and newly completed threads use a medium, bold-ish weight and full emphasis. Hovering an
+  inactive thread keeps that hierarchy intact.
 - Project titles use regular weight and remain subdued until one of their threads has an unseen
   completion. Worktree labels remain quieter than inactive thread titles so conversation names
   carry more visual weight.
@@ -60,3 +62,11 @@ Turning a flag off preserves upstream behavior.
   registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
   keeps the explicit worktree-archive action in its context menu, which deletes the checkout and its
   Git registration.
+
+## macOS completion notifications and sounds
+
+- With macOS completion notifications enabled, the Electron host posts a native, silent macOS
+  notification whenever a turn transitions to completed. Clicking it reveals the app and opens the
+  exact environment-scoped thread. Web and non-macOS runtimes retain upstream behavior.
+- The synthesized completion cue plays at 110% of its original gain; attention cues retain their
+  original gain. Disabling completion sounds preserves the upstream silent behavior.
