@@ -513,11 +513,10 @@ export function resolveSidebarWorktreeLabelMode(input: {
   enableNativeMacSidebar: boolean;
   isMainCheckout: boolean;
   threadGroupingMode: "separate" | "worktree";
-  threadCount: number;
-}): "header" | "hidden" | "inline" {
+  worktreeGroupCount: number;
+}): "header" | "hidden" {
   if (!input.enableNativeMacSidebar || input.threadGroupingMode !== "worktree") return "header";
-  if (input.isMainCheckout) return "hidden";
-  return input.threadCount > 0 ? "inline" : "header";
+  return input.isMainCheckout && input.worktreeGroupCount === 1 ? "hidden" : "header";
 }
 
 export function shouldShowSidebarEmptyThreadState(input: {
@@ -525,13 +524,6 @@ export function shouldShowSidebarEmptyThreadState(input: {
   showEmptyThreadState: boolean;
 }): boolean {
   return input.showEmptyThreadState && !input.enableNativeMacSidebar;
-}
-
-export function formatSidebarThreadDisplayTitle(
-  worktreeLabel: string | null,
-  threadTitle: string,
-): string {
-  return worktreeLabel ? `${worktreeLabel}: ${threadTitle}` : threadTitle;
 }
 
 export function resolveThreadStatusPill(input: {

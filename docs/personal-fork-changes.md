@@ -46,14 +46,15 @@ Turning a flag off preserves upstream behavior.
 - Light mode uses dark, regular-weight conversation text with progressively softer project and
   worktree context. Worktree labels use the same 14px size as thread titles instead of appearing
   disabled or undersized.
-- Populated worktrees use compact, branch-prefixed thread rows instead of separate group headers.
-  Conversation rows use a taller click target, and standalone worktree rows include a branch icon.
-  Worktree labels omit redundant thread counts. Empty worktrees remain standalone rows so they are
-  still available for new-chat and archive actions. Turning off the native sidebar flag restores
-  the upstream grouped layout and counts.
-- The native layout omits the generic "No threads yet" row and the redundant main-checkout label;
-  main-checkout threads render as plain conversation titles. Actionable worktree rows use a pointer
-  cursor. Turning the flag off restores those upstream labels.
+- Worktrees use compact branch headers with subtly inset conversation rows, keeping each checkout
+  visually distinct without repeating its branch on every thread. Worktree labels omit redundant
+  thread counts. Empty worktrees remain standalone rows so they are still available for new-chat
+  and archive actions. Turning off the native sidebar flag restores the upstream grouped layout
+  and counts.
+- The native layout omits the generic "No threads yet" row. It hides the redundant main-checkout
+  label when no other checkout is shown, but restores a "Main checkout" header when multiple
+  checkout groups need a visible boundary. Actionable worktree rows use a pointer cursor. Turning
+  the flag off restores upstream labels.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
   is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
   registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
