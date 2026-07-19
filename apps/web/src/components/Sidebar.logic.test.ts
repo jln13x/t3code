@@ -21,7 +21,6 @@ import {
   getVisibleThreadsForProject,
   groupSidebarThreadsByWorktree,
   hasUnseenCompletion,
-  formatSidebarThreadDisplayTitle,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -1000,26 +999,37 @@ describe("resolveProjectTitleClassName", () => {
 });
 
 describe("resolveSidebarWorktreeLabelMode", () => {
-  it("inlines populated non-main worktrees in the native sidebar", () => {
+  it("shows a compact header for populated non-main worktrees in the native sidebar", () => {
     expect(
       resolveSidebarWorktreeLabelMode({
         enableNativeMacSidebar: true,
         isMainCheckout: false,
         threadGroupingMode: "worktree",
-        threadCount: 1,
+        worktreeGroupCount: 1,
       }),
-    ).toBe("inline");
+    ).toBe("header");
   });
 
-  it("hides the redundant main checkout label in the native sidebar", () => {
+  it("hides the redundant main checkout label when it is the only group", () => {
     expect(
       resolveSidebarWorktreeLabelMode({
         enableNativeMacSidebar: true,
         isMainCheckout: true,
         threadGroupingMode: "worktree",
-        threadCount: 0,
+        worktreeGroupCount: 1,
       }),
     ).toBe("hidden");
+  });
+
+  it("shows the main checkout header alongside other worktree groups", () => {
+    expect(
+      resolveSidebarWorktreeLabelMode({
+        enableNativeMacSidebar: true,
+        isMainCheckout: true,
+        threadGroupingMode: "worktree",
+        worktreeGroupCount: 2,
+      }),
+    ).toBe("header");
   });
 
   it("preserves upstream grouping when the native sidebar is disabled", () => {
@@ -1028,7 +1038,7 @@ describe("resolveSidebarWorktreeLabelMode", () => {
         enableNativeMacSidebar: false,
         isMainCheckout: true,
         threadGroupingMode: "worktree",
-        threadCount: 1,
+        worktreeGroupCount: 1,
       }),
     ).toBe("header");
   });
@@ -1039,7 +1049,7 @@ describe("resolveSidebarWorktreeLabelMode", () => {
         enableNativeMacSidebar: true,
         isMainCheckout: false,
         threadGroupingMode: "worktree",
-        threadCount: 0,
+        worktreeGroupCount: 1,
       }),
     ).toBe("header");
   });
@@ -1062,18 +1072,6 @@ describe("shouldShowSidebarEmptyThreadState", () => {
         showEmptyThreadState: true,
       }),
     ).toBe(true);
-  });
-});
-
-describe("formatSidebarThreadDisplayTitle", () => {
-  it("combines the worktree and thread names", () => {
-    expect(formatSidebarThreadDisplayTitle("art-15915", "Use historic conversions")).toBe(
-      "art-15915: Use historic conversions",
-    );
-  });
-
-  it("keeps standalone thread titles unchanged", () => {
-    expect(formatSidebarThreadDisplayTitle(null, "General chat")).toBe("General chat");
   });
 });
 
