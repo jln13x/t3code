@@ -16,11 +16,14 @@ Turning a flag off preserves upstream behavior.
 | Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
 | Project file and content search    | `enableProjectSearch`                | On      |
 
+Upstream PRs integrated into the fork are listed in
+[Upstream Integrations](./upstream-integrations.md).
+
 ## Retired customizations
 
-- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired during the July 2026
-  upstream sync after upstream adopted working-tree-first diff selection and active-worktree
-  scoping. The redundant feature flag and settings control were removed.
+- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
+  working-tree-first diff selection and active-worktree scoping. The redundant feature flag and
+  settings control were removed.
 
 ## Desktop fork identity
 
