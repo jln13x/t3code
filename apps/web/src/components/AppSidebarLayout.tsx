@@ -1,28 +1,73 @@
 import { useAtomValue } from "@effect/atom-react";
+import * as Schema from "effect/Schema";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
+import { getLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
-import { isMacPlatform } from "../lib/utils";
+import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { usePrimarySettings } from "../hooks/useSettings";
 import ThreadSidebar from "./Sidebar";
 import { resolveThreadSidebarPresentation } from "./AppSidebarLayout.logic";
-import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
+import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
+import {
+  resolveInitialThreadSidebarWidth,
+  resolveThreadSidebarMaximumWidth,
+  THREAD_MAIN_CONTENT_MIN_WIDTH,
+  THREAD_SIDEBAR_MIN_WIDTH,
+  THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+} from "./threadSidebarWidth";
+import {
+  Sidebar,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+  useSidebarVisibility,
+} from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-
-const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
+
+function readInitialThreadSidebarWidth(input?: {
+  readonly storageKey: string;
+  readonly defaultWidth: string;
+  readonly minWidth: number;
+}): number {
+  try {
+    if (input) {
+      const storedWidth = getLocalStorageItem(input.storageKey, Schema.Finite);
+      const defaultWidth = Number.parseFloat(input.defaultWidth) * 16;
+      const preferredWidth = Math.max(input.minWidth, storedWidth ?? defaultWidth);
+      return Math.min(preferredWidth, resolveThreadSidebarMaximumWidth(window.innerWidth));
+    }
+    return resolveInitialThreadSidebarWidth(
+      getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite),
+      window.innerWidth,
+    );
+  } catch (error) {
+    console.error("Could not read persisted thread sidebar width.", error);
+    return resolveInitialThreadSidebarWidth(null, window.innerWidth);
+  }
+}
 
 function SidebarControl() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
+  const isSidebarVisible = useSidebarVisibility();
+  const stageBackdropVariant = useSidebarStageBackdropVariant();
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle");
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
       if (resolveShortcutCommand(event, keybindings) !== "sidebar.toggle") return;
 
       event.preventDefault();
@@ -30,8 +75,9 @@ function SidebarControl() {
       toggleSidebar();
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Capture before focused editors consume commands such as Mod+B for rich-text formatting.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings, toggleSidebar]);
 
   return (
@@ -42,7 +88,15 @@ function SidebarControl() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <SidebarTrigger className="pointer-events-auto" aria-label="Toggle main sidebar" />
+            <SidebarTrigger
+              className={cn(
+                "pointer-events-auto",
+                isSidebarVisible &&
+                  stageBackdropVariant &&
+                  "hover:bg-white/15 [&_svg]:text-white/85! [&_svg]:hover:text-white!",
+              )}
+              aria-label="Toggle main sidebar"
+            />
           }
         />
         <TooltipPopup side="bottom">
@@ -57,7 +111,20 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const sidebarPresentation = resolveThreadSidebarPresentation(enableNativeMacSidebar);
+  const pathname = useLocation({ select: (location) => location.pathname });
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    readInitialThreadSidebarWidth(
+      enableNativeMacSidebar
+        ? {
+            storageKey: sidebarPresentation.storageKey,
+            defaultWidth: sidebarPresentation.defaultWidth,
+            minWidth: sidebarPresentation.minWidth,
+          }
+        : undefined,
+    ),
+  );
+  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(window.innerWidth);
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
     return isMacosDesktop && typeof getWindowFullscreenState === "function"
@@ -65,7 +132,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       : false;
   });
   const sidebarProviderStyle = {
-    "--sidebar-width": sidebarPresentation.defaultWidth,
+    "--sidebar-width": `${sidebarWidth}px`,
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
@@ -96,14 +163,17 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 
     const unsubscribe = onMenuAction((action) => {
       if (action === "open-settings") {
-        void navigate({ to: "/settings" });
+        const isSettingsRoute = /^\/settings(\/|$)/.test(pathname);
+        if (!isSettingsRoute) {
+          void navigate({ to: "/settings" });
+        }
       }
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [navigate]);
+  }, [navigate, pathname]);
 
   return (
     <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
@@ -112,10 +182,17 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         collapsible="offcanvas"
         className={sidebarPresentation.className}
         resizable={{
-          minWidth: sidebarPresentation.minWidth,
-          shouldAcceptWidth: ({ nextWidth, wrapper }) =>
+          maxWidth: sidebarMaximumWidth,
+          minWidth: enableNativeMacSidebar
+            ? sidebarPresentation.minWidth
+            : THREAD_SIDEBAR_MIN_WIDTH,
+          shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+            nextWidth <= currentWidth ||
             wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: sidebarPresentation.storageKey,
+          storageKey: enableNativeMacSidebar
+            ? sidebarPresentation.storageKey
+            : THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+          onResize: setSidebarWidth,
         }}
       >
         <ThreadSidebar />
