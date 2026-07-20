@@ -14,7 +14,17 @@ Turning a flag off preserves upstream behavior.
 | Markdown and text file attachments | `enableTextFileAttachments`         | On      |
 | Inline generated-image rendering   | `enableGeneratedImageRendering`     | On      |
 | Project file and content search    | `enableProjectSearch`               | On      |
-| Working-change diff workflow       | `enablePersonalDiffWorkflow`        | On      |
+
+Upstream syncs and selectively integrated pull requests are tracked in
+[Upstream Integrations](./upstream-integrations.md).
+
+## Retired customizations
+
+- `enablePersonalDiffWorkflow` was retired on 2026-07-20. Upstream now defaults diffs to working
+  changes and refreshes reopened diff tabs via
+  [#3974](https://github.com/pingdotgg/t3code/pull/3974) and
+  [#3973](https://github.com/pingdotgg/t3code/pull/3973). The fork retains its worktree-aware diff
+  root and generation-based preview invalidation as unconditional behavior.
 
 ## Desktop fork identity
 

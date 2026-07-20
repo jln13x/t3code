@@ -41,6 +41,7 @@ import {
   makePendingCodexProvider,
   probeCodexAppServerProvider,
 } from "../Layers/CodexProvider.ts";
+import { resolveCodexLaunchArgs } from "../Layers/codexLaunchArgs.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import type { ProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
@@ -173,6 +174,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         return yield* probeCodexAppServerProvider({
           binaryPath: effectiveConfig.binaryPath,
           homePath: effectiveConfig.homePath,
+          launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
           cwd,
           customModels: [],
           environment: processEnv,

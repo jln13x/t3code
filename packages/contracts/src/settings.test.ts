@@ -54,7 +54,6 @@ describe("personal fork feature flags", () => {
     "enableTextFileAttachments",
     "enableGeneratedImageRendering",
     "enableProjectSearch",
-    "enablePersonalDiffWorkflow",
   ] as const;
 
   it("defaults every personal feature on", () => {

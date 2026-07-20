@@ -122,7 +122,6 @@ type PersonalFeatureFlagName = Extract<
   | "enableTextFileAttachments"
   | "enableGeneratedImageRendering"
   | "enableProjectSearch"
-  | "enablePersonalDiffWorkflow"
 >;
 
 const PERSONAL_FEATURE_SETTINGS = [
@@ -175,11 +174,6 @@ const PERSONAL_FEATURE_SETTINGS = [
     key: "enableProjectSearch",
     title: "Project search",
     description: "Enable the project file picker and global content search.",
-  },
-  {
-    key: "enablePersonalDiffWorkflow",
-    title: "Working-change diff workflow",
-    description: "Prefer working changes and keep diffs scoped to the active worktree.",
   },
 ] as const satisfies ReadonlyArray<{
   readonly key: PersonalFeatureFlagName;
@@ -543,7 +537,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableTextFileAttachments,
       settings.enableGeneratedImageRendering,
       settings.enableProjectSearch,
-      settings.enablePersonalDiffWorkflow,
       theme,
     ],
   );
@@ -584,7 +577,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       enableTextFileAttachments: DEFAULT_UNIFIED_SETTINGS.enableTextFileAttachments,
       enableGeneratedImageRendering: DEFAULT_UNIFIED_SETTINGS.enableGeneratedImageRendering,
       enableProjectSearch: DEFAULT_UNIFIED_SETTINGS.enableProjectSearch,
-      enablePersonalDiffWorkflow: DEFAULT_UNIFIED_SETTINGS.enablePersonalDiffWorkflow,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);

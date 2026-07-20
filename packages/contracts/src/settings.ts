@@ -398,7 +398,6 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   enableProjectSearch: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enablePersonalDiffWorkflow: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
     Schema.withDecodingDefault(
       Effect.succeed(Duration.toMillis(DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL)),
@@ -548,7 +547,6 @@ export const ServerSettingsPatch = Schema.Struct({
   enableTextFileAttachments: Schema.optionalKey(Schema.Boolean),
   enableGeneratedImageRendering: Schema.optionalKey(Schema.Boolean),
   enableProjectSearch: Schema.optionalKey(Schema.Boolean),
-  enablePersonalDiffWorkflow: Schema.optionalKey(Schema.Boolean),
   automaticGitFetchInterval: Schema.optionalKey(Schema.DurationFromMillis),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
