@@ -383,6 +383,9 @@ export const ServerSettings = Schema.Struct({
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   enableStandaloneChats: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   enableNativeMacSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableMacosCompletionNotifications: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   enableSidebarWorktreeNavigation: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
@@ -540,6 +543,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   enableStandaloneChats: Schema.optionalKey(Schema.Boolean),
   enableNativeMacSidebar: Schema.optionalKey(Schema.Boolean),
+  enableMacosCompletionNotifications: Schema.optionalKey(Schema.Boolean),
   enableSidebarWorktreeNavigation: Schema.optionalKey(Schema.Boolean),
   enableCheckoutAwareThreadCreation: Schema.optionalKey(Schema.Boolean),
   enableForkPullRequests: Schema.optionalKey(Schema.Boolean),

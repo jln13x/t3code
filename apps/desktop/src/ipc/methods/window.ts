@@ -2,6 +2,7 @@ import {
   ContextMenuItemSchema,
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
+  DesktopThreadCompletionNotificationInput,
   DesktopThemeSchema,
   PickFolderOptionsSchema,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
@@ -19,6 +20,7 @@ import * as DesktopWslBackend from "../../wsl/DesktopWslBackend.ts";
 import * as DesktopWslEnvironment from "../../wsl/DesktopWslEnvironment.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../../electron/ElectronMenu.ts";
+import * as ElectronNotification from "../../electron/ElectronNotification.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
@@ -266,5 +268,34 @@ export const openExternal = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.window.openExternal")(function* (url) {
     const shell = yield* ElectronShell.ElectronShell;
     return yield* shell.openExternal(url);
+  }),
+});
+
+export const showThreadCompletionNotification = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.SHOW_THREAD_COMPLETION_NOTIFICATION_CHANNEL,
+  payload: DesktopThreadCompletionNotificationInput,
+  result: Schema.Boolean,
+  handler: Effect.fn("desktop.ipc.window.showThreadCompletionNotification")(function* (input) {
+    const notifications = yield* ElectronNotification.ElectronNotification;
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const openThread = Effect.gen(function* () {
+      const window = yield* electronWindow.currentMainOrFirst;
+      if (Option.isNone(window)) return;
+      yield* electronWindow.reveal(window.value);
+      yield* Effect.sync(() => {
+        window.value.webContents.send(
+          IpcChannels.THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL,
+          input.threadRef,
+        );
+      });
+    });
+
+    return yield* notifications.show({
+      title: "Thread finished",
+      body: input.threadTitle,
+      onClick: () => {
+        Effect.runFork(openThread);
+      },
+    });
   }),
 });

@@ -38,7 +38,6 @@ import type {
   SidebarThreadGroupingMode,
   ThreadId,
 } from "@t3tools/contracts";
-import { DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -95,7 +94,7 @@ import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { startNewThreadInProjectFromContext } from "../lib/chatThreadActions";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { sortThreads } from "../lib/threadSort";
-import { cn, isMacPlatform, newThreadId } from "../lib/utils";
+import { cn, isMacPlatform, newDraftId, newThreadId } from "../lib/utils";
 import { readLocalApi } from "../localApi";
 import {
   derivePhysicalProjectKey,
@@ -117,7 +116,6 @@ import {
   readThreadShell,
   useProject,
   useProjects,
-  useServerConfigs,
   useThreadShells,
   useThreadShellsForProjectRefs,
 } from "../state/entities";
@@ -166,6 +164,7 @@ import {
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorktreeNewThreadOptions,
   resolveSidebarWorktreeThreadGroups,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
@@ -719,6 +718,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
         data-finished={threadStatus?.label === "Completed"}
+        data-selected={isSelected}
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
@@ -1164,6 +1164,22 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     },
     [refreshVcsStatus, removeWorktree, resolveWorktreeGroupContext],
   );
+  const startThreadInWorktreeGroup = useCallback(
+    (group: (typeof renderedThreadGroups)[number]) => {
+      const context = resolveWorktreeGroupContext(group);
+      if (!context) return;
+      const options = resolveSidebarWorktreeNewThreadOptions({
+        enableSidebarWorktreeNavigation,
+        branch: context.branch,
+        worktreePath: context.worktreePath,
+        isMainCheckout: context.isMainCheckout,
+      });
+      if (!options) return;
+
+      void handleNewThread(scopeProjectRef(context.environmentId, context.projectId), options);
+    },
+    [enableSidebarWorktreeNavigation, handleNewThread, resolveWorktreeGroupContext],
+  );
   const handleWorktreeGroupMenu = useCallback(
     (group: (typeof renderedThreadGroups)[number], position: { x: number; y: number }) => {
       const context = resolveWorktreeGroupContext(group);
@@ -1186,12 +1202,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
           position,
         );
         if (clicked === "new-chat") {
-          void handleNewThread(scopeProjectRef(context.environmentId, context.projectId), {
-            branch: context.branch,
-            worktreePath: context.worktreePath,
-            envMode: group.label === "Main" ? "local" : "worktree",
-            startFromOrigin: false,
-          });
+          startThreadInWorktreeGroup(group);
           return;
         }
         if (clicked === "rename-branch" && context.worktreePath && context.branch) {
@@ -1209,7 +1220,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         }
       })();
     },
-    [archiveWorktreeGroup, handleNewThread, resolveWorktreeGroupContext],
+    [archiveWorktreeGroup, resolveWorktreeGroupContext, startThreadInWorktreeGroup],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1342,7 +1353,18 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                   <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
                     {enableSidebarWorktreeNavigation ? (
                       <div
-                        className={`native-sidebar-worktree-label flex h-6 w-full items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${enableNativeMacSidebar ? "cursor-pointer" : ""} ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`New chat in ${label}`}
+                        className={`native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                        onClick={() => {
+                          startThreadInWorktreeGroup(group);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          startThreadInWorktreeGroup(group);
+                        }}
                         onContextMenu={(event) => {
                           event.preventDefault();
                           handleWorktreeGroupMenu(group, {
@@ -3975,7 +3997,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
 export default function Sidebar() {
   const projects = useProjects();
-  const serverConfigs = useServerConfigs();
   const sidebarThreads = useThreadShells();
   const projectSidebarThreads = useMemo(
     () => sidebarThreads.filter((thread) => thread.projectId !== null),
@@ -4060,7 +4081,6 @@ export default function Sidebar() {
   const shortcutModifiers = useShortcutModifierState();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const createThread = useAtomCommand(threadEnvironment.create, { reportFailure: false });
   const environmentLabelById = useMemo(
     () =>
       new Map(
@@ -4222,42 +4242,25 @@ export default function Sidebar() {
       });
       return;
     }
-    const providers = serverConfigs.get(primaryEnvironmentId)?.providers ?? [];
-    const provider =
-      providers.find(
-        (candidate) => candidate.enabled && candidate.installed && candidate.models.length > 0,
-      ) ?? providers.find((candidate) => candidate.enabled && candidate.installed);
+    const draftId = newDraftId();
     const threadId = newThreadId();
-    const modelSelection = {
-      instanceId: provider?.instanceId ?? ProviderInstanceId.make("codex"),
-      model: provider?.models[0]?.slug ?? DEFAULT_MODEL,
-    };
-    void createThread({
-      environmentId: primaryEnvironmentId,
-      input: {
-        threadId,
-        projectId: null,
-        context: { kind: "standalone" },
-        title: "New chat",
-        modelSelection,
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        branch: null,
-        worktreePath: null,
-      },
-    }).then((result) => {
-      if (result._tag === "Failure") {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add({
-          type: "error",
-          title: "Could not start chat",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
-        });
-        return;
-      }
-      navigateToThread(scopeThreadRef(primaryEnvironmentId, threadId));
+    const draftStore = useComposerDraftStore.getState();
+    draftStore.setStandaloneDraftThreadId(primaryEnvironmentId, draftId, {
+      threadId,
+      createdAt: new Date().toISOString(),
     });
-  }, [createThread, navigateToThread, primaryEnvironmentId, serverConfigs]);
+    draftStore.applyStickyState(draftId);
+    if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
+      clearSelection();
+    }
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void navigate({
+      to: "/draft/$draftId",
+      params: { draftId },
+    });
+  }, [clearSelection, isMobile, navigate, primaryEnvironmentId, setOpenMobile]);
 
   const projectDnDSensors = useSensors(
     useSensor(PointerSensor, {

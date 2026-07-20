@@ -36,7 +36,7 @@ export function buildLocalDraftThread(
     id: threadId,
     environmentId: draftThread.environmentId,
     projectId: draftThread.projectId,
-    title: "New thread",
+    title: draftThread.projectId === null ? "New chat" : "New thread",
     modelSelection: fallbackModelSelection,
     runtimeMode: draftThread.runtimeMode,
     interactionMode: draftThread.interactionMode,

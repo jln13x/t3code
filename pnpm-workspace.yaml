@@ -107,6 +107,7 @@ packageExtensions:
       vite: "catalog:"
 
 patchedDependencies:
+  cuelume@0.1.0: patches/cuelume@0.1.0.patch
   "@effect/vitest@4.0.0-beta.78": patches/@effect__vitest@4.0.0-beta.78.patch
   "@expo/metro-config@56.0.14": patches/@expo%2Fmetro-config@56.0.14.patch
   "@ff-labs/fff-node@0.9.4": patches/@ff-labs__fff-node@0.9.4.patch

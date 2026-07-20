@@ -16,8 +16,6 @@ import {
   resolveInitialThreadSidebarWidth,
   resolveThreadSidebarMaximumWidth,
   THREAD_MAIN_CONTENT_MIN_WIDTH,
-  THREAD_SIDEBAR_MIN_WIDTH,
-  THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
 import {
   Sidebar,
@@ -28,27 +26,26 @@ import {
   useSidebarVisibility,
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
-function readInitialThreadSidebarWidth(input?: {
-  readonly storageKey: string;
+function readInitialThreadSidebarWidth(input: {
   readonly defaultWidth: string;
   readonly minWidth: number;
+  readonly storageKey: string;
 }): number {
   try {
-    if (input) {
-      const storedWidth = getLocalStorageItem(input.storageKey, Schema.Finite);
-      const defaultWidth = Number.parseFloat(input.defaultWidth) * 16;
-      const preferredWidth = Math.max(input.minWidth, storedWidth ?? defaultWidth);
-      return Math.min(preferredWidth, resolveThreadSidebarMaximumWidth(window.innerWidth));
-    }
     return resolveInitialThreadSidebarWidth(
-      getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite),
+      getLocalStorageItem(input.storageKey, Schema.Finite),
       window.innerWidth,
+      { defaultWidth: Number.parseFloat(input.defaultWidth) * 16, minimumWidth: input.minWidth },
     );
   } catch (error) {
     console.error("Could not read persisted thread sidebar width.", error);
-    return resolveInitialThreadSidebarWidth(null, window.innerWidth);
+    return resolveInitialThreadSidebarWidth(null, window.innerWidth, {
+      defaultWidth: Number.parseFloat(input.defaultWidth) * 16,
+      minimumWidth: input.minWidth,
+    });
   }
 }
 
@@ -114,17 +111,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
-    readInitialThreadSidebarWidth(
-      enableNativeMacSidebar
-        ? {
-            storageKey: sidebarPresentation.storageKey,
-            defaultWidth: sidebarPresentation.defaultWidth,
-            minWidth: sidebarPresentation.minWidth,
-          }
-        : undefined,
-    ),
+    readInitialThreadSidebarWidth(sidebarPresentation),
   );
-  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(window.innerWidth);
+  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(
+    window.innerWidth,
+    sidebarPresentation.minWidth,
+  );
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
     return isMacosDesktop && typeof getWindowFullscreenState === "function"
@@ -183,15 +175,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         className={sidebarPresentation.className}
         resizable={{
           maxWidth: sidebarMaximumWidth,
-          minWidth: enableNativeMacSidebar
-            ? sidebarPresentation.minWidth
-            : THREAD_SIDEBAR_MIN_WIDTH,
+          minWidth: sidebarPresentation.minWidth,
           shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
             nextWidth <= currentWidth ||
             wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: enableNativeMacSidebar
-            ? sidebarPresentation.storageKey
-            : THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+          storageKey: sidebarPresentation.storageKey,
           onResize: setSidebarWidth,
         }}
       >

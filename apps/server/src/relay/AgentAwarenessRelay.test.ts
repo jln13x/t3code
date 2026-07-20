@@ -244,6 +244,46 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
     ).toHaveLength(160);
   });
 
+  it("resolves standalone chats without requiring a project snapshot", () => {
+    const environmentId = "env-1" as EnvironmentId;
+    const threadId = "chat-1" as ThreadId;
+    const thread = {
+      id: threadId,
+      projectId: null,
+      title: "Standalone chat",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      session: null,
+      latestTurn: {
+        turnId: "turn-chat" as TurnId,
+        state: "completed",
+        requestedAt: "2026-05-25T00:00:00.000Z",
+        startedAt: "2026-05-25T00:00:00.000Z",
+        completedAt: "2026-05-25T00:01:00.000Z",
+        assistantMessageId: null,
+      },
+      updatedAt: "2026-05-25T00:01:00.000Z",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+    } as OrchestrationThreadShell;
+
+    expect(
+      AgentAwarenessRelay.resolveAgentAwarenessRelayPublishSnapshot({
+        environmentId,
+        threadId,
+        thread: Option.some(thread),
+        project: Option.none(),
+      }),
+    ).toMatchObject({
+      projectId: null,
+      reason: "snapshot",
+      state: {
+        projectTitle: "Chats",
+        threadTitle: "Standalone chat",
+        phase: "completed",
+      },
+    });
+  });
+
   it("resolves a null publish state when a thread or project snapshot disappeared", () => {
     const environmentId = "env-1" as EnvironmentId;
     const threadId = "thread-1" as ThreadId;
@@ -291,6 +331,7 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
     const environmentId = "env-1" as EnvironmentId;
     const projectId = "project-1" as ProjectId;
     const activeThreadId = "thread-active" as ThreadId;
+    const activeChatId = "chat-active" as ThreadId;
     const idleThreadId = "thread-idle" as ThreadId;
 
     const baseThread = {
@@ -340,6 +381,19 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
           },
           {
             ...baseThread,
+            id: activeChatId,
+            projectId: null,
+            latestTurn: {
+              turnId: "turn-chat" as TurnId,
+              state: "running",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: null,
+              assistantMessageId: null,
+            },
+          },
+          {
+            ...baseThread,
             id: "thread-missing-project" as ThreadId,
             projectId: "missing-project" as ProjectId,
             latestTurn: {
@@ -353,7 +407,7 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
           },
         ],
       }),
-    ).toEqual([activeThreadId]);
+    ).toEqual([activeThreadId, activeChatId]);
   });
 
   it("signs the activity publish JWT and rejects tampering", async () => {

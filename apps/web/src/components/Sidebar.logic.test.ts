@@ -28,6 +28,7 @@ import {
   orderItemsByPreferredIds,
   orderSidebarThreadsByWorktree,
   resolveSidebarWorktreeThreadGroups,
+  resolveSidebarWorktreeNewThreadOptions,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
@@ -245,6 +246,35 @@ describe("groupSidebarThreadsByWorktree", () => {
         ],
       ),
     ).toEqual([]);
+  });
+});
+
+describe("resolveSidebarWorktreeNewThreadOptions", () => {
+  it("opens an exact existing worktree when navigation is enabled", () => {
+    expect(
+      resolveSidebarWorktreeNewThreadOptions({
+        enableSidebarWorktreeNavigation: true,
+        branch: "feature/exact-checkout",
+        worktreePath: "/repo/.t3/worktrees/exact-checkout",
+        isMainCheckout: false,
+      }),
+    ).toEqual({
+      branch: "feature/exact-checkout",
+      worktreePath: "/repo/.t3/worktrees/exact-checkout",
+      envMode: "worktree",
+      startFromOrigin: false,
+    });
+  });
+
+  it("preserves upstream non-actionable worktree labels when navigation is disabled", () => {
+    expect(
+      resolveSidebarWorktreeNewThreadOptions({
+        enableSidebarWorktreeNavigation: false,
+        branch: "feature/exact-checkout",
+        worktreePath: "/repo/.t3/worktrees/exact-checkout",
+        isMainCheckout: false,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -1009,6 +1039,7 @@ describe("resolveThreadRowClassName", () => {
     expect(className).toContain("bg-primary/15");
     expect(className).toContain("hover:bg-primary/19");
     expect(className).toContain("dark:bg-primary/22");
+    expect(className).toContain("font-medium");
     expect(className).not.toContain("hover:bg-accent");
   });
 
@@ -1039,6 +1070,7 @@ describe("resolveThreadRowClassName", () => {
       hasUnseenCompletion: true,
     });
     expect(className).toContain("text-foreground");
+    expect(className).toContain("font-medium");
     expect(className).not.toContain("text-muted-foreground/55");
   });
 
@@ -1588,5 +1620,22 @@ describe("sortScopedProjectsForSidebar", () => {
       "Visible project",
       "Archived-only project",
     ]);
+  });
+
+  it("does not use standalone threads as project activity", () => {
+    const projects = [
+      makeProject({ id: ProjectId.make("project-one"), title: "One" }),
+      makeProject({ id: ProjectId.make("project-two"), title: "Two" }),
+    ];
+    const threads = [
+      makeThread({
+        projectId: null,
+        updatedAt: "2026-03-09T10:10:00.000Z",
+      }),
+    ];
+
+    const sorted = sortScopedProjectsForSidebar(projects, threads, "updated_at");
+
+    expect(sorted.map((project) => project.title)).toEqual(["One", "Two"]);
   });
 });

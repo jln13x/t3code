@@ -105,7 +105,7 @@ import { EnvironmentId } from "./baseSchemas.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { EditorId } from "./editor.ts";
-import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import { ExecutionEnvironmentDescriptor, ScopedThreadRef } from "./environment.ts";
 import type { ClientSettings, ServerSettings, ServerSettingsPatch } from "./settings.ts";
 import type {
   SourceControlCloneRepositoryInput,
@@ -960,6 +960,13 @@ export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
   input: PreviewAutomationWaitForInput,
 });
 
+export const DesktopThreadCompletionNotificationInput = Schema.Struct({
+  threadRef: ScopedThreadRef,
+  threadTitle: Schema.String,
+});
+export type DesktopThreadCompletionNotificationInput =
+  typeof DesktopThreadCompletionNotificationInput.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   // One bootstrap per pool instance currently registered with bootstrap
@@ -1010,6 +1017,12 @@ export interface DesktopBridge {
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
+  showThreadCompletionNotification: (
+    input: DesktopThreadCompletionNotificationInput,
+  ) => Promise<boolean>;
+  onThreadCompletionNotificationClick: (
+    listener: (threadRef: typeof ScopedThreadRef.Type) => void,
+  ) => () => void;
   getWindowFullscreenState: () => boolean;
   onWindowFullscreenStateChange: (listener: (fullscreen: boolean) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;

@@ -331,7 +331,7 @@ export default function DiffPanel({
     selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          ...(diffPreviewCacheKey ? { cacheKey: diffPreviewCacheKey } : {}),
+          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
@@ -349,7 +349,7 @@ export default function DiffPanel({
     shouldRetryBranchDiffAtEnvironmentCwd && activeThread && serverConfig
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          ...(diffPreviewCacheKey ? { cacheKey: diffPreviewCacheKey } : {}),
+          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: serverConfig.cwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),

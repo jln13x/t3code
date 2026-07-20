@@ -114,6 +114,7 @@ type PersonalFeatureFlagName = Extract<
   keyof UnifiedSettings,
   | "enableStandaloneChats"
   | "enableNativeMacSidebar"
+  | "enableMacosCompletionNotifications"
   | "enableSidebarWorktreeNavigation"
   | "enableCheckoutAwareThreadCreation"
   | "enableCompletionSounds"
@@ -139,6 +140,11 @@ const PERSONAL_FEATURE_SETTINGS = [
     key: "enableNativeMacSidebar",
     title: "Native macOS sidebar",
     description: "Use the wider, spacious macOS-inspired sidebar presentation.",
+  },
+  {
+    key: "enableMacosCompletionNotifications",
+    title: "macOS completion notifications",
+    description: "Show a native macOS notification when a thread finishes.",
   },
   {
     key: "enableSidebarWorktreeNavigation",
@@ -530,6 +536,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.wordWrap,
       settings.enableStandaloneChats,
       settings.enableNativeMacSidebar,
+      settings.enableMacosCompletionNotifications,
       settings.enableSidebarWorktreeNavigation,
       settings.enableCheckoutAwareThreadCreation,
       settings.enableForkPullRequests,
@@ -570,6 +577,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
       enableStandaloneChats: DEFAULT_UNIFIED_SETTINGS.enableStandaloneChats,
       enableNativeMacSidebar: DEFAULT_UNIFIED_SETTINGS.enableNativeMacSidebar,
+      enableMacosCompletionNotifications:
+        DEFAULT_UNIFIED_SETTINGS.enableMacosCompletionNotifications,
       enableSidebarWorktreeNavigation: DEFAULT_UNIFIED_SETTINGS.enableSidebarWorktreeNavigation,
       enableCheckoutAwareThreadCreation: DEFAULT_UNIFIED_SETTINGS.enableCheckoutAwareThreadCreation,
       enableForkPullRequests: DEFAULT_UNIFIED_SETTINGS.enableForkPullRequests,

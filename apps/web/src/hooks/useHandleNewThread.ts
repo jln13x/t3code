@@ -236,7 +236,7 @@ export function useHandleNewThread() {
     : null;
   const newThreadProjectRef = activeThread?.projectId
     ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
-    : activeDraftThread
+    : activeDraftThread?.projectId
       ? scopeProjectRef(activeDraftThread.environmentId, activeDraftThread.projectId)
       : defaultProjectRef;
   const newThreadProject = newThreadProjectRef

@@ -1,0 +1,53 @@
+diff --git a/dist/audio/engine.d.ts b/dist/audio/engine.d.ts
+index 45bb5bf86..b9fa248a8 100644
+--- a/dist/audio/engine.d.ts
++++ b/dist/audio/engine.d.ts
+@@ -13,4 +13,4 @@ export declare function setEnabled(value: boolean): void;
+  * started it suspended (e.g. before any user gesture), and is a no-op
+  * when Web Audio is unavailable (SSR, old browsers).
+  */
+-export declare function play(sound?: SoundName): void;
++export declare function play(sound?: SoundName, volume?: number): void;
+diff --git a/dist/audio/engine.js b/dist/audio/engine.js
+index c309916a1..c963d96e3 100644
+--- a/dist/audio/engine.js
++++ b/dist/audio/engine.js
+@@ -77,10 +77,10 @@ function shimmerTail(shimmer) {
+         return shimmer.delay;
+     return shimmer.delay * (1 + Math.ceil(Math.log(INAUDIBLE_GAIN) / Math.log(shimmer.feedback)));
+ }
+-function renderRecipe(context, recipe) {
++function renderRecipe(context, recipe, volume) {
+     const now = context.currentTime;
+     const master = context.createGain();
+-    master.gain.value = recipe.masterGain;
++    master.gain.value = recipe.masterGain * volume;
+     master.connect(context.destination);
+     const shimmerNodes = recipe.shimmer ? attachShimmer(context, master, context.destination, recipe.shimmer) : [];
+     for (const layer of recipe.layers) {
+@@ -126,21 +126,22 @@ function getAudioContext() {
+  * started it suspended (e.g. before any user gesture), and is a no-op
+  * when Web Audio is unavailable (SSR, old browsers).
+  */
+-export function play(sound = "chime") {
++export function play(sound = "chime", volume = 1) {
+     if (!enabled || !isSoundName(sound))
+         return;
+     const context = getAudioContext();
+     if (!context)
+         return;
+     const recipe = RECIPES[sound];
++    const safeVolume = typeof volume === "number" && Number.isFinite(volume) ? Math.max(0, volume) : 1;
+     if (context.state === "running") {
+-        renderRecipe(context, recipe);
++        renderRecipe(context, recipe, safeVolume);
+     }
+     else {
+         try {
+             void context.resume().then(() => {
+                 if (enabled && context.state === "running")
+-                    renderRecipe(context, recipe);
++                    renderRecipe(context, recipe, safeVolume);
+             }, () => { });
+         }
+         catch {

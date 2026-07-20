@@ -238,7 +238,6 @@ function buildAssistantTimelineEntry(text: string) {
 describe("MessagesTimeline", () => {
   it("preserves enhanced fenced code block rendering", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
-
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}

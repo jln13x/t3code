@@ -4,7 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   captureThreadSoundState,
   captureThreadSoundStateWhileSettingsHydrating,
+  COMPLETION_SOUND_VOLUME,
   deriveInteractionSoundCues,
+  deriveThreadFeedbackEvents,
+  shouldPostThreadCompletionNotification,
 } from "./interactionSounds";
 
 function makeThread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
@@ -54,6 +57,52 @@ describe("interaction sounds", () => {
     expect(deriveInteractionSoundCues(captureThreadSoundState([running]), [completed])).toEqual([
       "success",
     ]);
+    expect(deriveThreadFeedbackEvents(captureThreadSoundState([running]), [completed])).toEqual([
+      { cue: "success", thread: completed },
+    ]);
+  });
+
+  it("plays completion feedback for standalone chats", () => {
+    const running = makeThread({
+      projectId: null,
+      title: "Standalone chat",
+      latestTurn: {
+        turnId: TurnId.make("turn-chat"),
+        state: "running",
+        requestedAt: "2026-07-11T12:00:00.000Z",
+        startedAt: "2026-07-11T12:00:01.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const completed = makeThread({
+      ...running,
+      latestTurn: {
+        ...running.latestTurn!,
+        state: "completed",
+        completedAt: "2026-07-11T12:00:05.000Z",
+      },
+    });
+
+    expect(deriveThreadFeedbackEvents(captureThreadSoundState([running]), [completed])).toEqual([
+      { cue: "success", thread: completed },
+    ]);
+  });
+
+  it("plays the completion cue at 110% of its original gain", () => {
+    expect(COMPLETION_SOUND_VOLUME).toBe(1.1);
+  });
+
+  it("posts completion notifications only when the flag and desktop bridge are available", () => {
+    expect(
+      shouldPostThreadCompletionNotification({ enabled: true, desktopBridgeAvailable: true }),
+    ).toBe(true);
+    expect(
+      shouldPostThreadCompletionNotification({ enabled: false, desktopBridgeAvailable: true }),
+    ).toBe(false);
+    expect(
+      shouldPostThreadCompletionNotification({ enabled: true, desktopBridgeAvailable: false }),
+    ).toBe(false);
   });
 
   it("plays bloom when a thread starts requesting user input", () => {

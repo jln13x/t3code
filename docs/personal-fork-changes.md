@@ -2,29 +2,28 @@
 
 Turning a flag off preserves upstream behavior.
 
-| Feature                            | Flag                                | Default |
-| ---------------------------------- | ----------------------------------- | ------- |
-| Projectless standalone chats       | `enableStandaloneChats`             | On      |
-| Native macOS sidebar               | `enableNativeMacSidebar`            | On      |
-| Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`   | On      |
-| Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation` | On      |
-| Completion and attention sounds    | `enableCompletionSounds`            | On      |
-| Fork-aware pull requests           | `enableForkPullRequests`            | On      |
-| Project provider skill discovery   | `enableProviderSkillDiscovery`      | On      |
-| Markdown and text file attachments | `enableTextFileAttachments`         | On      |
-| Inline generated-image rendering   | `enableGeneratedImageRendering`     | On      |
-| Project file and content search    | `enableProjectSearch`               | On      |
+| Feature                            | Flag                                 | Default |
+| ---------------------------------- | ------------------------------------ | ------- |
+| Projectless standalone chats       | `enableStandaloneChats`              | On      |
+| Native macOS sidebar               | `enableNativeMacSidebar`             | On      |
+| macOS completion notifications     | `enableMacosCompletionNotifications` | On      |
+| Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`    | On      |
+| Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation`  | On      |
+| Completion and attention sounds    | `enableCompletionSounds`             | On      |
+| Fork-aware pull requests           | `enableForkPullRequests`             | On      |
+| Project provider skill discovery   | `enableProviderSkillDiscovery`       | On      |
+| Markdown and text file attachments | `enableTextFileAttachments`          | On      |
+| Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
+| Project file and content search    | `enableProjectSearch`                | On      |
 
-Upstream syncs and selectively integrated pull requests are tracked in
+Upstream PRs integrated into the fork are listed in
 [Upstream Integrations](./upstream-integrations.md).
 
 ## Retired customizations
 
-- `enablePersonalDiffWorkflow` was retired on 2026-07-20. Upstream now defaults diffs to working
-  changes and refreshes reopened diff tabs via
-  [#3974](https://github.com/pingdotgg/t3code/pull/3974) and
-  [#3973](https://github.com/pingdotgg/t3code/pull/3973). The fork retains its worktree-aware diff
-  root and generation-based preview invalidation as unconditional behavior.
+- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired during the July 2026
+  upstream sync after upstream adopted working-tree-first diff selection and active-worktree
+  scoping. The redundant feature flag and settings control were removed.
 
 ## Desktop fork identity
 
@@ -46,10 +45,20 @@ Upstream syncs and selectively integrated pull requests are tracked in
 - With sidebar worktree navigation enabled, right-clicking a worktree label opens an actions menu
   for starting a chat in that checkout or renaming its branch.
 
+## Projectless standalone chats
+
+- Creating a standalone chat opens a local draft immediately, matching project-thread creation;
+  the server thread is materialized atomically with the first message instead of blocking
+  navigation on an empty-thread request.
+- Standalone chats participate in the same desktop completion sounds and macOS notifications as
+  project threads. When agent-activity publishing is enabled, they also publish completion and
+  attention states to connected mobile clients under the generic `Chats` activity group.
+
 ## Native macOS sidebar
 
-- Inactive thread titles are subdued so the focused thread and newly completed threads retain the
-  strongest visual emphasis. Hovering an inactive thread keeps that hierarchy intact.
+- Inactive thread titles are regular weight and subdued. The focused thread, multi-selected
+  threads, and newly completed threads use a medium, bold-ish weight and full emphasis. Hovering an
+  inactive thread keeps that hierarchy intact.
 - Project titles use regular weight and remain subdued until one of their threads has an unseen
   completion. Worktree labels remain quieter than inactive thread titles so conversation names
   carry more visual weight.
@@ -70,3 +79,12 @@ Upstream syncs and selectively integrated pull requests are tracked in
   registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
   keeps the explicit worktree-archive action in its context menu, which deletes the checkout and its
   Git registration.
+
+## macOS completion notifications and sounds
+
+- With macOS completion notifications enabled, the Electron host posts a native, silent macOS
+  notification whenever a project thread or standalone chat transitions to completed. Clicking it
+  reveals the app and opens the exact environment-scoped conversation. Web and non-macOS runtimes
+  retain upstream behavior.
+- The synthesized completion cue plays at 110% of its original gain; attention cues retain their
+  original gain. Disabling completion sounds preserves the upstream silent behavior.

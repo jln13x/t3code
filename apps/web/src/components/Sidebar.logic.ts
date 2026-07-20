@@ -19,6 +19,29 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 10;
 export type SidebarNewThreadEnvMode = "local" | "worktree";
 
+export interface SidebarWorktreeNewThreadOptions {
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly envMode: SidebarNewThreadEnvMode;
+  readonly startFromOrigin: false;
+}
+
+export function resolveSidebarWorktreeNewThreadOptions(input: {
+  readonly enableSidebarWorktreeNavigation: boolean;
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly isMainCheckout: boolean;
+}): SidebarWorktreeNewThreadOptions | null {
+  if (!input.enableSidebarWorktreeNavigation) return null;
+
+  return {
+    branch: input.branch,
+    worktreePath: input.worktreePath,
+    envMode: input.isMainCheckout ? "local" : "worktree",
+    startFromOrigin: false,
+  };
+}
+
 export interface SidebarWorktreeThreadGroup<TThread> {
   readonly key: string;
   readonly label: string;
@@ -539,7 +562,7 @@ export function resolveThreadRowClassName(input: {
   if (input.isSelected) {
     return cn(
       baseClassName,
-      "bg-primary/15 text-muted-foreground/55 hover:bg-primary/19 hover:text-muted-foreground/70 dark:bg-primary/22 dark:hover:bg-primary/28",
+      "bg-primary/15 text-muted-foreground/55 font-medium hover:bg-primary/19 hover:text-muted-foreground/70 dark:bg-primary/22 dark:hover:bg-primary/28",
     );
   }
 
@@ -551,7 +574,7 @@ export function resolveThreadRowClassName(input: {
   }
 
   if (input.hasUnseenCompletion) {
-    return cn(baseClassName, "text-foreground hover:bg-accent hover:text-foreground");
+    return cn(baseClassName, "text-foreground font-medium hover:bg-accent hover:text-foreground");
   }
 
   return cn(
