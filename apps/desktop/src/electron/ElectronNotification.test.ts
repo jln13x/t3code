@@ -34,6 +34,9 @@ vi.mock("electron", () => ({
 
 import * as ElectronNotification from "./ElectronNotification.ts";
 
+const notificationLayer = (platform: "darwin" | "linux") =>
+  ElectronNotification.layer.pipe(Layer.provide(Layer.succeed(HostProcessPlatform, platform)));
+
 describe("ElectronNotification", () => {
   it.effect("shows a silent native notification on macOS and handles its click", () => {
     const onClick = vi.fn();
@@ -54,10 +57,7 @@ describe("ElectronNotification", () => {
 
       instance.listeners.get("click")?.();
       assert.equal(onClick.mock.calls.length, 1);
-    }).pipe(
-      Effect.provide(ElectronNotification.layer),
-      Effect.provide(Layer.succeed(HostProcessPlatform, "darwin")),
-    );
+    }).pipe(Effect.provide(notificationLayer("darwin")));
   });
 
   it.effect("does nothing outside macOS", () => {
@@ -68,9 +68,6 @@ describe("ElectronNotification", () => {
         yield* notifications.show({ title: "Thread finished", body: "Refactor", onClick: vi.fn() }),
       );
       assert.equal(notificationInstances.length, 0);
-    }).pipe(
-      Effect.provide(ElectronNotification.layer),
-      Effect.provide(Layer.succeed(HostProcessPlatform, "linux")),
-    );
+    }).pipe(Effect.provide(notificationLayer("linux")));
   });
 });

@@ -15,7 +15,12 @@ Turning a flag off preserves upstream behavior.
 | Markdown and text file attachments | `enableTextFileAttachments`          | On      |
 | Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
 | Project file and content search    | `enableProjectSearch`                | On      |
-| Working-change diff workflow       | `enablePersonalDiffWorkflow`         | On      |
+
+## Retired customizations
+
+- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired during the July 2026
+  upstream sync after upstream adopted working-tree-first diff selection and active-worktree
+  scoping. The redundant feature flag and settings control were removed.
 
 ## Desktop fork identity
 

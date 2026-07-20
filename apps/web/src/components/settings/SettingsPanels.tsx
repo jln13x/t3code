@@ -58,7 +58,7 @@ import {
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
-import { formatRelativeTime, formatRelativeTimeLabel } from "../../timestampFormat";
+import { formatRelativeTimeLabel, getRelativeTimeState } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -123,7 +123,6 @@ type PersonalFeatureFlagName = Extract<
   | "enableTextFileAttachments"
   | "enableGeneratedImageRendering"
   | "enableProjectSearch"
-  | "enablePersonalDiffWorkflow"
 >;
 
 const PERSONAL_FEATURE_SETTINGS = [
@@ -182,11 +181,6 @@ const PERSONAL_FEATURE_SETTINGS = [
     title: "Project search",
     description: "Enable the project file picker and global content search.",
   },
-  {
-    key: "enablePersonalDiffWorkflow",
-    title: "Working-change diff workflow",
-    description: "Prefer working changes and keep diffs scoped to the active worktree.",
-  },
 ] as const satisfies ReadonlyArray<{
   readonly key: PersonalFeatureFlagName;
   readonly title: string;
@@ -224,10 +218,14 @@ const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
 
 function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }) {
   useRelativeTimeTick();
-  const lastCheckedRelative = lastCheckedAt ? formatRelativeTime(lastCheckedAt) : null;
+  const lastCheckedRelative = getRelativeTimeState(lastCheckedAt);
 
-  if (!lastCheckedRelative) {
+  if (lastCheckedRelative.status === "missing") {
     return null;
+  }
+
+  if (lastCheckedRelative.status === "invalid") {
+    return <span className="text-[11px] text-muted-foreground/50">Checked unavailable</span>;
   }
 
   return (
@@ -491,6 +489,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
+      ...(settings.enableProviderUpdateChecks !==
+      DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
+        ? ["Provider update checks"]
+        : []),
       ...(Duration.toMillis(settings.automaticGitFetchInterval) !==
       Duration.toMillis(DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval)
         ? ["Automatic Git fetch interval"]
@@ -528,6 +530,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableCompletionSounds,
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
+      settings.enableProviderUpdateChecks,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
       settings.wordWrap,
@@ -541,7 +544,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableTextFileAttachments,
       settings.enableGeneratedImageRendering,
       settings.enableProjectSearch,
-      settings.enablePersonalDiffWorkflow,
       theme,
     ],
   );
@@ -565,6 +567,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
+      enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
@@ -583,7 +586,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       enableTextFileAttachments: DEFAULT_UNIFIED_SETTINGS.enableTextFileAttachments,
       enableGeneratedImageRendering: DEFAULT_UNIFIED_SETTINGS.enableGeneratedImageRendering,
       enableProjectSearch: DEFAULT_UNIFIED_SETTINGS.enableProjectSearch,
-      enablePersonalDiffWorkflow: DEFAULT_UNIFIED_SETTINGS.enablePersonalDiffWorkflow,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);
