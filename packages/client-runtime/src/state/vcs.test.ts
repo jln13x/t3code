@@ -155,13 +155,13 @@ describe("cached VCS refs", () => {
         }
         expect(yield* Ref.get(calls)).toBe(1);
 
-        yield* TestClock.adjust("5 seconds");
+        yield* TestClock.adjust("20 seconds");
         expect(Option.getOrThrow(yield* Fiber.join(fiber))).toEqual(LIVE_REFS);
       }).pipe(Effect.provide(TestClock.layer())),
     ),
   );
 
-  it.effect("revalidates connected refs every five seconds", () =>
+  it.effect("revalidates connected first-page refs every twenty seconds", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const calls = yield* Ref.make(0);
@@ -193,9 +193,40 @@ describe("cached VCS refs", () => {
         }
         expect(yield* Ref.get(calls)).toBe(1);
 
-        yield* TestClock.adjust("5 seconds");
+        yield* TestClock.adjust("20 seconds");
         expect(Array.from(yield* Fiber.join(fiber))).toEqual([CACHED_REFS, LIVE_REFS]);
       }).pipe(Effect.provide(TestClock.layer())),
+    ),
+  );
+
+  it.effect("loads cursor pages once per connected generation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const calls = yield* Ref.make(0);
+        const client = {
+          [WS_METHODS.vcsListRefs]: () =>
+            Ref.update(calls, (count) => count + 1).pipe(Effect.as(LIVE_REFS)),
+        } as unknown as WsRpcProtocolClient;
+        const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+          target: TARGET,
+          state: yield* SubscriptionRef.make(CONNECTED_CONNECTION_STATE),
+          session: yield* SubscriptionRef.make(Option.some(session(client))),
+          prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
+          connect: Effect.void,
+          disconnect: Effect.void,
+          retryNow: Effect.void,
+        } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+
+        const refs = yield* Stream.unwrap(
+          makeCachedVcsRefsChanges({ cwd: "/repo", cursor: 100, limit: 100 }).pipe(
+            Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+            Effect.provideService(Persistence.EnvironmentCacheStore, cacheWithRefs(Option.none())),
+          ),
+        ).pipe(Stream.runHead);
+
+        expect(Option.getOrThrow(refs)).toEqual(LIVE_REFS);
+        expect(yield* Ref.get(calls)).toBe(1);
+      }),
     ),
   );
 

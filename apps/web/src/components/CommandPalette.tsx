@@ -106,6 +106,7 @@ import {
   filterBrowseEntries,
   filterCommandPaletteGroups,
   getCommandPaletteInputPlaceholder,
+  getDefaultCloneRemoteUrl,
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
@@ -1298,7 +1299,7 @@ function OpenCommandPaletteDialog(props: {
         source: addProjectCloneFlow.source,
         repositoryInput: rawRepository,
         repository,
-        remoteUrl: repository.sshUrl,
+        remoteUrl: getDefaultCloneRemoteUrl(repository),
       });
       setHighlightedItemValue(null);
       setQuery(destinationPath);

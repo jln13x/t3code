@@ -7,6 +7,7 @@ import {
   type ErrorComponentProps,
   useLocation,
   useNavigate,
+  useRouter,
 } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { play } from "cuelume";
@@ -273,6 +274,32 @@ function HostedStaticEnvironmentBootstrap() {
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
   const message = errorMessage(error);
   const details = errorDetails(error);
+  const router = useRouter();
+  const retryingRef = useRef(false);
+
+  // A failed root beforeLoad probe leaves this boundary mounted even after the
+  // backend recovers. Retry only on recovery signals while this view is active.
+  useEffect(() => {
+    const retry = () => {
+      if (retryingRef.current) return;
+      retryingRef.current = true;
+      void router.invalidate().finally(() => {
+        retryingRef.current = false;
+      });
+    };
+    const retryIfVisible = () => {
+      if (document.visibilityState === "visible") retry();
+    };
+
+    document.addEventListener("visibilitychange", retryIfVisible);
+    window.addEventListener("focus", retry);
+    window.addEventListener("online", retry);
+    return () => {
+      document.removeEventListener("visibilitychange", retryIfVisible);
+      window.removeEventListener("focus", retry);
+      window.removeEventListener("online", retry);
+    };
+  }, [router]);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">

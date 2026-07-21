@@ -4,12 +4,21 @@ import type { Thread } from "../types";
 import {
   buildThreadActionItems,
   filterCommandPaletteGroups,
+  getDefaultCloneRemoteUrl,
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
 const LOCAL_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const PROJECT_ID = ProjectId.make("project-1");
+
+it("uses HTTPS for automatic repository clones", () => {
+  expect(
+    getDefaultCloneRemoteUrl({
+      url: "https://github.com/octocat/t3code",
+    }),
+  ).toBe("https://github.com/octocat/t3code");
+});
 
 describe("reduceCommandPaletteUiState", () => {
   const closedState = { open: false, mode: "command", openIntent: null } as const;
