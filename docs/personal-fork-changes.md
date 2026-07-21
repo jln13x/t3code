@@ -8,6 +8,7 @@ Turning a flag off preserves upstream behavior.
 | Native macOS sidebar               | `enableNativeMacSidebar`             | On      |
 | macOS completion notifications     | `enableMacosCompletionNotifications` | On      |
 | Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`    | On      |
+| Worktree source control            | `enableWorktreeSourceControl`        | On      |
 | Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation`  | On      |
 | Completion and attention sounds    | `enableCompletionSounds`             | On      |
 | Fork-aware pull requests           | `enableForkPullRequests`             | On      |
@@ -44,6 +45,19 @@ Upstream PRs integrated into the fork are listed in
   outside a chat it continues to use the configured project defaults.
 - With sidebar worktree navigation enabled, right-clicking a worktree label opens an actions menu
   for starting a chat in that checkout or renaming its branch.
+
+## Worktree source control
+
+- With worktree source control enabled, selecting a sidebar worktree opens a checkout-scoped
+  source control surface instead of creating a chat. The surface separates staged and unstaged
+  files, renders the selected diff, and exposes file-level stage, unstage, and confirmed discard
+  actions. Selecting diff lines adds comments to an isolated review draft, so opening the viewer
+  does not retarget an existing chat. Pending comments remain visible in a review tray and merge
+  into the project's reusable draft only after Continue in chat, preserving the selected checkout's
+  branch and worktree path. New chats remain available from the worktree row action and context
+  menu.
+- Disabling the flag restores the previous worktree-label behavior, where selecting the label
+  immediately creates a chat in that checkout.
 
 ## Projectless standalone chats
 

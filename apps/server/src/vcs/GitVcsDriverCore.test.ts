@@ -133,7 +133,10 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
     yield* driver.listRefs({ cwd });
 
     assert.deepStrictEqual(commands, [
-      { args: ["status", "--porcelain=2", "--branch"], lcAll: "C" },
+      {
+        args: ["status", "--porcelain=2", "--branch", "--untracked-files=all"],
+        lcAll: "C",
+      },
       { args: ["rev-parse", "--abbrev-ref", "HEAD"], lcAll: "C" },
       { args: ["branch", "--no-color", "--no-column"], lcAll: "C" },
     ]);
@@ -386,6 +389,30 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("separates staged and unstaged review patches", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "# staged\n");
+        yield* driver.stagePaths({ cwd, paths: ["README.md"] });
+        yield* writeTextFile(cwd, "README.md", "# unstaged\n");
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          ignoreWhitespace: false,
+          includeIndexSections: true,
+        });
+        const staged = preview.sources.find((source) => source.kind === "staged")?.diff ?? "";
+        const unstaged = preview.sources.find((source) => source.kind === "unstaged")?.diff ?? "";
+
+        assert.include(staged, "+# staged");
+        assert.notInclude(staged, "+# unstaged");
+        assert.include(unstaged, "-# staged");
+        assert.include(unstaged, "+# unstaged");
+      }),
+    );
+
     it.effect("honors whitespace filtering for worktree and branch previews", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -586,6 +613,71 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           status.workingTree.files.map((file) => file.path),
           "feature.ts",
         );
+        assert.deepInclude(
+          status.workingTree.files.find((file) => file.path === "feature.ts") ?? {},
+          { indexStatus: ".", worktreeStatus: "?" },
+        );
+      }),
+    );
+
+    it.effect("reports a staged rename once under its destination path", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        yield* writeTextFile(cwd, "old/name.ts", "export const value = 1;\n");
+        yield* git(cwd, ["add", "old/name.ts"]);
+        yield* git(cwd, ["commit", "-m", "add nested source"]);
+        yield* fileSystem.makeDirectory(pathService.join(cwd, "new"));
+        yield* git(cwd, ["mv", "old/name.ts", "new/name.ts"]);
+
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.deepStrictEqual(
+          status.workingTree.files.map((file) => file.path),
+          ["new/name.ts"],
+        );
+        assert.deepInclude(status.workingTree.files[0] ?? {}, {
+          indexStatus: "R",
+          worktreeStatus: ".",
+        });
+      }),
+    );
+
+    it.effect("stages, unstages, and discards explicit worktree paths", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+        yield* driver.stagePaths({ cwd, paths: ["README.md"] });
+        const staged = yield* driver.statusDetailsLocal(cwd);
+        assert.deepInclude(
+          staged.workingTree.files.find((file) => file.path === "README.md") ?? {},
+          { indexStatus: "M", worktreeStatus: "." },
+        );
+
+        yield* driver.unstagePaths({ cwd, paths: ["README.md"] });
+        const unstaged = yield* driver.statusDetailsLocal(cwd);
+        assert.deepInclude(
+          unstaged.workingTree.files.find((file) => file.path === "README.md") ?? {},
+          { indexStatus: ".", worktreeStatus: "M" },
+        );
+
+        yield* driver.discardPaths({ cwd, paths: ["README.md"] });
+        assert.equal(
+          yield* fileSystem.readFileString(pathService.join(cwd, "README.md")),
+          "# test\n",
+        );
+
+        yield* writeTextFile(cwd, "scratch.txt", "temporary\n");
+        yield* driver.discardPaths({ cwd, paths: ["scratch.txt"] });
+        assert.equal(yield* fileSystem.exists(pathService.join(cwd, "scratch.txt")), false);
       }),
     );
 

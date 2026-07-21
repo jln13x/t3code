@@ -92,6 +92,7 @@ import {
 } from "../keybindings";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { startNewThreadInProjectFromContext } from "../lib/chatThreadActions";
+import { normalizeProjectPathForComparison } from "../lib/projectPaths";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, newDraftId, newThreadId } from "../lib/utils";
@@ -154,6 +155,7 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
   archiveSelectedThreadEntries,
+  buildSidebarWorktreeSourceControlSearch,
   buildMultiSelectThreadContextMenuItems,
   getSidebarThreadIdsToPrewarm,
   isContextMenuPointerDown,
@@ -164,6 +166,7 @@ import {
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorktreePrimaryAction,
   resolveSidebarWorktreeNewThreadOptions,
   resolveSidebarWorktreeThreadGroups,
   resolveThreadRowClassName,
@@ -928,6 +931,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
 interface SidebarProjectThreadListProps {
   enableNativeMacSidebar: boolean;
   enableSidebarWorktreeNavigation: boolean;
+  enableWorktreeSourceControl: boolean;
   projectKey: string;
   projectExpanded: boolean;
   hasOverflowingThreads: boolean;
@@ -984,6 +988,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const {
     enableNativeMacSidebar,
     enableSidebarWorktreeNavigation,
+    enableWorktreeSourceControl,
     projectKey,
     projectExpanded,
     hasOverflowingThreads,
@@ -1022,6 +1027,25 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     expandThreadListForProject,
     collapseThreadListForProject,
   } = props;
+  const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const activeWorktreeRoute = useParams({
+    strict: false,
+    select: (params) =>
+      params.environmentId && params.projectId
+        ? { environmentId: params.environmentId, projectId: params.projectId }
+        : null,
+  });
+  const activeWorktreeCwd = useLocation({
+    select: (location) => {
+      const search = location.search as Record<string, unknown>;
+      return typeof search.cwd === "string" ? search.cwd : null;
+    },
+  });
+  const worktreePrimaryAction = resolveSidebarWorktreePrimaryAction({
+    enableSidebarWorktreeNavigation,
+    enableWorktreeSourceControl,
+  });
   const showMoreButtonRender = useMemo(() => <button type="button" />, []);
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
   const renameBranch = useAtomCommand(vcsEnvironment.renameBranch, { reportFailure: false });
@@ -1180,6 +1204,23 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     },
     [enableSidebarWorktreeNavigation, handleNewThread, resolveWorktreeGroupContext],
   );
+  const openWorktreeSourceControl = useCallback(
+    (group: (typeof renderedThreadGroups)[number]) => {
+      const context = resolveWorktreeGroupContext(group);
+      if (!context) return;
+      clearSelection();
+      if (isMobile) setOpenMobile(false);
+      void navigate({
+        to: "/worktree/$environmentId/$projectId",
+        params: {
+          environmentId: context.environmentId,
+          projectId: context.projectId,
+        },
+        search: buildSidebarWorktreeSourceControlSearch(context),
+      });
+    },
+    [clearSelection, isMobile, navigate, resolveWorktreeGroupContext, setOpenMobile],
+  );
   const handleWorktreeGroupMenu = useCallback(
     (group: (typeof renderedThreadGroups)[number], position: { x: number; y: number }) => {
       const context = resolveWorktreeGroupContext(group);
@@ -1189,6 +1230,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       void (async () => {
         const clicked = await api.contextMenu.show(
           [
+            ...(enableWorktreeSourceControl
+              ? [{ id: "source-control", label: "Open Source Control" }]
+              : []),
             { id: "new-chat", label: "New chat here" },
             {
               id: "rename-branch",
@@ -1201,6 +1245,10 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
           ],
           position,
         );
+        if (clicked === "source-control") {
+          openWorktreeSourceControl(group);
+          return;
+        }
         if (clicked === "new-chat") {
           startThreadInWorktreeGroup(group);
           return;
@@ -1220,7 +1268,13 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         }
       })();
     },
-    [archiveWorktreeGroup, resolveWorktreeGroupContext, startThreadInWorktreeGroup],
+    [
+      archiveWorktreeGroup,
+      enableWorktreeSourceControl,
+      openWorktreeSourceControl,
+      resolveWorktreeGroupContext,
+      startThreadInWorktreeGroup,
+    ],
   );
   const submitBranchRename = useCallback(async () => {
     const target = branchRenameTarget;
@@ -1332,6 +1386,13 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 threadGroupingMode,
                 worktreeGroupCount: renderedThreadGroups.length,
               });
+              const isActiveWorktree =
+                activeWorktreeRoute?.environmentId === group.environmentId &&
+                activeWorktreeRoute.projectId === group.projectId &&
+                activeWorktreeCwd !== null &&
+                group.worktreePath !== null &&
+                normalizeProjectPathForComparison(activeWorktreeCwd) ===
+                  normalizeProjectPathForComparison(group.worktreePath);
               const labelContent = (
                 <>
                   {enableNativeMacSidebar ? (
@@ -1351,30 +1412,73 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               const worktreeLabelRow =
                 worktreeLabelMode !== "header" ? null : (
                   <SidebarMenuSubItem key={`${group.key}:label`} className="w-full">
-                    {enableSidebarWorktreeNavigation ? (
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`New chat in ${label}`}
-                        className={`native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
-                        onClick={() => {
-                          startThreadInWorktreeGroup(group);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          startThreadInWorktreeGroup(group);
-                        }}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          handleWorktreeGroupMenu(group, {
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
-                      >
-                        {labelContent}
-                      </div>
+                    {worktreePrimaryAction !== null ? (
+                      worktreePrimaryAction === "source_control" ? (
+                        <div
+                          className="group/worktree relative w-full"
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            handleWorktreeGroupMenu(group, {
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Open source control for ${label}`}
+                            className={cn(
+                              "native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 pr-7 text-left text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                              isActiveWorktree
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-muted-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                              group.threads.length === 0
+                                ? "native-sidebar-empty-worktree-label"
+                                : "",
+                            )}
+                            onClick={() => openWorktreeSourceControl(group)}
+                          >
+                            {labelContent}
+                          </button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label={`New chat in ${label}`}
+                                  className="absolute top-0 right-0 inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/55 opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring group-hover/worktree:opacity-100 group-focus-within/worktree:opacity-100"
+                                  onClick={() => startThreadInWorktreeGroup(group)}
+                                />
+                              }
+                            >
+                              <SquarePenIcon className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipPopup side="right">New Chat Here</TooltipPopup>
+                          </Tooltip>
+                        </div>
+                      ) : (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`New chat in ${label}`}
+                          className={`native-sidebar-worktree-label flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 pt-0.5 text-left text-xs font-medium text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${group.threads.length === 0 ? "native-sidebar-empty-worktree-label" : ""}`}
+                          onClick={() => startThreadInWorktreeGroup(group)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            startThreadInWorktreeGroup(group);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            handleWorktreeGroupMenu(group, {
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          {labelContent}
+                        </div>
+                      )
                     ) : (
                       <div className="native-sidebar-worktree-label flex h-5 w-full items-center gap-1.5 px-2 pt-0.5 text-[10px] font-medium text-muted-foreground/55">
                         {labelContent}
@@ -1860,6 +1964,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
   const enableSidebarWorktreeNavigation = usePrimarySettings(
     (settings) => settings.enableSidebarWorktreeNavigation,
+  );
+  const enableWorktreeSourceControl = usePrimarySettings(
+    (settings) => settings.enableWorktreeSourceControl,
   );
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const router = useRouter();
@@ -3097,6 +3204,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       <SidebarProjectThreadList
         enableNativeMacSidebar={enableNativeMacSidebar}
         enableSidebarWorktreeNavigation={enableSidebarWorktreeNavigation}
+        enableWorktreeSourceControl={enableWorktreeSourceControl}
         projectKey={project.projectKey}
         projectExpanded={projectExpanded}
         hasOverflowingThreads={hasOverflowingThreads}

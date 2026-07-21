@@ -389,6 +389,9 @@ export const ServerSettings = Schema.Struct({
   enableSidebarWorktreeNavigation: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  enableWorktreeSourceControl: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   enableCheckoutAwareThreadCreation: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
@@ -545,6 +548,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableNativeMacSidebar: Schema.optionalKey(Schema.Boolean),
   enableMacosCompletionNotifications: Schema.optionalKey(Schema.Boolean),
   enableSidebarWorktreeNavigation: Schema.optionalKey(Schema.Boolean),
+  enableWorktreeSourceControl: Schema.optionalKey(Schema.Boolean),
   enableCheckoutAwareThreadCreation: Schema.optionalKey(Schema.Boolean),
   enableForkPullRequests: Schema.optionalKey(Schema.Boolean),
   enableProviderSkillDiscovery: Schema.optionalKey(Schema.Boolean),

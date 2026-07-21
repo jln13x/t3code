@@ -331,6 +331,9 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.subscribeVcsStatus, AuthOrchestrationReadScope],
   [WS_METHODS.vcsRefreshStatus, AuthOrchestrationReadScope],
   [WS_METHODS.vcsPull, AuthOrchestrationOperateScope],
+  [WS_METHODS.vcsStagePaths, AuthOrchestrationOperateScope],
+  [WS_METHODS.vcsUnstagePaths, AuthOrchestrationOperateScope],
+  [WS_METHODS.vcsDiscardPaths, AuthOrchestrationOperateScope],
   [WS_METHODS.gitRunStackedAction, AuthOrchestrationOperateScope],
   [WS_METHODS.gitResolvePullRequest, AuthOrchestrationOperateScope],
   [WS_METHODS.gitPreparePullRequestThread, AuthOrchestrationOperateScope],
@@ -1895,6 +1898,24 @@ const makeWsRpcLayer = (
               }),
             ),
             { "rpc.aggregate": "git" },
+          ),
+        [WS_METHODS.vcsStagePaths]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsStagePaths,
+            gitWorkflow.stagePaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsUnstagePaths]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsUnstagePaths,
+            gitWorkflow.unstagePaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsDiscardPaths]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsDiscardPaths,
+            gitWorkflow.discardPaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.gitRunStackedAction]: (input) =>
           observeRpcStream(

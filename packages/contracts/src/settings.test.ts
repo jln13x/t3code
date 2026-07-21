@@ -49,6 +49,7 @@ describe("personal fork feature flags", () => {
     "enableNativeMacSidebar",
     "enableMacosCompletionNotifications",
     "enableSidebarWorktreeNavigation",
+    "enableWorktreeSourceControl",
     "enableCheckoutAwareThreadCreation",
     "enableForkPullRequests",
     "enableProviderSkillDiscovery",

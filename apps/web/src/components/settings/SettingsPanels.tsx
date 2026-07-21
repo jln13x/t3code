@@ -116,6 +116,7 @@ type PersonalFeatureFlagName = Extract<
   | "enableNativeMacSidebar"
   | "enableMacosCompletionNotifications"
   | "enableSidebarWorktreeNavigation"
+  | "enableWorktreeSourceControl"
   | "enableCheckoutAwareThreadCreation"
   | "enableCompletionSounds"
   | "enableForkPullRequests"
@@ -149,7 +150,12 @@ const PERSONAL_FEATURE_SETTINGS = [
   {
     key: "enableSidebarWorktreeNavigation",
     title: "Sidebar worktree navigation",
-    description: "Open a new chat directly from a sidebar worktree group.",
+    description: "Expose checkout-level actions from sidebar worktree groups.",
+  },
+  {
+    key: "enableWorktreeSourceControl",
+    title: "Worktree source control",
+    description: "Open a staged and unstaged change viewer when selecting a worktree.",
   },
   {
     key: "enableCheckoutAwareThreadCreation",
@@ -538,6 +544,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableNativeMacSidebar,
       settings.enableMacosCompletionNotifications,
       settings.enableSidebarWorktreeNavigation,
+      settings.enableWorktreeSourceControl,
       settings.enableCheckoutAwareThreadCreation,
       settings.enableForkPullRequests,
       settings.enableProviderSkillDiscovery,
@@ -580,6 +587,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       enableMacosCompletionNotifications:
         DEFAULT_UNIFIED_SETTINGS.enableMacosCompletionNotifications,
       enableSidebarWorktreeNavigation: DEFAULT_UNIFIED_SETTINGS.enableSidebarWorktreeNavigation,
+      enableWorktreeSourceControl: DEFAULT_UNIFIED_SETTINGS.enableWorktreeSourceControl,
       enableCheckoutAwareThreadCreation: DEFAULT_UNIFIED_SETTINGS.enableCheckoutAwareThreadCreation,
       enableForkPullRequests: DEFAULT_UNIFIED_SETTINGS.enableForkPullRequests,
       enableProviderSkillDiscovery: DEFAULT_UNIFIED_SETTINGS.enableProviderSkillDiscovery,

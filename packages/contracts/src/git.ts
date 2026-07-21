@@ -104,6 +104,12 @@ export const VcsStatusInput = Schema.Struct({
 });
 export type VcsStatusInput = typeof VcsStatusInput.Type;
 
+export const VcsPathsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  paths: Schema.Array(TrimmedNonEmptyStringSchema).check(Schema.isMinLength(1)),
+});
+export type VcsPathsInput = typeof VcsPathsInput.Type;
+
 export const VcsPullInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
 });
@@ -221,6 +227,8 @@ const VcsStatusLocalShape = {
     files: Schema.Array(
       Schema.Struct({
         path: TrimmedNonEmptyStringSchema,
+        indexStatus: Schema.optional(TrimmedNonEmptyStringSchema),
+        worktreeStatus: Schema.optional(TrimmedNonEmptyStringSchema),
         insertions: NonNegativeInt,
         deletions: NonNegativeInt,
       }),

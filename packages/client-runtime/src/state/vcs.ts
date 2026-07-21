@@ -192,6 +192,24 @@ export function createVcsEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
     }),
+    stagePaths: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:stage-paths",
+      tag: WS_METHODS.vcsStagePaths,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    unstagePaths: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:unstage-paths",
+      tag: WS_METHODS.vcsUnstagePaths,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
+    discardPaths: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:discard-paths",
+      tag: WS_METHODS.vcsDiscardPaths,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
     createWorktree: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:create-worktree",
       tag: WS_METHODS.vcsCreateWorktree,

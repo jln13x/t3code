@@ -7,10 +7,16 @@ export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   baseRef: Schema.optional(TrimmedNonEmptyString),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+  includeIndexSections: Schema.optionalKey(Schema.Boolean),
 });
 export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
 
-export const ReviewDiffPreviewSourceKind = Schema.Literals(["working-tree", "branch-range"]);
+export const ReviewDiffPreviewSourceKind = Schema.Literals([
+  "working-tree",
+  "staged",
+  "unstaged",
+  "branch-range",
+]);
 export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
 
 export const ReviewDiffPreviewSource = Schema.Struct({

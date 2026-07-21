@@ -14,6 +14,7 @@ import {
 } from "../types";
 import {
   archiveSelectedThreadEntries,
+  buildSidebarWorktreeSourceControlSearch,
   buildMultiSelectThreadContextMenuItems,
   createThreadJumpHintVisibilityController,
   getFallbackThreadIdAfterDelete,
@@ -29,6 +30,7 @@ import {
   orderSidebarThreadsByWorktree,
   resolveSidebarWorktreeThreadGroups,
   resolveSidebarWorktreeNewThreadOptions,
+  resolveSidebarWorktreePrimaryAction,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
   resolveProjectTitleClassName,
@@ -275,6 +277,61 @@ describe("resolveSidebarWorktreeNewThreadOptions", () => {
         isMainCheckout: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveSidebarWorktreePrimaryAction", () => {
+  it("opens source control when the fork feature is enabled", () => {
+    expect(
+      resolveSidebarWorktreePrimaryAction({
+        enableSidebarWorktreeNavigation: true,
+        enableWorktreeSourceControl: true,
+      }),
+    ).toBe("source_control");
+  });
+
+  it("restores new-chat behavior when source control is disabled", () => {
+    expect(
+      resolveSidebarWorktreePrimaryAction({
+        enableSidebarWorktreeNavigation: true,
+        enableWorktreeSourceControl: false,
+      }),
+    ).toBe("new_chat");
+  });
+
+  it("keeps the label non-actionable when worktree navigation is disabled", () => {
+    expect(
+      resolveSidebarWorktreePrimaryAction({
+        enableSidebarWorktreeNavigation: false,
+        enableWorktreeSourceControl: true,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("buildSidebarWorktreeSourceControlSearch", () => {
+  it("carries the selected worktree branch and path into source control", () => {
+    expect(
+      buildSidebarWorktreeSourceControlSearch({
+        branch: "feature/review",
+        worktreePath: "/repo/.t3/worktrees/review",
+        projectCwd: "/repo",
+      }),
+    ).toEqual({
+      branch: "feature/review",
+      cwd: "/repo/.t3/worktrees/review",
+      scope: "unstaged",
+    });
+  });
+
+  it("falls back to the project checkout without inventing a branch", () => {
+    expect(
+      buildSidebarWorktreeSourceControlSearch({
+        branch: null,
+        worktreePath: null,
+        projectCwd: "/repo",
+      }),
+    ).toEqual({ cwd: "/repo", scope: "unstaged" });
   });
 });
 
