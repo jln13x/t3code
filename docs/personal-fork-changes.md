@@ -38,6 +38,10 @@ Upstream PRs integrated into the fork are listed in
 
 ## Checkout-aware thread creation
 
+- On mobile, the new-task workspace control opens a searchable checkout picker. Existing checkouts
+  are reused, branches that are not checked out create a worktree, and a pull request URL/number can
+  be resolved into an isolated worktree. Turning off the flag restores the compact upstream
+  workspace menu.
 - With New worktree selected, creating a chat from an existing worktree seeds the draft from that
   worktree's branch without reusing its path. Creating a chat for a different project still uses that
   project's main branch.

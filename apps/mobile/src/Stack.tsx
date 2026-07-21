@@ -39,6 +39,7 @@ import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
 import { AddProjectRepositoryRoute } from "./features/projects/AddProjectRepositoryRoute";
 import { AddProjectSourceRoute } from "./features/projects/AddProjectSourceRoute";
 import { NewTaskDraftRouteScreen } from "./features/threads/NewTaskDraftRouteScreen";
+import { NewTaskCheckoutScreen } from "./features/threads/NewTaskCheckoutScreen";
 import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
@@ -230,6 +231,14 @@ const NewTaskSheetStack = createNativeStackNavigator({
       // The draft composer has no scroll view for glass to sample; a solid
       // header also lays the content out below the bar (no manual inset).
       options: SHEET_SOLID_HEADER_OPTIONS,
+    }),
+    NewTaskCheckout: createNativeStackScreen({
+      screen: NewTaskCheckoutScreen,
+      linking: "checkout",
+      options: {
+        ...SHEET_SOLID_HEADER_OPTIONS,
+        title: "Branches & PRs",
+      },
     }),
     AddProject: createNativeStackScreen({
       screen: AddProjectSourceRoute,

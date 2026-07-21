@@ -93,7 +93,7 @@ describe("GitHubCli.layer", () => {
               mergedAt: null,
               isCrossRepository: true,
               headRepository: {
-                nameWithOwner: "octocat/codething-mvp",
+                name: "codething-mvp",
               },
               headRepositoryOwner: {
                 login: "octocat",
