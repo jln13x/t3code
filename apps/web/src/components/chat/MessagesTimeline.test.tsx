@@ -434,6 +434,20 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-footer="true"');
   });
 
+  it("keeps completed assistant message actions visible without hover", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildAssistantTimelineEntry("A completed response ready to copy.")]}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Copy link"');
+    expect(markup).toContain('data-assistant-message-footer="persistent"');
+    expect(markup).not.toMatch(/data-assistant-message-footer="persistent"[^>]*opacity-0/);
+  });
+
   it("does not render collapse controls for short user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

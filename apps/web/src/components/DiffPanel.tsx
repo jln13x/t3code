@@ -27,6 +27,7 @@ import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelS
 import { useTheme } from "../hooks/useTheme";
 import {
   buildFileDiffRenderKey,
+  canRenderFileDiff,
   getDiffCollapseIconClassName,
   getRenderablePatch,
   resolveDiffThemeName,
@@ -433,22 +434,33 @@ export default function DiffPanel({
     if (!renderablePatch || renderablePatch.kind !== "files") {
       return [];
     }
-    return renderablePatch.files.toSorted((left, right) =>
-      resolveFileDiffPath(left).localeCompare(resolveFileDiffPath(right), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      }),
-    );
+    return renderablePatch.files
+      .map((fileDiff) => ({
+        canRender: canRenderFileDiff(fileDiff),
+        fileDiff,
+        filePath: resolveFileDiffPath(fileDiff),
+      }))
+      .toSorted((left, right) => {
+        const renderOrder = Number(!left.canRender) - Number(!right.canRender);
+        return (
+          renderOrder ||
+          left.filePath.localeCompare(right.filePath, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          })
+        );
+      });
   }, [renderablePatch]);
   const codeViewFiles = useMemo(
     () =>
-      renderableFiles.map((fileDiff) => {
+      renderableFiles.map(({ canRender, fileDiff, filePath }) => {
         const fileKey = buildFileDiffRenderKey(fileDiff);
         return {
+          canRender,
           fileDiff,
-          filePath: resolveFileDiffPath(fileDiff),
+          filePath,
           fileKey,
-          collapsed: collapsedDiffFileKeys.has(fileKey),
+          collapsed: !canRender || collapsedDiffFileKeys.has(fileKey),
         };
       }),
     [collapsedDiffFileKeys, renderableFiles],
@@ -829,7 +841,7 @@ export default function DiffPanel({
                   sectionId={reviewSectionId}
                   sectionTitle={reviewSectionTitle}
                   composerDraftTarget={composerDraftTarget}
-                  renderHeaderPrefix={(fileDiff, fileKey, collapsed) => {
+                  renderHeaderPrefix={(fileDiff, fileKey, collapsed, canRender) => {
                     const filePath = resolveFileDiffPath(fileDiff);
                     return (
                       <Tooltip>
@@ -838,13 +850,18 @@ export default function DiffPanel({
                             <button
                               type="button"
                               className={cn(
-                                "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors hover:bg-foreground/10 focus-visible:outline-hidden",
+                                "inline-flex size-5 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors focus-visible:outline-hidden",
+                                canRender
+                                  ? "cursor-pointer hover:bg-foreground/10"
+                                  : "cursor-not-allowed opacity-60",
                                 getDiffCollapseIconClassName(fileDiff),
                               )}
                               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
                               aria-expanded={!collapsed}
+                              disabled={!canRender}
                               onClick={(event) => {
                                 event.stopPropagation();
+                                if (!canRender) return;
                                 toggleDiffFileCollapsed(fileKey);
                               }}
                             />
@@ -857,7 +874,11 @@ export default function DiffPanel({
                           )}
                         </TooltipTrigger>
                         <TooltipPopup side="top">
-                          {collapsed ? "Expand diff" : "Collapse diff"}
+                          {!canRender
+                            ? "This file is too large to display. Open it in your editor instead."
+                            : collapsed
+                              ? "Expand diff"
+                              : "Collapse diff"}
                         </TooltipPopup>
                       </Tooltip>
                     );
