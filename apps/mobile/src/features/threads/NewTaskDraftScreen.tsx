@@ -42,7 +42,7 @@ import {
   restoreComposerDraftSnapshot,
   type ComposerDraft,
 } from "../../state/use-composer-drafts";
-import { useProjects } from "../../state/entities";
+import { useEnvironmentServerConfig, useProjects } from "../../state/entities";
 import { deriveThreadTitleFromPrompt } from "../../lib/projectThreadStartTurn";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { enqueueThreadOutboxMessage, removeThreadOutboxMessage } from "../../state/thread-outbox";
@@ -50,13 +50,18 @@ import { useRemoteConnectionStatus } from "../../state/use-remote-environment-re
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
 import { useCreateProjectThread } from "./use-project-actions";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import { resolveNewTaskWorkspaceControl } from "./newTaskCheckoutSelection";
 
 function formatWorkspaceLabel(input: {
   readonly workspaceMode: string;
   readonly currentBranchName: string | null;
   readonly selectedBranchName: string | null;
+  readonly selectedWorktreePath: string | null;
 }): string {
   const branchName = input.selectedBranchName ?? input.currentBranchName;
+  if (input.selectedWorktreePath !== null) {
+    return branchName ? `Worktree · ${branchName}` : "Worktree";
+  }
   if (input.workspaceMode === "worktree") {
     return branchName ? `New worktree · ${branchName}` : "New worktree";
   }
@@ -77,6 +82,9 @@ export function NewTaskDraftScreen(props: {
   const createProjectThread = useCreateProjectThread();
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
+  const selectedEnvironmentConfig = useEnvironmentServerConfig(
+    flow.selectedProject?.environmentId ?? null,
+  );
   const {
     consumeShare,
     getShare,
@@ -695,10 +703,16 @@ export function NewTaskDraftScreen(props: {
       formatWorkspaceLabel({
         currentBranchName,
         selectedBranchName: flow.selectedBranchName,
+        selectedWorktreePath: flow.selectedWorktreePath,
         workspaceMode: flow.workspaceMode,
       }),
-    [currentBranchName, flow.selectedBranchName, flow.workspaceMode],
+    [currentBranchName, flow.selectedBranchName, flow.selectedWorktreePath, flow.workspaceMode],
   );
+  const workspaceControl = resolveNewTaskWorkspaceControl({
+    checkoutAwareThreadCreationEnabled:
+      selectedEnvironmentConfig?.settings.enableCheckoutAwareThreadCreation ?? false,
+    hasProject: flow.selectedProject !== null,
+  });
   function handleModelMenuAction(event: string) {
     if (isIncomingShareTransferPending || !event.startsWith("model:")) {
       return;
@@ -1014,17 +1028,28 @@ export function NewTaskDraftScreen(props: {
           label={selectedEnvironmentLabel}
         />
       </ControlPillMenu>
-      <ControlPillMenu
-        actions={workspaceMenuActions}
-        onPressAction={({ nativeEvent }) => handleWorkspaceMenuAction(nativeEvent.event)}
-      >
+      {workspaceControl === "checkout-picker" ? (
         <ComposerToolbarTrigger
           accessibilityLabel="Workspace"
           disabled={isIncomingShareTransferPending}
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label={workspaceLabel}
+          onPress={() => navigation.dispatch(StackActions.push("NewTaskCheckout"))}
+          showChevron={false}
         />
-      </ControlPillMenu>
+      ) : (
+        <ControlPillMenu
+          actions={workspaceMenuActions}
+          onPressAction={({ nativeEvent }) => handleWorkspaceMenuAction(nativeEvent.event)}
+        >
+          <ComposerToolbarTrigger
+            accessibilityLabel="Workspace"
+            disabled={isIncomingShareTransferPending}
+            icon="point.topleft.down.curvedto.point.bottomright.up"
+            label={workspaceLabel}
+          />
+        </ControlPillMenu>
+      )}
     </>
   );
 

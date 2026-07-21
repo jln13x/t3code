@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
+import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
 
 import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../../state/entities";
 import type { TurnCommandMetadata } from "../../lib/commandMetadata";
@@ -122,6 +123,7 @@ type NewTaskFlowContextValue = {
   readonly branchQuery: string;
   readonly branchesLoading: boolean;
   readonly availableBranches: ReadonlyArray<VcsRef>;
+  readonly checkoutBranches: ReadonlyArray<VcsRef>;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly expandedProvider: string | null;
@@ -141,7 +143,11 @@ type NewTaskFlowContextValue = {
   readonly selectEnvironment: (environmentId: EnvironmentId) => void;
   readonly setSelectedModelKey: (key: string | null) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
-  readonly selectBranch: (branch: VcsRef) => void;
+  readonly selectBranch: (branch: VcsRef, modeOverride?: WorkspaceMode) => void;
+  readonly selectPreparedCheckout: (input: {
+    readonly branch: string;
+    readonly worktreePath: string | null;
+  }) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
   readonly beginEditingPendingTask: (messageId: string) => boolean;
   readonly finishEditingPendingTask: () => void;
@@ -475,13 +481,17 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
   const branchState = useBranches(branchTarget);
   const branchesLoading = branchState.isPending;
+  const checkoutBranches = useMemo(
+    () => dedupeRemoteBranchesWithLocalMatches(branchState.data?.refs ?? []),
+    [branchState.data?.refs],
+  );
   const availableBranches = useMemo(
     () =>
       pipe(
-        branchState.data?.refs ?? [],
+        checkoutBranches,
         Arr.filter((branch) => !branch.isRemote),
       ),
-    [branchState.data?.refs],
+    [checkoutBranches],
   );
 
   const filteredBranches = useMemo(() => {
@@ -551,13 +561,13 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
 
   const selectBranch = useCallback(
-    (branch: VcsRef) => {
+    (branch: VcsRef, modeOverride?: WorkspaceMode) => {
       if (!selectedProject || !selectedProjectDraftKey) {
         return;
       }
       updateComposerDraftSettings(selectedProjectDraftKey, {
         workspaceSelection: {
-          mode: workspaceMode,
+          mode: modeOverride ?? workspaceMode,
           branch: branch.name,
           worktreePath: normalizeSelectedWorktreePath(selectedProject, branch),
           startFromOrigin,
@@ -565,6 +575,23 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       });
     },
     [selectedProject, selectedProjectDraftKey, startFromOrigin, workspaceMode],
+  );
+
+  const selectPreparedCheckout = useCallback(
+    (input: { readonly branch: string; readonly worktreePath: string | null }) => {
+      if (!selectedProjectDraftKey) return;
+      updateComposerDraftSettings(selectedProjectDraftKey, {
+        workspaceSelection: {
+          // The PR has already been materialized. Reuse that checkout rather
+          // than asking thread bootstrap to create a second worktree.
+          mode: "local",
+          branch: input.branch,
+          worktreePath: input.worktreePath,
+          startFromOrigin: false,
+        },
+      });
+    },
+    [selectedProjectDraftKey],
   );
 
   const setStartFromOrigin = useCallback(
@@ -818,6 +845,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       branchQuery,
       branchesLoading,
       availableBranches,
+      checkoutBranches,
       runtimeMode,
       interactionMode,
       expandedProvider,
@@ -835,6 +863,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       setSelectedModelKey,
       setWorkspaceMode,
       selectBranch,
+      selectPreparedCheckout,
       setStartFromOrigin,
       beginEditingPendingTask,
       finishEditingPendingTask,
@@ -861,6 +890,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       branchesLoading,
       buildPendingTaskMessage,
       cancelEditingPendingTask,
+      checkoutBranches,
       editingPendingTask,
       environments,
       expandedProvider,
@@ -882,6 +912,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedModelOption,
       selectedProjectDraftKey,
       selectedProviderSkills,
+      selectPreparedCheckout,
       setSelectedModelOptions,
       selectedProject,
       selectedProjectKey,
