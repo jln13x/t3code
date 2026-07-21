@@ -8,11 +8,34 @@ import {
   buildReviewCommentRenderablePatch,
   formatReviewCommentContext,
   inferReviewCommentFenceLanguage,
+  mergeReviewComments,
   parseReviewCommentMessageSegments,
   restoreDiffReviewCommentRange,
 } from "./reviewCommentContext";
 
 describe("review comment context parsing", () => {
+  it("merges isolated review comments without dropping unrelated draft comments", () => {
+    const existing = buildFileReviewComment({
+      id: "existing",
+      filePath: "src/existing.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "Keep this.",
+      contents: "existing",
+    });
+    const updated = { ...existing, text: "Update this." };
+    const incoming = buildFileReviewComment({
+      id: "incoming",
+      filePath: "src/incoming.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "Review this.",
+      contents: "incoming",
+    });
+
+    expect(mergeReviewComments([existing], [updated, incoming])).toEqual([updated, incoming]);
+  });
+
   it("extracts comment metadata, user text, and fenced diff without raw wrapper text", () => {
     const segments = parseReviewCommentMessageSegments(
       [

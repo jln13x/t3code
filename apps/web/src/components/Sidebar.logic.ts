@@ -18,6 +18,31 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 // nearby thread usually reuses an already-hot subscription.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 10;
 export type SidebarNewThreadEnvMode = "local" | "worktree";
+export type SidebarWorktreePrimaryAction = "source_control" | "new_chat" | null;
+
+export function resolveSidebarWorktreePrimaryAction(input: {
+  readonly enableSidebarWorktreeNavigation: boolean;
+  readonly enableWorktreeSourceControl: boolean;
+}): SidebarWorktreePrimaryAction {
+  if (!input.enableSidebarWorktreeNavigation) return null;
+  return input.enableWorktreeSourceControl ? "source_control" : "new_chat";
+}
+
+export function buildSidebarWorktreeSourceControlSearch(input: {
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly projectCwd: string;
+}): {
+  readonly cwd: string;
+  readonly branch?: string;
+  readonly scope: "unstaged";
+} {
+  return {
+    cwd: input.worktreePath ?? input.projectCwd,
+    ...(input.branch ? { branch: input.branch } : {}),
+    scope: "unstaged",
+  };
+}
 
 export interface SidebarWorktreeNewThreadOptions {
   readonly branch: string | null;

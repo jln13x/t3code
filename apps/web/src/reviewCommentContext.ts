@@ -27,6 +27,14 @@ export interface ReviewCommentContext {
   readonly fenceLanguage?: string | undefined;
 }
 
+export function mergeReviewComments(
+  existing: ReadonlyArray<ReviewCommentContext>,
+  incoming: ReadonlyArray<ReviewCommentContext>,
+): ReviewCommentContext[] {
+  const incomingIds = new Set(incoming.map((comment) => comment.id));
+  return [...existing.filter((comment) => !incomingIds.has(comment.id)), ...incoming];
+}
+
 interface DiffReviewLine {
   readonly change: "context" | "add" | "delete";
   readonly oldLineNumber: number | null;

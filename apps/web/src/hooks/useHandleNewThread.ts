@@ -13,6 +13,7 @@ import { useCallback, useMemo } from "react";
 import { resolveMainCheckoutTarget } from "../components/BranchToolbar.logic";
 import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import {
+  type DraftId,
   type DraftThreadEnvMode,
   type DraftThreadState,
   markPromotedDraftThreadByRef,
@@ -53,6 +54,8 @@ export function useNewThreadHandler() {
         envMode?: DraftThreadEnvMode;
         startFromOrigin?: boolean;
         replace?: boolean;
+        navigate?: boolean;
+        onDraftReady?: (draftId: DraftId) => void;
       },
     ): Promise<void> => {
       const {
@@ -117,6 +120,10 @@ export function useNewThreadHandler() {
               threadId: reusableStoredDraftThread.threadId,
             },
           );
+          options?.onDraftReady?.(reusableStoredDraftThread.draftId);
+          if (options?.navigate === false) {
+            return;
+          }
           if (
             currentRouteTarget?.kind === "draft" &&
             currentRouteTarget.draftId === reusableStoredDraftThread.draftId
@@ -160,6 +167,7 @@ export function useNewThreadHandler() {
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
           ...(hasStartFromOriginOption ? { startFromOrigin: options?.startFromOrigin } : {}),
         });
+        options?.onDraftReady?.(currentRouteTarget.draftId);
         return Promise.resolve();
       }
 
@@ -183,6 +191,10 @@ export function useNewThreadHandler() {
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
         applyStickyState(draftId);
+        options?.onDraftReady?.(draftId);
+        if (options?.navigate === false) {
+          return;
+        }
 
         await router.navigate({
           to: "/draft/$draftId",
