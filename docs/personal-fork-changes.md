@@ -58,6 +58,10 @@ Upstream PRs integrated into the fork are listed in
   menu.
 - Disabling the flag restores the previous worktree-label behavior, where selecting the label
   immediately creates a chat in that checkout.
+- The viewer tolerates mixed-version and intermittently connected remote environments: it keeps
+  rendering the last successful status/diff snapshot, falls back to the legacy combined worktree
+  diff when index-aware sections are unavailable, and exposes stage/discard actions only when the
+  environment advertises `worktreeSourceControl` support.
 
 ## Projectless standalone chats
 
