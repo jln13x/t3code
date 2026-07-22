@@ -1,4 +1,4 @@
-import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -44,7 +44,7 @@ import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
-import { shellEnvironment } from "../state/shell";
+import { environmentShell, environmentSnapshotAtom, shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
@@ -64,9 +64,18 @@ import {
   captureThreadSoundStateWhileSettingsHydrating,
   COMPLETION_SOUND_VOLUME,
   deriveThreadFeedbackEvents,
-  shouldPostThreadCompletionNotification,
   type ThreadSoundStateByKey,
 } from "../interactionSounds";
+import {
+  clearPendingThreadCompletionNotifications,
+  deliverPendingThreadCompletionNotifications,
+  initializeThreadCompletionNotificationState,
+  readThreadCompletionNotificationState,
+  reduceThreadCompletionNotificationEvents,
+  writeThreadCompletionNotificationState,
+  type ThreadCompletionNotificationState,
+} from "../threadCompletionNotifications";
+import { orchestrationEnvironment } from "../state/orchestration";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -164,6 +173,7 @@ function RootRouteView() {
 function ThreadCompletionFeedbackCoordinator() {
   const threads = useThreadShells();
   const navigate = useNavigate();
+  const { environments } = useEnvironments();
   const completionSoundEnabled = useClientSettings((settings) => settings.enableCompletionSounds);
   const completionNotificationsEnabled = usePrimarySettings(
     (settings) => settings.enableMacosCompletionNotifications,
@@ -201,27 +211,165 @@ function ThreadCompletionFeedbackCoordinator() {
         if (completionSoundEnabled) {
           play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
         }
-        const showNotification = window.desktopBridge?.showThreadCompletionNotification;
-        if (
-          event.cue === "success" &&
-          shouldPostThreadCompletionNotification({
-            enabled: completionNotificationsEnabled,
-            desktopBridgeAvailable: typeof showNotification === "function",
-          }) &&
-          showNotification
-        ) {
-          void showNotification({
-            threadRef: {
-              environmentId: event.thread.environmentId,
-              threadId: event.thread.id,
-            },
-            threadTitle: event.thread.title,
-          }).catch(() => undefined);
-        }
       }
     }
     previousStateRef.current = captureThreadSoundState(threads);
-  }, [completionNotificationsEnabled, completionSoundEnabled, settingsHydrated, threads]);
+  }, [completionSoundEnabled, settingsHydrated, threads]);
+
+  if (typeof window.desktopBridge?.showThreadCompletionNotification !== "function") {
+    return null;
+  }
+
+  return environments.map((environment) => (
+    <EnvironmentThreadCompletionNotificationCoordinator
+      key={environment.environmentId}
+      environmentId={environment.environmentId}
+      enabled={completionNotificationsEnabled}
+      settingsHydrated={settingsHydrated}
+    />
+  ));
+}
+
+function EnvironmentThreadCompletionNotificationCoordinator({
+  environmentId,
+  enabled,
+  settingsHydrated,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly enabled: boolean;
+  readonly settingsHydrated: boolean;
+}) {
+  const snapshot = useAtomValue(environmentSnapshotAtom(environmentId));
+  const shellState = useAtomValue(environmentShell.stateValueAtom(environmentId));
+  const replayEvents = useAtomCommand(orchestrationEnvironment.replayEvents, {
+    label: "thread-completion-notifications:replay-events",
+    reportFailure: false,
+    reportDefect: false,
+  });
+  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
+  const memoryStateRef = useRef<ThreadCompletionNotificationState | null>(null);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const show = window.desktopBridge?.showThreadCompletionNotification;
+    if (
+      !settingsHydrated ||
+      snapshot === null ||
+      shellState.status !== "live" ||
+      typeof show !== "function"
+    ) {
+      return;
+    }
+
+    const synchronize = async () => {
+      const readState = (): ThreadCompletionNotificationState | null => {
+        try {
+          return readThreadCompletionNotificationState(window.localStorage, environmentId);
+        } catch (cause) {
+          console.warn("Could not read the thread completion notification cursor.", {
+            environmentId,
+            cause,
+          });
+          return memoryStateRef.current;
+        }
+      };
+      const persistState = (state: ThreadCompletionNotificationState) => {
+        memoryStateRef.current = state;
+        try {
+          writeThreadCompletionNotificationState(window.localStorage, environmentId, state);
+        } catch (cause) {
+          console.warn("Could not persist the thread completion notification cursor.", {
+            environmentId,
+            cause,
+          });
+        }
+      };
+
+      let state = readState();
+      if (state === null || snapshot.snapshotSequence < state.cursor) {
+        state = initializeThreadCompletionNotificationState(snapshot);
+        persistState(state);
+        return;
+      }
+
+      if (!enabled) {
+        state = clearPendingThreadCompletionNotifications(state);
+        retryAttemptRef.current = 0;
+      }
+
+      const replayResult = await replayEvents({
+        environmentId,
+        input: { fromSequenceExclusive: state.cursor },
+      });
+      if (replayResult._tag === "Failure") {
+        console.warn("Could not replay events for thread completion notifications.", {
+          environmentId,
+          cause: squashAtomCommandFailure(replayResult),
+        });
+        persistState(state);
+        return;
+      }
+
+      state = reduceThreadCompletionNotificationEvents({
+        state,
+        events: replayResult.value,
+        snapshot,
+        notificationsEnabled: enabled,
+      });
+      persistState(state);
+
+      if (!enabled || state.pending.length === 0) return;
+      const delivery = await deliverPendingThreadCompletionNotifications({
+        state,
+        environmentId,
+        show,
+        onProgress: persistState,
+      });
+      memoryStateRef.current = delivery.state;
+      if (delivery.failed) {
+        console.warn("Could not show a thread completion notification; it remains pending.", {
+          environmentId,
+          ...(delivery.cause === undefined ? {} : { cause: delivery.cause }),
+        });
+        const retryDelaysMs = [1_000, 5_000, 15_000] as const;
+        const retryDelayMs = retryDelaysMs[retryAttemptRef.current];
+        if (retryDelayMs !== undefined && retryTimerRef.current === null) {
+          retryAttemptRef.current += 1;
+          retryTimerRef.current = window.setTimeout(() => {
+            retryTimerRef.current = null;
+            setRetryGeneration((generation) => generation + 1);
+          }, retryDelayMs);
+        }
+      } else {
+        retryAttemptRef.current = 0;
+        if (retryTimerRef.current !== null) {
+          window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+      }
+    };
+
+    syncChainRef.current = syncChainRef.current.then(synchronize, synchronize);
+  }, [
+    enabled,
+    environmentId,
+    replayEvents,
+    retryGeneration,
+    settingsHydrated,
+    shellState.status,
+    snapshot,
+  ]);
 
   return null;
 }

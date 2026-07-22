@@ -100,5 +100,9 @@ Upstream PRs integrated into the fork are listed in
   notification whenever a project thread or standalone chat transitions to completed. Clicking it
   reveals the app and opens the exact environment-scoped conversation. Web and non-macOS runtimes
   retain upstream behavior.
+- Notification detection uses a persisted per-environment orchestration-event cursor instead of
+  inferring completion only from adjacent renderer snapshots. Reconnects and renderer reloads replay
+  any missed running-to-completed transitions, while successful deliveries advance a durable outbox
+  and failed native/IPC deliveries remain pending for retry without duplicating replayed events.
 - The synthesized completion cue plays at 110% of its original gain; attention cues retain their
   original gain. Disabling completion sounds preserves the upstream silent behavior.
