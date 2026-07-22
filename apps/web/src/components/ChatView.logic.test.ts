@@ -20,6 +20,7 @@ import {
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  requiresDraftProjectSelection,
   resolveEffectiveServerThreadWorktreePath,
   resolveSendEnvMode,
   shouldWriteThreadErrorToCurrentServerThread,
@@ -77,6 +78,28 @@ const readySession = {
   lastError: null,
   updatedAt: "2026-03-29T00:00:10.000Z",
 };
+
+describe("requiresDraftProjectSelection", () => {
+  it("keeps standalone local drafts available without a project", () => {
+    expect(
+      requiresDraftProjectSelection({
+        isLocalDraftThread: true,
+        projectId: null,
+        hasActiveProject: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires a project when a local project draft becomes orphaned", () => {
+    expect(
+      requiresDraftProjectSelection({
+        isLocalDraftThread: true,
+        projectId,
+        hasActiveProject: false,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("buildThreadTurnInterruptInput", () => {
   it("targets the session's active running turn", () => {

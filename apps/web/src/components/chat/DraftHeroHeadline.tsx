@@ -20,12 +20,34 @@ import {
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
+  readonly isStandalone: boolean;
 }
 
 export function DraftHeroHeadline({
   activeProjectRef,
   activeProjectTitle,
+  isStandalone,
 }: DraftHeroHeadlineProps) {
+  if (isStandalone) {
+    return (
+      <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+        What can I help you with?
+      </h1>
+    );
+  }
+
+  return (
+    <ProjectDraftHeroHeadline
+      activeProjectRef={activeProjectRef}
+      activeProjectTitle={activeProjectTitle}
+    />
+  );
+}
+
+function ProjectDraftHeroHeadline({
+  activeProjectRef,
+  activeProjectTitle,
+}: Omit<DraftHeroHeadlineProps, "isStandalone">) {
   const projects = useProjects();
   const threads = useThreadShells();
   const handleNewThread = useNewThreadHandler();
