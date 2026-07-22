@@ -81,6 +81,7 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useThreadChangeRequestStatus } from "../hooks/useThreadChangeRequestStatus";
 import { useThreadActions } from "../hooks/useThreadActions";
 import {
   resolveShortcutCommand,
@@ -115,7 +116,6 @@ import {
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 import {
   readThreadShell,
-  useProject,
   useProjects,
   useThreadShells,
   useThreadShellsForProjectRefs,
@@ -123,7 +123,6 @@ import {
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { previewEnvironment } from "../state/preview";
 import { projectEnvironment } from "../state/projects";
-import { useEnvironmentQuery } from "../state/query";
 import { primaryServerConfigAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
@@ -184,7 +183,6 @@ import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import {
   ChangeRequestStatusIcon,
   prStatusIndicator,
-  resolveThreadPr,
   ThreadStatusLabel,
   terminalStatusFromRunningIds,
 } from "./ThreadStatusIndicators";
@@ -448,26 +446,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
   // For grouped projects, the thread may belong to a different environment
   // than the representative project.  Look up the thread's own project cwd
   // so git status (and thus PR detection) queries the correct path.
-  const threadProject = useProject(
-    useMemo(
-      () =>
-        thread.projectId === null ? null : scopeProjectRef(thread.environmentId, thread.projectId),
-      [thread.environmentId, thread.projectId],
-    ),
-  );
-  const threadProjectCwd = threadProject?.workspaceRoot ?? null;
-  const gitCwd = thread.worktreePath ?? threadProjectCwd ?? props.projectCwd;
-  const gitStatus = useEnvironmentQuery(
-    thread.branch != null && gitCwd !== null
-      ? vcsEnvironment.status({
-          environmentId: thread.environmentId,
-          input: {
-            cwd: gitCwd,
-            ...(thread.changeRequest ? { changeRequest: thread.changeRequest } : {}),
-          },
-        })
-      : null,
-  );
+  const { pr, providerKind } = useThreadChangeRequestStatus(thread, props.projectCwd);
   const isHighlighted = isActive || isSelected;
   const handleOpenDiscoveredPort = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -506,8 +485,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       lastVisitedAt,
     },
   });
-  const pr = resolveThreadPr(thread.branch, gitStatus.data);
-  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const prStatus = prStatusIndicator(pr, providerKind);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
   const threadMetaClassName = isConfirmingArchive

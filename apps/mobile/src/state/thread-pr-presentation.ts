@@ -1,4 +1,8 @@
-import type { VcsStatusResult } from "@t3tools/contracts";
+import type {
+  SourceControlProviderInfo,
+  SourceControlProviderKind,
+  VcsStatusResult,
+} from "@t3tools/contracts";
 import { resolveChangeRequestPresentation } from "@t3tools/shared/sourceControl";
 
 export type ThreadPr = NonNullable<VcsStatusResult["pr"]>;
@@ -22,7 +26,7 @@ const PR_STATE_TEXT_CLASS: Record<ThreadPr["state"], string> = {
 
 export function presentThreadPr(
   pr: ThreadPr,
-  provider: VcsStatusResult["sourceControlProvider"] | null | undefined,
+  provider: SourceControlProviderInfo | SourceControlProviderKind | null | undefined,
 ): ThreadPrPresentation {
   const presentation = resolveChangeRequestPresentation(provider);
   return {

@@ -25,9 +25,10 @@ export type ChangeRequestState = typeof ChangeRequestState.Type;
  * Durable identity plus the last-known display snapshot for a change request.
  *
  * Threads persist this when T3 resolves, checks out, or creates a change
- * request. The provider and number are the canonical identity; the remaining
- * fields keep the sidebar useful while the provider is temporarily
- * unavailable.
+ * request. The provider and repository-qualified URL are the canonical
+ * identity; the number enables direct lookup when repository context exists.
+ * The remaining fields keep the sidebar useful while the provider is
+ * temporarily unavailable.
  */
 export const ChangeRequestAssociation = Schema.Struct({
   provider: SourceControlProviderKind,

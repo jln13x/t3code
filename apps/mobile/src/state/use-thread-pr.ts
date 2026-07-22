@@ -1,5 +1,11 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import {
+  resolveThreadChangeRequestProviderKind,
+  resolveThreadChangeRequestStatus,
+  shouldQueryThreadVcsStatus,
+} from "@t3tools/shared/sourceControl";
 
+import { useEnvironmentServerConfig } from "./entities";
 import { useEnvironmentQuery } from "./query";
 import { presentThreadPr, type ThreadPrPresentation } from "./thread-pr-presentation";
 import { vcsEnvironment } from "./vcs";
@@ -20,24 +26,41 @@ export function useThreadPr(
   projectCwd: string | null,
 ): ThreadPrPresentation | null {
   const cwd = thread.worktreePath ?? projectCwd;
+  const durableChangeRequestStatusEnabled =
+    useEnvironmentServerConfig(thread.environmentId)?.settings.enableDurableChangeRequestStatus ??
+    false;
+  const changeRequest = durableChangeRequestStatusEnabled ? thread.changeRequest : undefined;
   const gitStatus = useEnvironmentQuery(
-    thread.branch !== null && cwd !== null
+    cwd !== null &&
+      shouldQueryThreadVcsStatus({
+        threadBranch: thread.branch,
+        ...(changeRequest ? { changeRequest } : {}),
+        durableChangeRequestStatusEnabled,
+      })
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
           input: {
             cwd,
-            ...(thread.changeRequest ? { changeRequest: thread.changeRequest } : {}),
+            ...(changeRequest ? { changeRequest } : {}),
           },
         })
       : null,
   );
 
   const status = gitStatus.data;
-  if (status === null || thread.branch === null || status.refName !== thread.branch) {
+  const pr = resolveThreadChangeRequestStatus({
+    threadBranch: thread.branch,
+    ...(changeRequest ? { changeRequest } : {}),
+    gitStatus: status,
+    durableChangeRequestStatusEnabled,
+  });
+  if (!pr) {
     return null;
   }
-  if (!status.pr) {
-    return null;
-  }
-  return presentThreadPr(status.pr, status.sourceControlProvider);
+  const providerKind = resolveThreadChangeRequestProviderKind({
+    ...(changeRequest ? { changeRequest } : {}),
+    gitStatus: status,
+    durableChangeRequestStatusEnabled,
+  });
+  return presentThreadPr(pr, providerKind);
 }

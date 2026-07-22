@@ -69,6 +69,9 @@ Upstream PRs integrated into the fork are listed in
 - Threads created from a resolved pull request persist its provider, number, URL, refs, and
   last-known display state. Sidebar status refreshes query that canonical identity instead of
   rediscovering historical pull requests from a reused branch name.
+- A persisted pull request remains visible when a thread no longer has a branch. It refreshes by
+  canonical identity when repository context is available and otherwise renders the stored state
+  as last-known; inferred pull requests still require an exact checked-out branch match.
 - The sidebar keeps the compact icon-only treatment: open is green, merged is purple, and closed
   is muted gray. Provider failures retain the latest cached result and mark last-known fallback
   metadata as stale instead of making the icon disappear.

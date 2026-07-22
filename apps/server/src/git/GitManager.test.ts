@@ -765,6 +765,55 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("status refreshes an explicitly associated PR from detached HEAD", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-branchless-explicit-pr-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "--detach"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 44,
+            title: "Branchless pull request",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/44",
+            baseRefName: "main",
+            headRefName: "feature/removed-locally",
+            state: "open",
+          },
+        },
+      });
+
+      const status = yield* manager.status({
+        cwd: repoDir,
+        changeRequest: {
+          provider: "github",
+          number: 44,
+          title: "Branchless pull request",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/44",
+          baseRefName: "main",
+          headRefName: "feature/removed-locally",
+          state: "open",
+        },
+      });
+
+      expect(status.refName).toBeNull();
+      expect(status.pr).toEqual({
+        number: 44,
+        title: "Branchless pull request",
+        url: "https://github.com/pingdotgg/codething-mvp/pull/44",
+        baseRef: "main",
+        headRef: "feature/removed-locally",
+        state: "open",
+      });
+      expect(ghCalls.some((call) => call.startsWith("pr view 44 "))).toBe(true);
+      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(false);
+    }),
+  );
+
   it.effect("status preserves an explicitly associated PR as stale when refresh fails", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-stale-pr-");
@@ -851,6 +900,39 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       expect(status.pr?.number).toBe(99);
       expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(true);
       expect(ghCalls.some((call) => call.startsWith("pr view "))).toBe(false);
+    }),
+  );
+
+  it.effect("status does not use a branchless association when durable PR status is disabled", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-disabled-branchless-pr-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "--detach"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        serverSettings: { enableDurableChangeRequestStatus: false },
+      });
+
+      const status = yield* manager.status({
+        cwd: repoDir,
+        changeRequest: {
+          provider: "github",
+          number: 45,
+          title: "Ignored branchless pull request",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/45",
+          baseRefName: "main",
+          headRefName: "feature/removed-locally",
+          state: "open",
+        },
+      });
+
+      expect(status.refName).toBeNull();
+      expect(status.pr).toBeNull();
+      expect(ghCalls.some((call) => call.startsWith("pr view "))).toBe(false);
+      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(false);
     }),
   );
 

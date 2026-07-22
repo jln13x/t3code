@@ -1,4 +1,9 @@
-import type { SourceControlProviderInfo, SourceControlProviderKind } from "@t3tools/contracts";
+import type {
+  ChangeRequestAssociation,
+  SourceControlProviderInfo,
+  SourceControlProviderKind,
+  VcsStatusResult,
+} from "@t3tools/contracts";
 
 const GITHUB_PULL_REQUEST_URL_PATTERN =
   /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)(?:[/?#].*)?$/i;
@@ -47,6 +52,104 @@ export function parsePullRequestReference(input: string): string | null {
   if (urlMatch?.[1]) return normalizedInput;
 
   return PULL_REQUEST_NUMBER_PATTERN.exec(normalizedInput)?.[1] ?? null;
+}
+
+export interface ThreadChangeRequestStatusInput {
+  readonly threadBranch: string | null;
+  readonly changeRequest?: ChangeRequestAssociation;
+  readonly gitStatus: VcsStatusResult | null;
+  readonly durableChangeRequestStatusEnabled: boolean;
+}
+
+function normalizeChangeRequestUrl(url: string): string {
+  return url.trim().replace(/\/+$/u, "");
+}
+
+function statusMatchesChangeRequest(
+  status: NonNullable<VcsStatusResult["pr"]>,
+  changeRequest: ChangeRequestAssociation,
+): boolean {
+  return (
+    status.number === changeRequest.number &&
+    normalizeChangeRequestUrl(status.url) === normalizeChangeRequestUrl(changeRequest.url)
+  );
+}
+
+function storedChangeRequestStatus(
+  changeRequest: ChangeRequestAssociation,
+): NonNullable<VcsStatusResult["pr"]> {
+  return {
+    number: changeRequest.number,
+    title: changeRequest.title,
+    url: changeRequest.url,
+    baseRef: changeRequest.baseRefName,
+    headRef: changeRequest.headRefName,
+    state: changeRequest.state,
+    stale: true,
+  };
+}
+
+/**
+ * Whether a thread has enough identity to request source-control status.
+ *
+ * Inferred status remains branch-bound. A durable association is sufficient
+ * without a branch, but only while the fork-specific feature is enabled.
+ */
+export function shouldQueryThreadVcsStatus(
+  input: Pick<
+    ThreadChangeRequestStatusInput,
+    "threadBranch" | "changeRequest" | "durableChangeRequestStatusEnabled"
+  >,
+): boolean {
+  return (
+    input.threadBranch !== null ||
+    (input.durableChangeRequestStatusEnabled && input.changeRequest !== undefined)
+  );
+}
+
+/**
+ * Resolve the PR/MR shown for a thread without conflating durable identity
+ * with the currently checked-out branch.
+ *
+ * Explicit associations may render from their persisted snapshot before a
+ * refresh completes or when no local repository is available. Inferred
+ * results still require an exact checked-out branch match.
+ */
+export function resolveThreadChangeRequestStatus(
+  input: ThreadChangeRequestStatusInput,
+): VcsStatusResult["pr"] {
+  const explicitChangeRequest = input.durableChangeRequestStatusEnabled
+    ? input.changeRequest
+    : undefined;
+  if (explicitChangeRequest) {
+    const refreshed = input.gitStatus?.pr;
+    return refreshed && statusMatchesChangeRequest(refreshed, explicitChangeRequest)
+      ? refreshed
+      : storedChangeRequestStatus(explicitChangeRequest);
+  }
+
+  if (
+    input.threadBranch === null ||
+    input.gitStatus === null ||
+    input.gitStatus.refName !== input.threadBranch
+  ) {
+    return null;
+  }
+
+  return input.gitStatus.pr ?? null;
+}
+
+export function resolveThreadChangeRequestProviderKind(
+  input: Pick<
+    ThreadChangeRequestStatusInput,
+    "changeRequest" | "gitStatus" | "durableChangeRequestStatusEnabled"
+  >,
+): SourceControlProviderKind | null {
+  return (
+    (input.durableChangeRequestStatusEnabled ? input.changeRequest?.provider : undefined) ??
+    input.gitStatus?.sourceControlProvider?.kind ??
+    null
+  );
 }
 
 export interface ChangeRequestPresentation {
@@ -124,9 +227,9 @@ const GENERIC_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
 };
 
 export function resolveChangeRequestPresentation(
-  provider: SourceControlProviderInfo | null | undefined,
+  provider: SourceControlProviderInfo | SourceControlProviderKind | null | undefined,
 ): ChangeRequestPresentation {
-  switch (provider?.kind) {
+  switch (typeof provider === "string" ? provider : provider?.kind) {
     case "github":
     case undefined:
       return GITHUB_CHANGE_REQUEST_PRESENTATION;
