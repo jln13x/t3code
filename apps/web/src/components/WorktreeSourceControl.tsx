@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -31,6 +32,7 @@ import {
 import { cn } from "~/lib/utils";
 import { reviewEnvironment } from "~/state/review";
 import { useEnvironmentQuery } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 
@@ -43,8 +45,9 @@ import { DIFF_VIEW_UNSAFE_CSS } from "./diffs/diffViewStyles";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import { resolveWorktreeDiffSource, type WorktreeChangeScope } from "./WorktreeSourceControl.logic";
 
-export type WorktreeChangeScope = "staged" | "unstaged";
+export type { WorktreeChangeScope } from "./WorktreeSourceControl.logic";
 
 type WorktreeFile = VcsStatusResult["workingTree"]["files"][number];
 type MutationKind = "stage" | "unstage" | "discard" | "refresh";
@@ -101,6 +104,7 @@ interface ChangeSectionProps {
   readonly selectedScope: WorktreeChangeScope;
   readonly selectedPath: string | null;
   readonly pending: { readonly kind: MutationKind; readonly path: string | null } | null;
+  readonly canMutate: boolean;
   readonly onSelect: (scope: WorktreeChangeScope, path: string | null) => void;
   readonly onStage: (paths: readonly string[]) => void;
   readonly onUnstage: (paths: readonly string[]) => void;
@@ -114,6 +118,7 @@ const ChangeSection = memo(function ChangeSection({
   selectedScope,
   selectedPath,
   pending,
+  canMutate,
   onSelect,
   onStage,
   onUnstage,
@@ -141,28 +146,30 @@ const ChangeSection = memo(function ChangeSection({
             {files.length}
           </span>
         </button>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={scope === "staged" ? `Unstage all ${title}` : `Stage all ${title}`}
-                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring group-hover/section:opacity-100"
-                disabled={pending !== null}
-                onClick={() => (scope === "staged" ? onUnstage(paths) : onStage(paths))}
-              />
-            }
-          >
-            {scope === "staged" ? (
-              <MinusIcon className="size-3.5" />
-            ) : (
-              <PlusIcon className="size-3.5" />
-            )}
-          </TooltipTrigger>
-          <TooltipPopup side="right">
-            {scope === "staged" ? "Unstage All" : "Stage All"}
-          </TooltipPopup>
-        </Tooltip>
+        {canMutate ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={scope === "staged" ? `Unstage all ${title}` : `Stage all ${title}`}
+                  className="inline-flex size-6 items-center justify-center rounded text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring group-hover/section:opacity-100"
+                  disabled={pending !== null}
+                  onClick={() => (scope === "staged" ? onUnstage(paths) : onStage(paths))}
+                />
+              }
+            >
+              {scope === "staged" ? (
+                <MinusIcon className="size-3.5" />
+              ) : (
+                <PlusIcon className="size-3.5" />
+              )}
+            </TooltipTrigger>
+            <TooltipPopup side="right">
+              {scope === "staged" ? "Unstage All" : "Stage All"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
       <ul className="py-1">
         {files.map((file) => {
@@ -175,7 +182,8 @@ const ChangeSection = memo(function ChangeSection({
               <button
                 type="button"
                 className={cn(
-                  "flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 pr-[4.25rem] text-left transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                  "flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                  canMutate ? "pr-[4.25rem]" : "pr-2",
                   selected
                     ? "bg-accent text-accent-foreground"
                     : "text-foreground/80 hover:bg-accent/55 hover:text-foreground",
@@ -199,57 +207,59 @@ const ChangeSection = memo(function ChangeSection({
                   ) : null}
                 </span>
               </button>
-              <div
-                className={cn(
-                  "absolute top-1 right-2 flex items-center gap-0.5 rounded bg-background/92 opacity-0 shadow-sm transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100",
-                  isPending ? "opacity-100" : "",
-                )}
-              >
-                {scope === "unstaged" ? (
+              {canMutate ? (
+                <div
+                  className={cn(
+                    "absolute top-1 right-2 flex items-center gap-0.5 rounded bg-background/92 opacity-0 shadow-sm transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100",
+                    isPending ? "opacity-100" : "",
+                  )}
+                >
+                  {scope === "unstaged" ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={`Discard changes in ${file.path}`}
+                            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                            disabled={pending !== null}
+                            onClick={() => onDiscard(file.path)}
+                          />
+                        }
+                      >
+                        <RotateCcwIcon className="size-3.5" />
+                      </TooltipTrigger>
+                      <TooltipPopup side="right">Discard Changes…</TooltipPopup>
+                    </Tooltip>
+                  ) : null}
                   <Tooltip>
                     <TooltipTrigger
                       render={
                         <button
                           type="button"
-                          aria-label={`Discard changes in ${file.path}`}
-                          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                          aria-label={
+                            scope === "staged" ? `Unstage ${file.path}` : `Stage ${file.path}`
+                          }
+                          className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                           disabled={pending !== null}
-                          onClick={() => onDiscard(file.path)}
+                          onClick={() =>
+                            scope === "staged" ? onUnstage([file.path]) : onStage([file.path])
+                          }
                         />
                       }
                     >
-                      <RotateCcwIcon className="size-3.5" />
+                      {scope === "staged" ? (
+                        <MinusIcon className="size-3.5" />
+                      ) : (
+                        <PlusIcon className="size-3.5" />
+                      )}
                     </TooltipTrigger>
-                    <TooltipPopup side="right">Discard Changes…</TooltipPopup>
+                    <TooltipPopup side="right">
+                      {scope === "staged" ? "Unstage Changes" : "Stage Changes"}
+                    </TooltipPopup>
                   </Tooltip>
-                ) : null}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label={
-                          scope === "staged" ? `Unstage ${file.path}` : `Stage ${file.path}`
-                        }
-                        className="inline-flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                        disabled={pending !== null}
-                        onClick={() =>
-                          scope === "staged" ? onUnstage([file.path]) : onStage([file.path])
-                        }
-                      />
-                    }
-                  >
-                    {scope === "staged" ? (
-                      <MinusIcon className="size-3.5" />
-                    ) : (
-                      <PlusIcon className="size-3.5" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">
-                    {scope === "staged" ? "Unstage Changes" : "Stage Changes"}
-                  </TooltipPopup>
-                </Tooltip>
-              </div>
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -275,6 +285,7 @@ export function WorktreeSourceControl({
 }: WorktreeSourceControlProps) {
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
+  const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const [diffRenderMode, setDiffRenderMode] = useState<"stacked" | "split">("stacked");
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
@@ -306,7 +317,8 @@ export function WorktreeSourceControl({
   const files = status.data?.workingTree.files ?? [];
   const stagedFiles = useMemo(() => files.filter(isStaged), [files]);
   const unstagedFiles = useMemo(() => files.filter(isUnstaged), [files]);
-  const selectedSource = preview.data?.sources.find((source) => source.kind === selectedScope);
+  const canMutate = serverConfig?.environment.capabilities.worktreeSourceControl === true;
+  const selectedSource = resolveWorktreeDiffSource(preview.data?.sources ?? [], selectedScope);
   const renderablePatch = useMemo(
     () =>
       getRenderablePatch(selectedSource?.diff, `worktree-source-control:${selectedScope}`, {
@@ -414,8 +426,10 @@ export function WorktreeSourceControl({
   const handleRefresh = useCallback(() => {
     if (pending !== null) return;
     setPending({ kind: "refresh", path: null });
+    status.refresh();
     void refreshStatus({ environmentId, input: { cwd } }).then((result) => {
       setPending(null);
+      preview.refresh();
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         toastManager.add(
           stackedThreadToast({
@@ -426,13 +440,17 @@ export function WorktreeSourceControl({
         );
       }
     });
-  }, [cwd, environmentId, pending, refreshStatus]);
+  }, [cwd, environmentId, pending, preview, refreshStatus, status]);
 
   const activeFiles = selectedScope === "staged" ? stagedFiles : unstagedFiles;
   const selectionLabel =
     selectedPath ?? `${selectedScope === "staged" ? "Staged" : "Changes"} · ${activeFiles.length}`;
   const isLoading = status.isPending || preview.isPending;
   const noChanges = status.data !== null && files.length === 0;
+  const statusErrorWithoutData = status.error !== null && status.data === null;
+  const previewErrorWithoutData = preview.error !== null && preview.data === null;
+  const hasStaleStatus = status.error !== null && status.data !== null;
+  const hasStalePreview = preview.error !== null && preview.data !== null;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-background">
@@ -487,7 +505,16 @@ export function WorktreeSourceControl({
             </span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-            {status.error ? (
+            {hasStaleStatus ? (
+              <p
+                role="status"
+                title={status.error ?? undefined}
+                className="border-b border-amber-500/15 bg-amber-500/6 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300/75"
+              >
+                Showing the last known changes. Refresh to retry live updates.
+              </p>
+            ) : null}
+            {statusErrorWithoutData ? (
               <p className="px-3 py-3 text-xs text-destructive">{status.error}</p>
             ) : noChanges ? (
               <div className="flex h-full min-h-28 flex-col items-center justify-center px-5 text-center">
@@ -499,6 +526,12 @@ export function WorktreeSourceControl({
               </div>
             ) : (
               <>
+                {!canMutate ? (
+                  <p className="border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground/65">
+                    Read-only compatibility mode. Update this environment to stage or discard
+                    changes.
+                  </p>
+                ) : null}
                 <ChangeSection
                   title="Staged Changes"
                   scope="staged"
@@ -506,6 +539,7 @@ export function WorktreeSourceControl({
                   selectedScope={selectedScope}
                   selectedPath={selectedPath}
                   pending={pending}
+                  canMutate={canMutate}
                   onSelect={onSelectionChange}
                   onStage={handleStage}
                   onUnstage={handleUnstage}
@@ -518,6 +552,7 @@ export function WorktreeSourceControl({
                   selectedScope={selectedScope}
                   selectedPath={selectedPath}
                   pending={pending}
+                  canMutate={canMutate}
                   onSelect={onSelectionChange}
                   onStage={handleStage}
                   onUnstage={handleUnstage}
@@ -533,6 +568,14 @@ export function WorktreeSourceControl({
             <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/72">
               {selectionLabel}
             </span>
+            {hasStalePreview ? (
+              <span
+                title={preview.error ?? undefined}
+                className="shrink-0 text-[10px] text-amber-700 dark:text-amber-300/75"
+              >
+                Last known diff
+              </span>
+            ) : null}
             <span className="hidden items-center gap-1 text-[10px] text-muted-foreground/55 lg:flex">
               <MessageCircleIcon aria-hidden="true" className="size-3" />
               Select lines to comment
@@ -595,7 +638,7 @@ export function WorktreeSourceControl({
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden">
-            {preview.error ? (
+            {previewErrorWithoutData ? (
               <div className="flex h-full items-center justify-center px-6 text-center text-xs text-destructive">
                 {preview.error}
               </div>
