@@ -1,17 +1,21 @@
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
+import * as Equal from "effect/Equal";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
+import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Semaphore from "effect/Semaphore";
 import {
   GitActionProgressEvent,
   GitActionProgressPhase,
@@ -50,8 +54,23 @@ import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as SourceControlProvider from "../sourceControl/SourceControlProvider.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import type { ChangeRequest, ChangeRequestAssociation } from "@t3tools/contracts";
+import {
+  CHANGE_REQUEST_STATUS_INVALID_TTL,
+  CHANGE_REQUEST_STATUS_MAX_CONCURRENCY,
+  recordChangeRequestStatusRequestFailure,
+  recordChangeRequestStatusRequestSuccess,
+  successfulChangeRequestStatusTtl,
+  takeChangeRequestStatusRequestPermit,
+  throttledChangeRequestStatusTtl,
+  type ChangeRequestStatusRequestBudgetState,
+} from "../sourceControl/ChangeRequestStatusPollingPolicy.ts";
+import type {
+  ChangeRequest,
+  ChangeRequestAssociation,
+  SourceControlProviderKind,
+} from "@t3tools/contracts";
 
 export interface GitActionProgressReporter {
   readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void, never>;
@@ -117,6 +136,36 @@ interface OpenPrInfo {
 interface PullRequestInfo extends OpenPrInfo, PullRequestHeadRemoteInfo {
   state: "open" | "closed" | "merged";
   updatedAt: Option.Option<DateTime.Utc>;
+}
+
+interface ChangeRequestStatusLookup {
+  readonly pr: PullRequestInfo | null;
+  readonly refreshState?: "stale";
+  readonly refName?: string;
+}
+
+class ExplicitChangeRequestRefreshCacheKey implements Equal.Equal {
+  readonly identity: string;
+  readonly cwd: string;
+  readonly changeRequest: ChangeRequestAssociation;
+
+  constructor(cwd: string, changeRequest: ChangeRequestAssociation) {
+    this.cwd = cwd;
+    this.changeRequest = changeRequest;
+    this.identity = [
+      changeRequest.provider,
+      String(changeRequest.number),
+      normalizeChangeRequestUrl(changeRequest.url),
+    ].join("\u0000");
+  }
+
+  [Equal.symbol](that: Equal.Equal): boolean {
+    return that instanceof ExplicitChangeRequestRefreshCacheKey && this.identity === that.identity;
+  }
+
+  [Hash.symbol](): number {
+    return Hash.string(this.identity);
+  }
 }
 
 const pullRequestUpdatedAtDescOrder: Order.Order<PullRequestInfo> = Order.mapInput(
@@ -314,11 +363,12 @@ function toChangeRequestAssociation(summary: ChangeRequest): ChangeRequestAssoci
   };
 }
 
+function normalizeChangeRequestUrl(url: string): string {
+  return url.trim().replace(/\/+$/u, "").toLowerCase();
+}
+
 function changeRequestUrlsEqual(left: string, right: string): boolean {
-  return (
-    left.trim().replace(/\/+$/u, "").toLowerCase() ===
-    right.trim().replace(/\/+$/u, "").toLowerCase()
-  );
+  return normalizeChangeRequestUrl(left) === normalizeChangeRequestUrl(right);
 }
 
 function limitContext(value: string, maxChars: number): string {
@@ -553,6 +603,121 @@ export const make = Effect.gen(function* () {
     Effect.map((settings) => settings.enableDurableChangeRequestStatus),
     Effect.orElseSucceed(() => true),
   );
+  const changeRequestStatusRequestBudgetsRef = yield* Ref.make(
+    new Map<SourceControlProviderKind, ChangeRequestStatusRequestBudgetState>(),
+  );
+  const changeRequestStatusRequestSemaphore = yield* Semaphore.make(
+    CHANGE_REQUEST_STATUS_MAX_CONCURRENCY,
+  );
+  const takeStatusProviderRequestPermit = Effect.fn("takeStatusProviderRequestPermit")(function* (
+    provider: SourceControlProviderKind,
+    requestedTokens = 1,
+  ) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    return yield* Ref.modify(changeRequestStatusRequestBudgetsRef, (budgets) => {
+      const permit = takeChangeRequestStatusRequestPermit(
+        budgets.get(provider),
+        nowMs,
+        requestedTokens,
+      );
+      const nextBudgets = new Map(budgets);
+      nextBudgets.set(provider, permit.state);
+      return [permit, nextBudgets] as const;
+    });
+  });
+  const recordStatusProviderRequestSuccess = Effect.fn("recordStatusProviderRequestSuccess")(
+    function* (provider: SourceControlProviderKind) {
+      const nowMs = yield* Clock.currentTimeMillis;
+      yield* Ref.update(changeRequestStatusRequestBudgetsRef, (budgets) => {
+        const nextBudgets = new Map(budgets);
+        nextBudgets.set(
+          provider,
+          recordChangeRequestStatusRequestSuccess(budgets.get(provider), nowMs),
+        );
+        return nextBudgets;
+      });
+    },
+  );
+  const recordStatusProviderRequestFailure = Effect.fn("recordStatusProviderRequestFailure")(
+    function* (provider: SourceControlProviderKind) {
+      const nowMs = yield* Clock.currentTimeMillis;
+      return yield* Ref.modify(changeRequestStatusRequestBudgetsRef, (budgets) => {
+        const failure = recordChangeRequestStatusRequestFailure(budgets.get(provider), nowMs);
+        const nextBudgets = new Map(budgets);
+        nextBudgets.set(provider, failure.state);
+        return [failure.retryAfter, nextBudgets] as const;
+      });
+    },
+  );
+
+  const refreshExplicitChangeRequestBase = Effect.fn("refreshExplicitChangeRequest")(function* (
+    key: ExplicitChangeRequestRefreshCacheKey,
+  ) {
+    const { changeRequest, cwd } = key;
+    const provider = yield* sourceControlProvider(cwd);
+    if (provider.kind !== changeRequest.provider) {
+      return {
+        state: "invalid" as const,
+        cacheTtl: CHANGE_REQUEST_STATUS_INVALID_TTL,
+      };
+    }
+
+    return yield* changeRequestStatusRequestSemaphore.withPermit(
+      Effect.gen(function* () {
+        const permit = yield* takeStatusProviderRequestPermit(provider.kind);
+        if (!permit.allowed) {
+          return {
+            state: "unavailable" as const,
+            cacheTtl: throttledChangeRequestStatusTtl(permit.retryAfterMs),
+          };
+        }
+
+        const refreshed = yield* provider.getChangeRequest({
+          cwd,
+          reference: provider.kind === "github" ? changeRequest.url : String(changeRequest.number),
+        });
+        yield* recordStatusProviderRequestSuccess(provider.kind);
+        if (!changeRequestUrlsEqual(refreshed.url, changeRequest.url)) {
+          return {
+            state: "invalid" as const,
+            cacheTtl: CHANGE_REQUEST_STATUS_INVALID_TTL,
+          };
+        }
+
+        return {
+          state: "found" as const,
+          pr: toStatusPr(toPullRequestInfo(refreshed)),
+          cacheTtl: successfulChangeRequestStatusTtl(refreshed.state),
+        };
+      }),
+    );
+  });
+  const refreshExplicitChangeRequest = (key: ExplicitChangeRequestRefreshCacheKey) =>
+    refreshExplicitChangeRequestBase(key).pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          const retryAfter = yield* recordStatusProviderRequestFailure(key.changeRequest.provider);
+          yield* Effect.logWarning(
+            "Explicit change request refresh failed; using last-known state",
+            {
+              provider: key.changeRequest.provider,
+              number: key.changeRequest.number,
+              cwdLength: key.cwd.length,
+              errorTag: error._tag,
+              retryAfterMs: Duration.toMillis(retryAfter),
+            },
+          );
+          return {
+            state: "unavailable" as const,
+            cacheTtl: retryAfter,
+          };
+        }),
+      ),
+    );
+  const explicitChangeRequestRefreshCache = yield* Cache.makeWith(refreshExplicitChangeRequest, {
+    capacity: STATUS_RESULT_CACHE_CAPACITY,
+    timeToLive: (exit) => (Exit.isSuccess(exit) ? exit.value.cacheTtl : Duration.zero),
+  });
   const randomUUIDv4 = (cwd: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.mapError(
@@ -806,50 +971,47 @@ export const make = Effect.gen(function* () {
       return null;
     }
 
-    const pr = explicitChangeRequest
-      ? yield* Effect.gen(function* () {
-          const provider = yield* sourceControlProvider(cwd);
-          if (provider.kind !== explicitChangeRequest.provider) {
-            return null;
-          }
-
-          const refreshed = yield* provider.getChangeRequest({
-            cwd,
-            reference: String(explicitChangeRequest.number),
-          });
-          if (!changeRequestUrlsEqual(refreshed.url, explicitChangeRequest.url)) {
-            return null;
-          }
-          return toStatusPr(toPullRequestInfo(refreshed));
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("Explicit change request refresh failed; using last-known state", {
-              provider: explicitChangeRequest.provider,
-              number: explicitChangeRequest.number,
-              cwdLength: cwd.length,
-              errorTag: error._tag,
-            }).pipe(
-              Effect.as(
-                toStatusPr(associationToPullRequestInfo(explicitChangeRequest), { stale: true }),
-              ),
-            ),
-          ),
+    const changeRequestLookup = explicitChangeRequest
+      ? yield* Cache.get(
+          explicitChangeRequestRefreshCache,
+          new ExplicitChangeRequestRefreshCacheKey(cwd, explicitChangeRequest),
+        ).pipe(
+          Effect.map((refreshed) => {
+            if (refreshed.state === "found") {
+              return { pr: refreshed.pr };
+            }
+            if (refreshed.state === "unavailable") {
+              return {
+                pr: toStatusPr(associationToPullRequestInfo(explicitChangeRequest), {
+                  stale: true,
+                }),
+                refreshState: "stale" as const,
+              };
+            }
+            return { pr: null };
+          }),
         )
       : details.branch !== null
-        ? yield* findLatestPr(cwd, {
+        ? yield* findLatestPrForStatus(cwd, {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
           }).pipe(
-            Effect.map((latest) => {
-              if (!latest) return null;
-              // On the default branch, only surface open PRs.
-              // Merged/closed matches are usually reverse-merge history, not the thread's PR context.
-              if (details.isDefaultBranch && latest.state !== "open") return null;
-              return toStatusPr(latest);
+            Effect.map((lookup) => {
+              const latest = lookup.pr;
+              const pr =
+                latest === null || (details.isDefaultBranch && latest.state !== "open")
+                  ? null
+                  : toStatusPr(latest);
+              return {
+                pr,
+                ...("refreshState" in lookup && lookup.refreshState
+                  ? { refreshState: lookup.refreshState }
+                  : {}),
+                ...("refName" in lookup && lookup.refName ? { refName: lookup.refName } : {}),
+              };
             }),
-            Effect.orElseSucceed(() => null),
           )
-        : null;
+        : { pr: null };
 
     return {
       hasUpstream: details.hasUpstream,
@@ -857,7 +1019,13 @@ export const make = Effect.gen(function* () {
       behindCount: details.behindCount,
       aheadOfDefaultCount: details.aheadOfDefaultCount,
       ...(details.remoteRefHash == null ? {} : { remoteRefHash: details.remoteRefHash }),
-      pr,
+      ...("refreshState" in changeRequestLookup && changeRequestLookup.refreshState
+        ? { changeRequestRefreshState: changeRequestLookup.refreshState }
+        : {}),
+      ...("refName" in changeRequestLookup && changeRequestLookup.refName
+        ? { changeRequestRefName: changeRequestLookup.refName }
+        : {}),
+      pr: changeRequestLookup.pr,
     } satisfies VcsStatusRemoteResult;
   });
   const remoteStatusResultCache = yield* Cache.makeWith((cwd: string) => readRemoteStatus(cwd), {
@@ -1022,15 +1190,15 @@ export const make = Effect.gen(function* () {
     return null;
   });
 
-  const findLatestPr = Effect.fn("findLatestPr")(function* (
+  const queryLatestPr = Effect.fn("queryLatestPr")(function* (
     cwd: string,
-    details: { branch: string; upstreamRef: string | null },
+    headContext: BranchHeadContext,
+    provider: SourceControlProvider.SourceControlProvider["Service"],
   ) {
-    const headContext = yield* resolveBranchHeadContext(cwd, details);
     const parsedByNumber = new Map<number, PullRequestInfo>();
 
     for (const headSelector of headContext.headSelectors) {
-      const pullRequests = yield* (yield* sourceControlProvider(cwd)).listChangeRequests({
+      const pullRequests = yield* provider.listChangeRequests({
         cwd,
         headSelector,
         state: "all",
@@ -1053,6 +1221,81 @@ export const make = Effect.gen(function* () {
     }
     return parsed[0] ?? null;
   });
+
+  const findLatestPrForStatus = Effect.fn("findLatestPrForStatus")(
+    function* (cwd: string, details: { branch: string; upstreamRef: string | null }) {
+      const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
+      const headContext = yield* resolveBranchHeadContext(cwd, details);
+      const provider = yield* sourceControlProvider(cwd);
+
+      if (!pollingProtectionEnabled) {
+        const pr = yield* queryLatestPr(cwd, headContext, provider).pipe(
+          Effect.orElseSucceed(() => null),
+        );
+        return { pr };
+      }
+
+      // GitHub CLI may first resolve the checkout's base repository with a
+      // separate `gh repo view`, so reserve that possible API call too.
+      const requestCost = headContext.headSelectors.length + (provider.kind === "github" ? 1 : 0);
+      return yield* changeRequestStatusRequestSemaphore
+        .withPermit(
+          Effect.gen(function* () {
+            const permit = yield* takeStatusProviderRequestPermit(provider.kind, requestCost);
+            if (!permit.allowed) {
+              return {
+                pr: null,
+                refreshState: "stale",
+                refName: details.branch,
+              } satisfies ChangeRequestStatusLookup;
+            }
+            const pr = yield* queryLatestPr(cwd, headContext, provider);
+            yield* recordStatusProviderRequestSuccess(provider.kind);
+            return { pr, refName: details.branch } satisfies ChangeRequestStatusLookup;
+          }),
+        )
+        .pipe(
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              const retryAfter = yield* recordStatusProviderRequestFailure(provider.kind);
+              yield* Effect.logWarning(
+                "Change request discovery failed; retaining last-known state",
+                {
+                  provider: provider.kind,
+                  cwdLength: cwd.length,
+                  errorTag: error._tag,
+                  retryAfterMs: Duration.toMillis(retryAfter),
+                },
+              );
+              return {
+                pr: null,
+                refreshState: "stale",
+                refName: details.branch,
+              } satisfies ChangeRequestStatusLookup;
+            }),
+          ),
+        );
+    },
+    Effect.catch((error) =>
+      durableChangeRequestStatusEnabled.pipe(
+        Effect.flatMap((pollingProtectionEnabled) =>
+          pollingProtectionEnabled
+            ? Effect.logWarning(
+                "Change request discovery setup failed; retaining last-known state",
+                {
+                  errorTag: error._tag,
+                },
+              ).pipe(
+                Effect.as({
+                  pr: null,
+                  refreshState: "stale" as const,
+                }),
+              )
+            : Effect.succeed({ pr: null }),
+        ),
+      ),
+    ),
+  );
 
   const buildCompletionToast = Effect.fn("buildCompletionToast")(function* (
     cwd: string,

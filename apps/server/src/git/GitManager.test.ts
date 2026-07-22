@@ -469,7 +469,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
             "--limit",
             String(input.limit ?? (input.state === "open" ? 1 : 20)),
             "--repo",
-            scenario.baseRepository ?? "pingdotgg/codething-mvp",
+            input.repository ?? scenario.baseRepository ?? "pingdotgg/codething-mvp",
             "--json",
             "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
           ],
@@ -531,7 +531,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
             "view",
             input.reference,
             "--repo",
-            scenario.baseRepository ?? "pingdotgg/codething-mvp",
+            input.repository ?? scenario.baseRepository ?? "pingdotgg/codething-mvp",
             "--json",
             "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
           ],
@@ -760,7 +760,11 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         headRef: "feature/original-name",
         state: "merged",
       });
-      expect(ghCalls.some((call) => call.startsWith("pr view 42 "))).toBe(true);
+      expect(
+        ghCalls.some((call) =>
+          call.startsWith("pr view https://github.com/pingdotgg/codething-mvp/pull/42 "),
+        ),
+      ).toBe(true);
       expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(false);
     }),
   );
@@ -809,8 +813,65 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         headRef: "feature/removed-locally",
         state: "open",
       });
-      expect(ghCalls.some((call) => call.startsWith("pr view 44 "))).toBe(true);
+      expect(
+        ghCalls.some((call) =>
+          call.startsWith("pr view https://github.com/pingdotgg/codething-mvp/pull/44 "),
+        ),
+      ).toBe(true);
       expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(false);
+    }),
+  );
+
+  it.effect("coalesces the same explicitly associated PR across worktree paths", () =>
+    Effect.gen(function* () {
+      const firstRepoDir = yield* makeTempDir("t3code-git-manager-shared-pr-first-");
+      const secondRepoDir = yield* makeTempDir("t3code-git-manager-shared-pr-second-");
+      yield* initRepo(firstRepoDir);
+      yield* initRepo(secondRepoDir);
+      const firstRemoteDir = yield* createBareRemote();
+      const secondRemoteDir = yield* createBareRemote();
+      yield* runGit(firstRepoDir, ["remote", "add", "origin", firstRemoteDir]);
+      yield* runGit(secondRepoDir, ["remote", "add", "origin", secondRemoteDir]);
+      yield* runGit(firstRepoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(secondRepoDir, ["push", "-u", "origin", "main"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 46,
+            title: "Shared pull request",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/46",
+            baseRefName: "main",
+            headRefName: "feature/shared",
+            state: "open",
+          },
+        },
+      });
+      const changeRequest = {
+        provider: "github" as const,
+        number: 46,
+        title: "Shared pull request",
+        url: "https://github.com/pingdotgg/codething-mvp/pull/46",
+        baseRefName: "main",
+        headRefName: "feature/shared",
+        state: "open" as const,
+      };
+
+      const [first, second] = yield* Effect.all(
+        [
+          manager.status({ cwd: firstRepoDir, changeRequest }),
+          manager.status({ cwd: secondRepoDir, changeRequest }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      expect(first.pr?.number).toBe(46);
+      expect(second.pr?.number).toBe(46);
+      expect(
+        ghCalls.filter((call) =>
+          call.startsWith("pr view https://github.com/pingdotgg/codething-mvp/pull/46 "),
+        ),
+      ).toHaveLength(1);
     }),
   );
 
@@ -822,7 +883,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
       yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
 
-      const { manager } = yield* makeManager({
+      const { manager, ghCalls } = yield* makeManager({
         ghScenario: {
           failWith: new GitHubCli.GitHubCliCommandError({
             command: "gh",
@@ -832,7 +893,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         },
       });
 
-      const status = yield* manager.status({
+      const input = {
         cwd: repoDir,
         changeRequest: {
           provider: "github",
@@ -843,7 +904,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           headRefName: "feature/stale",
           state: "merged",
         },
-      });
+      } as const;
+      const status = yield* manager.status(input);
+      const repeatedStatus = yield* manager.status(input);
 
       expect(status.pr).toEqual({
         number: 43,
@@ -854,6 +917,57 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         state: "merged",
         stale: true,
       });
+      expect(repeatedStatus.pr).toEqual(status.pr);
+      expect(
+        ghCalls.filter((call) =>
+          call.startsWith("pr view https://github.com/pingdotgg/codething-mvp/pull/43 "),
+        ),
+      ).toHaveLength(1);
+    }),
+  );
+
+  it.effect("bounds concurrent failed provider polling and returns stale associations", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-provider-concurrency-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          failWith: new GitHubCli.GitHubCliCommandError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("GitHub unavailable"),
+          }),
+        },
+      });
+      const inputs = Array.from({ length: 12 }, (_, index) => {
+        const number = index + 100;
+        return {
+          cwd: repoDir,
+          changeRequest: {
+            provider: "github" as const,
+            number,
+            title: `Pull request ${number}`,
+            url: `https://github.com/pingdotgg/codething-mvp/pull/${number}`,
+            baseRefName: "main",
+            headRefName: `feature/${number}`,
+            state: "open" as const,
+          },
+        };
+      });
+
+      const statuses = yield* Effect.all(
+        inputs.map((input) => manager.status(input)),
+        { concurrency: "unbounded" },
+      );
+      const pullRequestCalls = ghCalls.filter((call) => call.startsWith("pr view "));
+
+      expect(statuses.every((status) => status.pr?.stale === true)).toBe(true);
+      expect(pullRequestCalls.length).toBeGreaterThan(0);
+      expect(pullRequestCalls.length).toBeLessThanOrEqual(4);
     }),
   );
 

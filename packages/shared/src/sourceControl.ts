@@ -131,7 +131,9 @@ export function resolveThreadChangeRequestStatus(
   if (
     input.threadBranch === null ||
     input.gitStatus === null ||
-    input.gitStatus.refName !== input.threadBranch
+    input.gitStatus.refName !== input.threadBranch ||
+    (input.gitStatus.changeRequestRefName !== undefined &&
+      input.gitStatus.changeRequestRefName !== input.threadBranch)
   ) {
     return null;
   }

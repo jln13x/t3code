@@ -760,6 +760,74 @@ describe("VcsStatusBroadcaster", () => {
     }).pipe(Effect.provide(Layer.merge(makeTestLayer(state), TestClock.layer())));
   });
 
+  it.effect("keeps an inferred PR when provider polling is throttled", () => {
+    const inferredRemoteStatus = {
+      ...remoteStatusWithPr,
+      changeRequestRefName: "feature/status-broadcast",
+    } satisfies VcsStatusRemoteResult;
+    const state = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: inferredRemoteStatus as VcsStatusRemoteResult | null,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.getStatus({ cwd: "/repo" });
+
+      state.currentRemoteStatus = {
+        ...baseRemoteStatus,
+        changeRequestRefreshState: "stale",
+        changeRequestRefName: "feature/status-broadcast",
+        pr: null,
+      };
+      const refreshed = yield* broadcaster.refreshStatus("/repo");
+
+      assert.deepStrictEqual(refreshed.pr, {
+        ...inferredRemoteStatus.pr!,
+        stale: true,
+      });
+      assert.equal(refreshed.changeRequestRefreshState, "stale");
+    }).pipe(Effect.provide(makeTestLayer(state)));
+  });
+
+  it.effect("does not carry a stale inferred PR across a branch switch", () => {
+    const state = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: {
+        ...remoteStatusWithPr,
+        changeRequestRefName: "feature/status-broadcast",
+      } as VcsStatusRemoteResult | null,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.getStatus({ cwd: "/repo" });
+
+      state.currentLocalStatus = {
+        ...baseLocalStatus,
+        refName: "feature/other-branch",
+      };
+      state.currentRemoteStatus = {
+        ...baseRemoteStatus,
+        changeRequestRefreshState: "stale",
+        changeRequestRefName: "feature/other-branch",
+        pr: null,
+      };
+      const refreshed = yield* broadcaster.refreshStatus("/repo");
+
+      assert.equal(refreshed.refName, "feature/other-branch");
+      assert.equal(refreshed.pr, null);
+    }).pipe(Effect.provide(makeTestLayer(state)));
+  });
+
   it("backs off remote refresh failures exponentially and honors larger configured intervals", () => {
     assert.equal(
       Duration.toMillis(VcsStatusBroadcaster.remoteRefreshFailureDelay(1, Duration.seconds(1))),

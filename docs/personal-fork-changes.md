@@ -75,6 +75,15 @@ Upstream PRs integrated into the fork are listed in
 - The sidebar keeps the compact icon-only treatment: open is green, merged is purple, and closed
   is muted gray. Provider failures retain the latest cached result and mark last-known fallback
   metadata as stale instead of making the icon disappear.
+- Background change-request polling has a sustained budget of 30 provider requests per minute, a
+  burst limit of 10, and at most four concurrent provider calls. It is shared by canonical
+  provider/URL/number identity across worktrees. Open results refresh at most once per minute,
+  closed and merged results use progressively longer cache windows, and provider failures back off
+  exponentially up to 15 minutes. Throttled or failed inferred lookups preserve the last successful
+  icon as stale instead of clearing it, but only while the inferred branch identity still matches.
+- GitHub durable refreshes use the repository-qualified pull request URL to derive the target
+  repository, so a shared cache entry cannot be populated from an unrelated checkout that happens
+  to contain the same pull request number.
 - Turning the flag off preserves branch-name discovery and does not attach new pull request
   associations to threads.
 

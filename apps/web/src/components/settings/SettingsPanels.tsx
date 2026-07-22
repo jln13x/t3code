@@ -171,7 +171,8 @@ const PERSONAL_FEATURE_SETTINGS = [
   {
     key: "enableDurableChangeRequestStatus",
     title: "Durable pull request status",
-    description: "Keep resolved PR identity and last-known state attached to its thread.",
+    description:
+      "Keep resolved PR identity and last-known state attached to its thread with rate-limited polling.",
   },
   {
     key: "enableProviderSkillDiscovery",

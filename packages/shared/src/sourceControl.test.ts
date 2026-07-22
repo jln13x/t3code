@@ -200,6 +200,16 @@ describe("thread change request status", () => {
         durableChangeRequestStatusEnabled: true,
       }),
     ).toBeNull();
+    expect(
+      resolveThreadChangeRequestStatus({
+        threadBranch: "feature/current",
+        gitStatus: status({
+          pr: inferredPr,
+          changeRequestRefName: "feature/previous",
+        }),
+        durableChangeRequestStatusEnabled: true,
+      }),
+    ).toBeNull();
   });
 
   it("uses the persisted provider when live repository metadata is unavailable", () => {

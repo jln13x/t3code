@@ -250,6 +250,8 @@ const VcsStatusRemoteShape = {
   behindCount: NonNegativeInt,
   aheadOfDefaultCount: Schema.optional(NonNegativeInt),
   remoteRefHash: Schema.optional(TrimmedNonEmptyStringSchema),
+  changeRequestRefreshState: Schema.optionalKey(Schema.Literals(["fresh", "stale"])),
+  changeRequestRefName: Schema.optionalKey(TrimmedNonEmptyStringSchema),
   pr: Schema.NullOr(VcsStatusChangeRequest),
 };
 

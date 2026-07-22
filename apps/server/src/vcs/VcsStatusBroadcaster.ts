@@ -178,6 +178,24 @@ function fingerprintStatusPart(status: unknown): string {
   return JSON.stringify(status);
 }
 
+function preserveStaleChangeRequest(
+  previous: VcsStatusRemoteResult | null | undefined,
+  next: VcsStatusRemoteResult | null,
+): VcsStatusRemoteResult | null {
+  const previousPr = previous?.pr;
+  const nextPr = next?.pr ?? null;
+  const preservedPr =
+    previousPr &&
+    ((nextPr?.stale && previousPr.number === nextPr.number) ||
+      (next?.changeRequestRefreshState === "stale" &&
+        nextPr === null &&
+        previous?.changeRequestRefName !== undefined &&
+        previous.changeRequestRefName === next.changeRequestRefName))
+      ? { ...previousPr, stale: true as const }
+      : nextPr;
+  return next && preservedPr !== nextPr ? { ...next, pr: preservedPr } : next;
+}
+
 function statusInputKey(input: VcsStatusInput): string {
   return JSON.stringify({
     cwd: input.cwd,
@@ -278,12 +296,7 @@ export const make = Effect.gen(function* () {
           remote: null,
           localGeneration: 0,
         };
-        const previousPr = previous.remote?.value?.pr;
-        const nextPr = remote?.pr;
-        const effectiveRemote =
-          remote && nextPr?.stale && previousPr && previousPr.number === nextPr.number
-            ? { ...remote, pr: { ...previousPr, stale: true } }
-            : remote;
+        const effectiveRemote = preserveStaleChangeRequest(previous.remote?.value, remote);
         const nextRemote = {
           fingerprint: fingerprintStatusPart(effectiveRemote),
           value: effectiveRemote,
@@ -324,17 +337,18 @@ export const make = Effect.gen(function* () {
     options?: { publish?: boolean },
   ) {
     const statusKey = statusInputKey(input);
-    const nextRemote = {
-      fingerprint: fingerprintStatusPart(remote),
-      value: remote,
-    } satisfies CachedValue<VcsStatusRemoteResult | null>;
-    const localGeneration = yield* Ref.modify(cacheRef, (cache) => {
+    const update = yield* Ref.modify(cacheRef, (cache) => {
       const previous = cache.get(statusKey) ?? {
         input,
         local: null,
         remote: null,
         localGeneration: 0,
       };
+      const effectiveRemote = preserveStaleChangeRequest(previous.remote?.value, remote);
+      const nextRemote = {
+        fingerprint: fingerprintStatusPart(effectiveRemote),
+        value: effectiveRemote,
+      } satisfies CachedValue<VcsStatusRemoteResult | null>;
       const nextLocalGeneration = previous.localGeneration + 1;
       const nextCache = new Map(cache);
       nextCache.set(statusKey, {
@@ -343,7 +357,10 @@ export const make = Effect.gen(function* () {
         remote: nextRemote,
         localGeneration: nextLocalGeneration,
       });
-      return [nextLocalGeneration, nextCache] as const;
+      return [
+        { localGeneration: nextLocalGeneration, remote: effectiveRemote },
+        nextCache,
+      ] as const;
     });
 
     if (options?.publish) {
@@ -353,13 +370,13 @@ export const make = Effect.gen(function* () {
         event: {
           _tag: "snapshot",
           local,
-          remote,
-          localGeneration,
+          remote: update.remote,
+          localGeneration: update.localGeneration,
         },
       });
     }
 
-    return mergeGitStatusParts(local, remote);
+    return mergeGitStatusParts(local, update.remote);
   });
 
   const loadLocalStatus = Effect.fn("VcsStatusBroadcaster.loadLocalStatus")(function* (
