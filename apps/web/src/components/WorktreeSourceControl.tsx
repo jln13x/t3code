@@ -17,6 +17,7 @@ import {
   RotateCcwIcon,
   Rows3Icon,
   TextWrapIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
 
@@ -35,6 +36,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
+import { resolveServerConfigVersionMismatch } from "~/versionSkew";
 
 import { useClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
@@ -45,7 +47,11 @@ import { DIFF_VIEW_UNSAFE_CSS } from "./diffs/diffViewStyles";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { resolveWorktreeDiffSource, type WorktreeChangeScope } from "./WorktreeSourceControl.logic";
+import {
+  resolveWorktreeCompatibilityNotice,
+  resolveWorktreeDiffSource,
+  type WorktreeChangeScope,
+} from "./WorktreeSourceControl.logic";
 
 export type { WorktreeChangeScope } from "./WorktreeSourceControl.logic";
 
@@ -318,6 +324,13 @@ export function WorktreeSourceControl({
   const stagedFiles = useMemo(() => files.filter(isStaged), [files]);
   const unstagedFiles = useMemo(() => files.filter(isUnstaged), [files]);
   const canMutate = serverConfig?.environment.capabilities.worktreeSourceControl === true;
+  const compatibilityNotice = serverConfig
+    ? resolveWorktreeCompatibilityNotice({
+        supportsMutations: canMutate,
+        serverVersion: serverConfig.environment.serverVersion,
+        versionMismatch: resolveServerConfigVersionMismatch(serverConfig),
+      })
+    : null;
   const selectedSource = resolveWorktreeDiffSource(preview.data?.sources ?? [], selectedScope);
   const renderablePatch = useMemo(
     () =>
@@ -472,6 +485,25 @@ export function WorktreeSourceControl({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 [-webkit-app-region:no-drag]">
+          {compatibilityNotice ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    tabIndex={0}
+                    aria-label={`${compatibilityNotice.label}. ${compatibilityNotice.detail}`}
+                    className="inline-flex h-6 items-center gap-1 rounded border border-amber-500/20 bg-amber-500/8 px-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-300/80"
+                  />
+                }
+              >
+                <TriangleAlertIcon aria-hidden="true" className="size-3" />
+                <span className="hidden sm:inline">{compatibilityNotice.label}</span>
+              </TooltipTrigger>
+              <TooltipPopup className="max-w-80" side="bottom">
+                {compatibilityNotice.detail}
+              </TooltipPopup>
+            </Tooltip>
+          ) : null}
           <span className="hidden font-mono text-[10px] tabular-nums text-muted-foreground/55 sm:inline">
             {stagedFiles.length} staged · {unstagedFiles.length} changed
           </span>
@@ -526,11 +558,16 @@ export function WorktreeSourceControl({
               </div>
             ) : (
               <>
-                {!canMutate ? (
-                  <p className="border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground/65">
-                    Read-only compatibility mode. Update this environment to stage or discard
-                    changes.
-                  </p>
+                {compatibilityNotice ? (
+                  <div
+                    role="status"
+                    className="border-b border-amber-500/15 bg-amber-500/6 px-3 py-2 text-[10px] text-amber-800 dark:text-amber-200/75"
+                  >
+                    <p className="font-medium">{compatibilityNotice.label}</p>
+                    <p className="mt-0.5 text-amber-700/80 dark:text-amber-300/65">
+                      {compatibilityNotice.detail}
+                    </p>
+                  </div>
                 ) : null}
                 <ChangeSection
                   title="Staged Changes"
