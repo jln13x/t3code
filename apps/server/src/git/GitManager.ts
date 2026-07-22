@@ -51,7 +51,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import type { ChangeRequest } from "@t3tools/contracts";
+import type { ChangeRequest, ChangeRequestAssociation } from "@t3tools/contracts";
 
 export interface GitActionProgressReporter {
   readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void, never>;
@@ -302,6 +302,25 @@ function toPullRequestInfo(summary: ChangeRequest): PullRequestInfo {
   };
 }
 
+function toChangeRequestAssociation(summary: ChangeRequest): ChangeRequestAssociation {
+  return {
+    provider: summary.provider,
+    number: summary.number,
+    title: summary.title,
+    url: summary.url,
+    baseRefName: summary.baseRefName,
+    headRefName: summary.headRefName,
+    state: summary.state,
+  };
+}
+
+function changeRequestUrlsEqual(left: string, right: string): boolean {
+  return (
+    left.trim().replace(/\/+$/u, "").toLowerCase() ===
+    right.trim().replace(/\/+$/u, "").toLowerCase()
+  );
+}
+
 function limitContext(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}\n\n[truncated]`;
@@ -436,13 +455,17 @@ function appendUnique(values: string[], next: string | null | undefined): void {
   values.push(trimmed);
 }
 
-function toStatusPr(pr: PullRequestInfo): {
+function toStatusPr(
+  pr: PullRequestInfo,
+  options?: { readonly stale?: boolean },
+): {
   number: number;
   title: string;
   url: string;
   baseRef: string;
   headRef: string;
   state: "open" | "closed" | "merged";
+  stale?: boolean;
 } {
   return {
     number: pr.number,
@@ -451,6 +474,19 @@ function toStatusPr(pr: PullRequestInfo): {
     baseRef: pr.baseRefName,
     headRef: pr.headRefName,
     state: pr.state,
+    ...(options?.stale ? { stale: true } : {}),
+  };
+}
+
+function associationToPullRequestInfo(association: ChangeRequestAssociation): PullRequestInfo {
+  return {
+    number: association.number,
+    title: association.title,
+    url: association.url,
+    baseRefName: association.baseRefName,
+    headRefName: association.headRefName,
+    state: association.state,
+    updatedAt: Option.none(),
   };
 }
 
@@ -511,6 +547,10 @@ export const make = Effect.gen(function* () {
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
   const forkPullRequestsEnabled = serverSettingsService.getSettings.pipe(
     Effect.map((settings) => settings.enableForkPullRequests),
+    Effect.orElseSucceed(() => true),
+  );
+  const durableChangeRequestStatusEnabled = serverSettingsService.getSettings.pipe(
+    Effect.map((settings) => settings.enableDurableChangeRequestStatus),
     Effect.orElseSucceed(() => true),
   );
   const randomUUIDv4 = (cwd: string) =>
@@ -757,6 +797,7 @@ export const make = Effect.gen(function* () {
   const readRemoteStatus = Effect.fn("readRemoteStatus")(function* (
     cwd: string,
     options?: GitVcsDriver.GitRemoteStatusOptions,
+    explicitChangeRequest?: ChangeRequestAssociation,
   ) {
     const details = yield* gitCore
       .statusDetailsRemote(cwd, options)
@@ -765,8 +806,36 @@ export const make = Effect.gen(function* () {
       return null;
     }
 
-    const pr =
-      details.branch !== null
+    const pr = explicitChangeRequest
+      ? yield* Effect.gen(function* () {
+          const provider = yield* sourceControlProvider(cwd);
+          if (provider.kind !== explicitChangeRequest.provider) {
+            return null;
+          }
+
+          const refreshed = yield* provider.getChangeRequest({
+            cwd,
+            reference: String(explicitChangeRequest.number),
+          });
+          if (!changeRequestUrlsEqual(refreshed.url, explicitChangeRequest.url)) {
+            return null;
+          }
+          return toStatusPr(toPullRequestInfo(refreshed));
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Explicit change request refresh failed; using last-known state", {
+              provider: explicitChangeRequest.provider,
+              number: explicitChangeRequest.number,
+              cwdLength: cwd.length,
+              errorTag: error._tag,
+            }).pipe(
+              Effect.as(
+                toStatusPr(associationToPullRequestInfo(explicitChangeRequest), { stale: true }),
+              ),
+            ),
+          ),
+        )
+      : details.branch !== null
         ? yield* findLatestPr(cwd, {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
@@ -1464,6 +1533,13 @@ export const make = Effect.gen(function* () {
   const remoteStatus: GitManager["Service"]["remoteStatus"] = Effect.fn("remoteStatus")(
     function* (input, options) {
       const cacheKey = yield* normalizeStatusCacheKey(input.cwd);
+      const explicitChangeRequest =
+        input.changeRequest && (yield* durableChangeRequestStatusEnabled)
+          ? input.changeRequest
+          : undefined;
+      if (explicitChangeRequest) {
+        return yield* readRemoteStatus(cacheKey, options, explicitChangeRequest);
+      }
       if (options?.refreshUpstream === false) {
         return yield* readRemoteStatus(cacheKey, options);
       }
@@ -1555,6 +1631,7 @@ export const make = Effect.gen(function* () {
         );
         return {
           pullRequest,
+          changeRequest: toChangeRequestAssociation(pullRequestSummary),
           branch: details.branch ?? pullRequest.headBranch,
           worktreePath: null,
         };
@@ -1618,6 +1695,7 @@ export const make = Effect.gen(function* () {
         yield* ensureExistingWorktreeUpstream(existingBranchBeforeFetch.worktreePath);
         return {
           pullRequest,
+          changeRequest: toChangeRequestAssociation(pullRequestSummary),
           branch: localPullRequestBranch,
           worktreePath: existingBranchBeforeFetch.worktreePath,
         };
@@ -1648,6 +1726,7 @@ export const make = Effect.gen(function* () {
         yield* ensureExistingWorktreeUpstream(existingBranchAfterFetch.worktreePath);
         return {
           pullRequest,
+          changeRequest: toChangeRequestAssociation(pullRequestSummary),
           branch: localPullRequestBranch,
           worktreePath: existingBranchAfterFetch.worktreePath,
         };
@@ -1671,6 +1750,7 @@ export const make = Effect.gen(function* () {
 
       return {
         pullRequest,
+        changeRequest: toChangeRequestAssociation(pullRequestSummary),
         branch: worktree.worktree.refName,
         worktreePath: worktree.worktree.path,
       };

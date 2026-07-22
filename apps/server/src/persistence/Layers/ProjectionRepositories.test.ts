@@ -129,4 +129,49 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
       });
     }),
   );
+
+  it.effect("round-trips a durable thread change-request association", () =>
+    Effect.gen(function* () {
+      const threads = yield* ProjectionThreadRepository;
+      const changeRequest = {
+        provider: "github" as const,
+        number: 42,
+        title: "Durable association",
+        url: "https://github.com/acme/repo/pull/42",
+        baseRefName: "main",
+        headRefName: "feature/durable",
+        state: "merged" as const,
+      };
+
+      yield* threads.upsert({
+        threadId: ThreadId.make("thread-change-request"),
+        projectId: ProjectId.make("project-change-request"),
+        contextKind: "project",
+        title: "Change request thread",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5.4",
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: "feature/durable",
+        worktreePath: "/tmp/feature-durable",
+        changeRequest,
+        latestTurnId: null,
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+        archivedAt: null,
+        latestUserMessageAt: null,
+        pendingApprovalCount: 0,
+        pendingUserInputCount: 0,
+        hasActionableProposedPlan: 0,
+        deletedAt: null,
+      });
+
+      const persisted = yield* threads.getById({
+        threadId: ThreadId.make("thread-change-request"),
+      });
+      assert.deepStrictEqual(Option.getOrNull(persisted)?.changeRequest, changeRequest);
+    }),
+  );
 });

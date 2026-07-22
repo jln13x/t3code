@@ -12,6 +12,7 @@ Turning a flag off preserves upstream behavior.
 | Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation`  | On      |
 | Completion and attention sounds    | `enableCompletionSounds`             | On      |
 | Fork-aware pull requests           | `enableForkPullRequests`             | On      |
+| Durable pull request status        | `enableDurableChangeRequestStatus`   | On      |
 | Project provider skill discovery   | `enableProviderSkillDiscovery`       | On      |
 | Markdown and text file attachments | `enableTextFileAttachments`          | On      |
 | Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
@@ -62,6 +63,17 @@ Upstream PRs integrated into the fork are listed in
   menu.
 - Disabling the flag restores the previous worktree-label behavior, where selecting the label
   immediately creates a chat in that checkout.
+
+## Durable pull request status
+
+- Threads created from a resolved pull request persist its provider, number, URL, refs, and
+  last-known display state. Sidebar status refreshes query that canonical identity instead of
+  rediscovering historical pull requests from a reused branch name.
+- The sidebar keeps the compact icon-only treatment: open is green, merged is purple, and closed
+  is muted gray. Provider failures retain the latest cached result and mark last-known fallback
+  metadata as stale instead of making the icon disappear.
+- Turning the flag off preserves branch-name discovery and does not attach new pull request
+  associations to threads.
 
 ## Projectless standalone chats
 

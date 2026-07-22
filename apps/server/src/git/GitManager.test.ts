@@ -618,6 +618,7 @@ function makeManager(input?: {
   ghScenario?: FakeGhScenario;
   textGeneration?: Partial<FakeGitTextGeneration>;
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
+  serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -625,7 +626,7 @@ function makeManager(input?: {
     prefix: "t3-git-manager-test-",
   });
 
-  const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
+  const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest(input?.serverSettings);
 
   const vcsDriverLayer = GitVcsDriver.layer.pipe(
     Layer.provideMerge(VcsProcess.layer),
@@ -713,6 +714,143 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         headRef: "feature/status-open-pr",
         state: "open",
       });
+    }),
+  );
+
+  it.effect("status refreshes an explicitly associated PR by number after a branch rename", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-explicit-pr-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/renamed-locally"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/renamed-locally"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 42,
+            title: "Canonical pull request",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+            baseRefName: "main",
+            headRefName: "feature/original-name",
+            state: "merged",
+          },
+        },
+      });
+
+      const status = yield* manager.status({
+        cwd: repoDir,
+        changeRequest: {
+          provider: "github",
+          number: 42,
+          title: "Canonical pull request",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+          baseRefName: "main",
+          headRefName: "feature/original-name",
+          state: "open",
+        },
+      });
+
+      expect(status.pr).toEqual({
+        number: 42,
+        title: "Canonical pull request",
+        url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+        baseRef: "main",
+        headRef: "feature/original-name",
+        state: "merged",
+      });
+      expect(ghCalls.some((call) => call.startsWith("pr view 42 "))).toBe(true);
+      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(false);
+    }),
+  );
+
+  it.effect("status preserves an explicitly associated PR as stale when refresh fails", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-stale-pr-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          failWith: new GitHubCli.GitHubCliCommandError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("GitHub unavailable"),
+          }),
+        },
+      });
+
+      const status = yield* manager.status({
+        cwd: repoDir,
+        changeRequest: {
+          provider: "github",
+          number: 43,
+          title: "Last-known pull request",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/43",
+          baseRefName: "main",
+          headRefName: "feature/stale",
+          state: "merged",
+        },
+      });
+
+      expect(status.pr).toEqual({
+        number: 43,
+        title: "Last-known pull request",
+        url: "https://github.com/pingdotgg/codething-mvp/pull/43",
+        baseRef: "main",
+        headRef: "feature/stale",
+        state: "merged",
+        stale: true,
+      });
+    }),
+  );
+
+  it.effect("status uses branch inference when durable PR association is disabled", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-disabled-explicit-pr-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/flag-off"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/flag-off"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        serverSettings: { enableDurableChangeRequestStatus: false },
+        ghScenario: {
+          prListSequence: [
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 99,
+                title: "Inferred pull request",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/99",
+                baseRefName: "main",
+                headRefName: "feature/flag-off",
+              },
+            ]),
+          ],
+        },
+      });
+
+      const status = yield* manager.status({
+        cwd: repoDir,
+        changeRequest: {
+          provider: "github",
+          number: 42,
+          title: "Ignored explicit pull request",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+          baseRefName: "main",
+          headRefName: "feature/old-name",
+          state: "open",
+        },
+      });
+
+      expect(status.pr?.number).toBe(99);
+      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(true);
+      expect(ghCalls.some((call) => call.startsWith("pr view "))).toBe(false);
     }),
   );
 
@@ -2855,6 +2993,15 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
       expect(result.branch).toBe("feature/pr-local");
       expect(result.worktreePath).toBeNull();
+      expect(result.changeRequest).toEqual({
+        provider: "github",
+        number: 64,
+        title: "Local PR",
+        url: "https://github.com/pingdotgg/codething-mvp/pull/64",
+        baseRefName: "main",
+        headRefName: "feature/pr-local",
+        state: "open",
+      });
       const branch = (yield* runGit(repoDir, ["branch", "--show-current"])).stdout.trim();
       expect(branch).toBe("feature/pr-local");
       expect(ghCalls).toContain("pr checkout 64 --force --repo pingdotgg/codething-mvp");

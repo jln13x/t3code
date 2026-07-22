@@ -43,7 +43,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} open`,
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} open: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} open${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -51,7 +51,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} closed`,
       colorClass: "text-zinc-500 dark:text-zinc-400/80",
-      tooltip: `#${pr.number} ${presentation.shortName} closed: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} closed${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -59,7 +59,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} merged`,
       colorClass: "text-violet-600 dark:text-violet-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} merged: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} merged${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -170,7 +170,10 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
     thread.branch != null && gitCwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
-          input: { cwd: gitCwd },
+          input: {
+            cwd: gitCwd,
+            ...(thread.changeRequest ? { changeRequest: thread.changeRequest } : {}),
+          },
         })
       : null,
   );

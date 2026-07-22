@@ -2,6 +2,7 @@ import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/error
 import type { EnvironmentShellStatus } from "@t3tools/client-runtime/state/shell";
 import {
   CommandId,
+  ChangeRequestAssociation,
   EnvironmentId,
   IsoDateTime,
   MessageId,
@@ -11,6 +12,7 @@ import {
   RuntimeMode,
   ThreadId,
   type ModelSelection as ModelSelectionType,
+  type ChangeRequestAssociation as ChangeRequestAssociationType,
   type ProjectId as ProjectIdType,
   type ProviderInteractionMode as ProviderInteractionModeType,
   type RuntimeMode as RuntimeModeType,
@@ -34,6 +36,7 @@ const QueuedThreadCreationSchema = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   startFromOrigin: Schema.optional(Schema.Boolean),
+  changeRequest: Schema.optional(ChangeRequestAssociation),
 });
 
 export const QueuedThreadMessageSchema = Schema.Struct({
@@ -64,6 +67,7 @@ export interface QueuedThreadCreation {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
+  readonly changeRequest?: ChangeRequestAssociationType;
 }
 
 export interface QueuedThreadMessage {

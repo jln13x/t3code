@@ -120,6 +120,7 @@ type PersonalFeatureFlagName = Extract<
   | "enableCheckoutAwareThreadCreation"
   | "enableCompletionSounds"
   | "enableForkPullRequests"
+  | "enableDurableChangeRequestStatus"
   | "enableProviderSkillDiscovery"
   | "enableTextFileAttachments"
   | "enableGeneratedImageRendering"
@@ -166,6 +167,11 @@ const PERSONAL_FEATURE_SETTINGS = [
     key: "enableForkPullRequests",
     title: "Fork-aware pull requests",
     description: "Target the upstream repository when working from a fork.",
+  },
+  {
+    key: "enableDurableChangeRequestStatus",
+    title: "Durable pull request status",
+    description: "Keep resolved PR identity and last-known state attached to its thread.",
   },
   {
     key: "enableProviderSkillDiscovery",

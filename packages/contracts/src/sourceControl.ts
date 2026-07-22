@@ -21,6 +21,25 @@ export type SourceControlProviderInfo = typeof SourceControlProviderInfo.Type;
 export const ChangeRequestState = Schema.Literals(["open", "closed", "merged"]);
 export type ChangeRequestState = typeof ChangeRequestState.Type;
 
+/**
+ * Durable identity plus the last-known display snapshot for a change request.
+ *
+ * Threads persist this when T3 resolves, checks out, or creates a change
+ * request. The provider and number are the canonical identity; the remaining
+ * fields keep the sidebar useful while the provider is temporarily
+ * unavailable.
+ */
+export const ChangeRequestAssociation = Schema.Struct({
+  provider: SourceControlProviderKind,
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  url: Schema.String,
+  baseRefName: TrimmedNonEmptyString,
+  headRefName: TrimmedNonEmptyString,
+  state: ChangeRequestState,
+});
+export type ChangeRequestAssociation = typeof ChangeRequestAssociation.Type;
+
 export const ChangeRequest = Schema.Struct({
   provider: SourceControlProviderKind,
   number: PositiveInt,

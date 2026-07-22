@@ -15,6 +15,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type {
   VcsStatusLocalResult,
+  VcsStatusInput,
   VcsStatusRemoteResult,
   VcsStatusResult,
   VcsStatusStreamEvent,
@@ -71,6 +72,7 @@ function makeTestLayer(state: {
   localInvalidationCalls: number;
   remoteInvalidationCalls: number;
   remoteStatusRefreshUpstreamValues?: Array<boolean | undefined>;
+  remoteStatusInputs?: Array<VcsStatusInput>;
 }) {
   return VcsStatusBroadcaster.layer.pipe(
     Layer.provideMerge(NodeServices.layer),
@@ -81,10 +83,11 @@ function makeTestLayer(state: {
             state.localStatusCalls += 1;
             return state.currentLocalStatus;
           }),
-        remoteStatus: (_input, options) =>
+        remoteStatus: (input, options) =>
           Effect.sync(() => {
             state.remoteStatusCalls += 1;
             state.remoteStatusRefreshUpstreamValues?.push(options?.refreshUpstream);
+            state.remoteStatusInputs?.push(input);
             return state.currentRemoteStatus;
           }),
         invalidateLocalStatus: () =>
@@ -164,6 +167,34 @@ describe("VcsStatusBroadcaster", () => {
       assert.equal(state.remoteStatusCalls, 2);
       assert.equal(state.localInvalidationCalls, 1);
       assert.equal(state.remoteInvalidationCalls, 1);
+    }).pipe(Effect.provide(makeTestLayer(state)));
+  });
+
+  it.effect("forwards a durable PR association during an explicit refresh", () => {
+    const state = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: remoteStatusWithPr,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+      remoteStatusInputs: [] as Array<VcsStatusInput>,
+    };
+    const changeRequest = {
+      provider: "github" as const,
+      number: 2978,
+      title: "[codex] Rewrite client connection architecture",
+      url: "https://github.com/pingdotgg/t3code/pull/2978",
+      baseRefName: "main",
+      headRefName: "codex/connection-state-audit",
+      state: "open" as const,
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.refreshStatus("/repo", changeRequest);
+
+      assert.deepStrictEqual(state.remoteStatusInputs, [{ cwd: "/repo", changeRequest }]);
     }).pipe(Effect.provide(makeTestLayer(state)));
   });
 
@@ -552,6 +583,7 @@ describe("VcsStatusBroadcaster", () => {
           "VCS remote status refresh failed",
           {
             cwdLength: privateCwd.length,
+            hasExplicitChangeRequest: false,
             reasonCount: 1,
             failureCount: 1,
             failureTags: ["GitManagerError"],
@@ -640,6 +672,90 @@ describe("VcsStatusBroadcaster", () => {
         remote: state.currentRemoteStatus,
       } satisfies VcsStatusStreamEvent);
 
+      yield* Scope.close(scope, Exit.void);
+    }).pipe(Effect.provide(Layer.merge(makeTestLayer(state), TestClock.layer())));
+  });
+
+  it.effect("keeps the latest successful PR state when an explicit refresh becomes stale", () => {
+    const mergedRemoteStatus: VcsStatusRemoteResult = {
+      ...baseRemoteStatus,
+      pr: {
+        number: 42,
+        title: "Canonical pull request",
+        url: "https://github.com/acme/repo/pull/42",
+        baseRef: "main",
+        headRef: "feature/durable",
+        state: "merged",
+      },
+    };
+    const state = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: mergedRemoteStatus as VcsStatusRemoteResult | null,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+    };
+    const input = {
+      cwd: "/repo",
+      changeRequest: {
+        provider: "github" as const,
+        number: 42,
+        title: "Canonical pull request",
+        url: "https://github.com/acme/repo/pull/42",
+        baseRefName: "main",
+        headRefName: "feature/durable",
+        state: "open" as const,
+      },
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      yield* broadcaster.getStatus(input);
+      const scope = yield* Scope.make();
+      const snapshotDeferred = yield* Deferred.make<VcsStatusStreamEvent>();
+      const remoteUpdatedDeferred = yield* Deferred.make<VcsStatusStreamEvent>();
+      yield* Stream.runForEach(
+        broadcaster.streamStatus(input, {
+          automaticRemoteRefreshInterval: Effect.succeed(Duration.minutes(1)),
+        }),
+        (event) => {
+          if (event._tag === "snapshot") {
+            return Deferred.succeed(snapshotDeferred, event).pipe(Effect.ignore);
+          }
+          if (event._tag === "remoteUpdated") {
+            return Deferred.succeed(remoteUpdatedDeferred, event).pipe(Effect.ignore);
+          }
+          return Effect.void;
+        },
+      ).pipe(Effect.forkIn(scope));
+
+      yield* Deferred.await(snapshotDeferred);
+      state.currentRemoteStatus = {
+        ...baseRemoteStatus,
+        pr: {
+          number: 42,
+          title: "Stored open state",
+          url: "https://github.com/acme/repo/pull/42",
+          baseRef: "main",
+          headRef: "feature/durable",
+          state: "open",
+          stale: true,
+        },
+      };
+      yield* TestClock.adjust(Duration.minutes(1));
+
+      const event = yield* Deferred.await(remoteUpdatedDeferred);
+      assert.deepStrictEqual(event, {
+        _tag: "remoteUpdated",
+        remote: {
+          ...baseRemoteStatus,
+          pr: {
+            ...mergedRemoteStatus.pr!,
+            stale: true,
+          },
+        },
+      } satisfies VcsStatusStreamEvent);
       yield* Scope.close(scope, Exit.void);
     }).pipe(Effect.provide(Layer.merge(makeTestLayer(state), TestClock.layer())));
   });

@@ -11,10 +11,9 @@ export {
 } from "./thread-pr-presentation";
 
 /**
- * Live PR status for a thread's branch. Subscriptions are deduplicated per
- * (environmentId, cwd) by the atom family, so many rows on the same worktree
- * or project root share one stream — and virtualization means only visible
- * rows subscribe at all.
+ * Live PR status for a thread's branch. Known PR identities remain distinct;
+ * otherwise subscriptions are deduplicated per (environmentId, cwd). List
+ * virtualization means only visible rows subscribe.
  */
 export function useThreadPr(
   thread: EnvironmentThreadShell,
@@ -25,7 +24,10 @@ export function useThreadPr(
     thread.branch !== null && cwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
-          input: { cwd },
+          input: {
+            cwd,
+            ...(thread.changeRequest ? { changeRequest: thread.changeRequest } : {}),
+          },
         })
       : null,
   );

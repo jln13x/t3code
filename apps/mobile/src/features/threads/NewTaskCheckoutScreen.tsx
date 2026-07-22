@@ -165,6 +165,7 @@ export function NewTaskCheckoutScreen() {
     flow.selectPreparedCheckout({
       branch: result.value.branch,
       worktreePath: result.value.worktreePath,
+      changeRequest: result.value.changeRequest,
     });
     flow.setBranchQuery("");
     navigation.goBack();

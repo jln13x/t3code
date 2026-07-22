@@ -52,6 +52,7 @@ describe("personal fork feature flags", () => {
     "enableWorktreeSourceControl",
     "enableCheckoutAwareThreadCreation",
     "enableForkPullRequests",
+    "enableDurableChangeRequestStatus",
     "enableProviderSkillDiscovery",
     "enableTextFileAttachments",
     "enableGeneratedImageRendering",
