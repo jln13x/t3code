@@ -1,6 +1,57 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveWorktreeDiffSource } from "./WorktreeSourceControl.logic";
+import {
+  resolveWorktreeCompatibilityNotice,
+  resolveWorktreeDiffSource,
+} from "./WorktreeSourceControl.logic";
+
+describe("resolveWorktreeCompatibilityNotice", () => {
+  it("does not warn when the environment supports source-control mutations", () => {
+    expect(
+      resolveWorktreeCompatibilityNotice({
+        supportsMutations: true,
+        serverVersion: "1.2.3",
+        versionMismatch: {
+          clientVersion: "1.2.4",
+          serverVersion: "1.2.3",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("identifies version drift when a mixed-version environment lacks the capability", () => {
+    expect(
+      resolveWorktreeCompatibilityNotice({
+        supportsMutations: false,
+        serverVersion: "1.2.3",
+        versionMismatch: {
+          clientVersion: "1.2.4",
+          serverVersion: "1.2.3",
+        },
+      }),
+    ).toEqual({
+      kind: "version-mismatch",
+      label: "Version mismatch",
+      detail:
+        "Client 1.2.4 · environment 1.2.3. Diffs remain available in read-only compatibility mode; update the environment to restore stage and discard actions.",
+    });
+  });
+
+  it("reports a missing capability even when version strings match", () => {
+    expect(
+      resolveWorktreeCompatibilityNotice({
+        supportsMutations: false,
+        serverVersion: "1.2.3",
+        versionMismatch: null,
+      }),
+    ).toEqual({
+      kind: "limited-capability",
+      label: "Limited compatibility",
+      detail:
+        "Environment 1.2.3 does not advertise source-control mutations. Update or restart it to restore stage and discard actions.",
+    });
+  });
+});
 
 describe("resolveWorktreeDiffSource", () => {
   it("uses the exact index-aware source when available", () => {

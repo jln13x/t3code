@@ -66,7 +66,9 @@ Upstream PRs integrated into the fork are listed in
 - The viewer tolerates mixed-version and intermittently connected remote environments: it keeps
   rendering the last successful status/diff snapshot, falls back to the legacy combined worktree
   diff when index-aware sections are unavailable, and exposes stage/discard actions only when the
-  environment advertises `worktreeSourceControl` support.
+  environment advertises `worktreeSourceControl` support. When compatibility mode is active, the
+  viewer shows a persistent warning with the client and environment versions when they differ; a
+  missing capability is still called out when the version strings happen to match.
 
 ## Durable pull request status
 
