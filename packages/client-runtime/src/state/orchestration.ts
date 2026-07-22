@@ -17,6 +17,14 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       label: "environment-data:orchestration:thread-activities",
       tag: ORCHESTRATION_WS_METHODS.getThreadActivities,
     }),
+    replayEvents: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestration:replay-events",
+      tag: ORCHESTRATION_WS_METHODS.replayEvents,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
     fullThreadDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:full-thread-diff",
       tag: ORCHESTRATION_WS_METHODS.getFullThreadDiff,

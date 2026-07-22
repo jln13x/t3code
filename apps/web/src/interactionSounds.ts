@@ -92,10 +92,3 @@ export function deriveInteractionSoundCues(
 ): InteractionSoundCue[] {
   return deriveThreadFeedbackEvents(previous, threads).map((event) => event.cue);
 }
-
-export function shouldPostThreadCompletionNotification(input: {
-  readonly enabled: boolean;
-  readonly desktopBridgeAvailable: boolean;
-}): boolean {
-  return input.enabled && input.desktopBridgeAvailable;
-}

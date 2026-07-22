@@ -7,7 +7,6 @@ import {
   COMPLETION_SOUND_VOLUME,
   deriveInteractionSoundCues,
   deriveThreadFeedbackEvents,
-  shouldPostThreadCompletionNotification,
 } from "./interactionSounds";
 
 function makeThread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
@@ -91,18 +90,6 @@ describe("interaction sounds", () => {
 
   it("plays the completion cue at 110% of its original gain", () => {
     expect(COMPLETION_SOUND_VOLUME).toBe(1.1);
-  });
-
-  it("posts completion notifications only when the flag and desktop bridge are available", () => {
-    expect(
-      shouldPostThreadCompletionNotification({ enabled: true, desktopBridgeAvailable: true }),
-    ).toBe(true);
-    expect(
-      shouldPostThreadCompletionNotification({ enabled: false, desktopBridgeAvailable: true }),
-    ).toBe(false);
-    expect(
-      shouldPostThreadCompletionNotification({ enabled: true, desktopBridgeAvailable: false }),
-    ).toBe(false);
   });
 
   it("plays bloom when a thread starts requesting user input", () => {

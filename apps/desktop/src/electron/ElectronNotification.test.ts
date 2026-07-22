@@ -4,20 +4,25 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 
-const { notificationInstances, notificationIsSupported } = vi.hoisted(() => ({
-  notificationInstances: [] as Array<{
-    options: unknown;
-    listeners: Map<string, () => void>;
-    show: ReturnType<typeof vi.fn>;
-  }>,
-  notificationIsSupported: vi.fn(() => true),
-}));
+const { notificationInstances, notificationIsSupported, notificationShowOutcome } = vi.hoisted(
+  () => ({
+    notificationInstances: [] as Array<{
+      options: unknown;
+      listeners: Map<string, () => void>;
+      show: ReturnType<typeof vi.fn>;
+    }>,
+    notificationIsSupported: vi.fn(() => true),
+    notificationShowOutcome: { current: "show" as "show" | "failed" },
+  }),
+);
 
 vi.mock("electron", () => ({
   Notification: class Notification {
     static isSupported = notificationIsSupported;
     readonly listeners = new Map<string, () => void>();
-    readonly show = vi.fn();
+    readonly show = vi.fn(() => {
+      this.listeners.get(notificationShowOutcome.current)?.();
+    });
     readonly options: unknown;
 
     constructor(options: unknown) {
@@ -41,6 +46,7 @@ describe("ElectronNotification", () => {
   it.effect("shows a silent native notification on macOS and handles its click", () => {
     const onClick = vi.fn();
     notificationInstances.length = 0;
+    notificationShowOutcome.current = "show";
 
     return Effect.gen(function* () {
       const notifications = yield* ElectronNotification.ElectronNotification;
@@ -69,5 +75,17 @@ describe("ElectronNotification", () => {
       );
       assert.equal(notificationInstances.length, 0);
     }).pipe(Effect.provide(notificationLayer("linux")));
+  });
+
+  it.effect("reports a native failure instead of acknowledging delivery", () => {
+    notificationInstances.length = 0;
+    notificationShowOutcome.current = "failed";
+    return Effect.gen(function* () {
+      const notifications = yield* ElectronNotification.ElectronNotification;
+      assert.isFalse(
+        yield* notifications.show({ title: "Thread finished", body: "Refactor", onClick: vi.fn() }),
+      );
+      assert.equal(notificationInstances.length, 1);
+    }).pipe(Effect.provide(notificationLayer("darwin")));
   });
 });
