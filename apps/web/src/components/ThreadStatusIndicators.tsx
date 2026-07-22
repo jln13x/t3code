@@ -1,16 +1,15 @@
-import {
-  scopeProjectRef,
-  scopedThreadKey,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
-import type { VcsStatusResult } from "@t3tools/contracts";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type {
+  ChangeRequestAssociation,
+  SourceControlProviderInfo,
+  SourceControlProviderKind,
+  VcsStatusResult,
+} from "@t3tools/contracts";
+import { resolveThreadChangeRequestStatus } from "@t3tools/shared/sourceControl";
 import { CloudIcon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useThreadChangeRequestStatus } from "../hooks/useThreadChangeRequestStatus";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
-import { useProject } from "../state/entities";
-import { useEnvironmentQuery } from "../state/query";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
-import { vcsEnvironment } from "../state/vcs";
 import { useUiStateStore } from "../uiStateStore";
 import { resolveChangeRequestPresentation } from "../sourceControlPresentation";
 import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
@@ -34,7 +33,7 @@ export type ThreadPr = VcsStatusResult["pr"];
 
 export function prStatusIndicator(
   pr: ThreadPr,
-  provider: VcsStatusResult["sourceControlProvider"] | null | undefined,
+  provider: SourceControlProviderInfo | SourceControlProviderKind | null | undefined,
 ): PrStatusIndicator | null {
   if (!pr) return null;
   const presentation = resolveChangeRequestPresentation(provider);
@@ -43,7 +42,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} open`,
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} open: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} open${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -51,7 +50,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} closed`,
       colorClass: "text-zinc-500 dark:text-zinc-400/80",
-      tooltip: `#${pr.number} ${presentation.shortName} closed: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} closed${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -59,7 +58,7 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} merged`,
       colorClass: "text-violet-600 dark:text-violet-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} merged: ${pr.title}`,
+      tooltip: `#${pr.number} ${presentation.shortName} merged${pr.stale ? " (last known)" : ""}: ${pr.title}`,
       url: pr.url,
     };
   }
@@ -73,12 +72,15 @@ export function ChangeRequestStatusIcon({ className }: { className?: string }) {
 export function resolveThreadPr(
   threadBranch: string | null,
   gitStatus: VcsStatusResult | null,
+  changeRequest?: ChangeRequestAssociation,
+  durableChangeRequestStatusEnabled = false,
 ): ThreadPr | null {
-  if (threadBranch === null || gitStatus === null || gitStatus.refName !== threadBranch) {
-    return null;
-  }
-
-  return gitStatus.pr ?? null;
+  return resolveThreadChangeRequestStatus({
+    threadBranch,
+    ...(changeRequest ? { changeRequest } : {}),
+    gitStatus,
+    durableChangeRequestStatusEnabled,
+  });
 }
 
 export function terminalStatusFromRunningIds(
@@ -157,25 +159,8 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const lastVisitedAt = useUiStateStore(
     (state) => state.threadLastVisitedAtById[scopedThreadKey(threadRef)],
   );
-  const threadProject = useProject(
-    useMemo(
-      () =>
-        thread.projectId === null ? null : scopeProjectRef(thread.environmentId, thread.projectId),
-      [thread.environmentId, thread.projectId],
-    ),
-  );
-  const threadProjectCwd = threadProject?.workspaceRoot ?? null;
-  const gitCwd = thread.worktreePath ?? threadProjectCwd;
-  const gitStatus = useEnvironmentQuery(
-    thread.branch != null && gitCwd !== null
-      ? vcsEnvironment.status({
-          environmentId: thread.environmentId,
-          input: { cwd: gitCwd },
-        })
-      : null,
-  );
-  const pr = resolveThreadPr(thread.branch, gitStatus.data);
-  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const { pr, providerKind } = useThreadChangeRequestStatus(thread);
+  const prStatus = prStatusIndicator(pr, providerKind);
   const threadStatus = resolveThreadStatusPill({
     thread: {
       ...thread,

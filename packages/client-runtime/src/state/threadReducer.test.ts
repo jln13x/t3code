@@ -205,6 +205,41 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.modelSelection).toEqual(baseThread.modelSelection);
       }
     });
+
+    it("removes a durable PR association when metadata clears it", () => {
+      const associatedThread: OrchestrationThread = {
+        ...baseThread,
+        changeRequest: {
+          provider: "github",
+          number: 42,
+          title: "Durable association",
+          url: "https://github.com/acme/repo/pull/42",
+          baseRefName: "main",
+          headRefName: "feature/durable",
+          state: "open",
+        },
+      };
+      const result = applyThreadDetailEvent(associatedThread, {
+        ...baseEventFields,
+        sequence: 5,
+        occurredAt: "2026-04-01T05:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          branch: "feature/replaced",
+          changeRequest: null,
+          updatedAt: "2026-04-01T05:00:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.branch).toBe("feature/replaced");
+        expect(result.thread).not.toHaveProperty("changeRequest");
+      }
+    });
   });
 
   describe("thread.message-sent", () => {

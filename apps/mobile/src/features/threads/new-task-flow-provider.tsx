@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
+  ChangeRequestAssociation,
   EnvironmentId,
   ModelSelection,
   ProviderInteractionMode,
@@ -147,6 +148,7 @@ type NewTaskFlowContextValue = {
   readonly selectPreparedCheckout: (input: {
     readonly branch: string;
     readonly worktreePath: string | null;
+    readonly changeRequest: ChangeRequestAssociation;
   }) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
   readonly beginEditingPendingTask: (messageId: string) => boolean;
@@ -355,6 +357,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const selectedBranchName = selectedProjectDraft.workspaceSelection?.branch ?? null;
   const selectedWorktreePath = selectedProjectDraft.workspaceSelection?.worktreePath ?? null;
   const startFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin ?? false;
+  const selectedChangeRequest = selectedProjectDraft.workspaceSelection?.changeRequest;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE;
 
@@ -554,10 +557,17 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: selectedBranchName,
           worktreePath: selectedWorktreePath,
           startFromOrigin,
+          ...(selectedChangeRequest ? { changeRequest: selectedChangeRequest } : {}),
         },
       });
     },
-    [selectedBranchName, selectedProjectDraftKey, selectedWorktreePath, startFromOrigin],
+    [
+      selectedBranchName,
+      selectedChangeRequest,
+      selectedProjectDraftKey,
+      selectedWorktreePath,
+      startFromOrigin,
+    ],
   );
 
   const selectBranch = useCallback(
@@ -578,7 +588,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
 
   const selectPreparedCheckout = useCallback(
-    (input: { readonly branch: string; readonly worktreePath: string | null }) => {
+    (input: {
+      readonly branch: string;
+      readonly worktreePath: string | null;
+      readonly changeRequest: ChangeRequestAssociation;
+    }) => {
       if (!selectedProjectDraftKey) return;
       updateComposerDraftSettings(selectedProjectDraftKey, {
         workspaceSelection: {
@@ -588,10 +602,16 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: input.branch,
           worktreePath: input.worktreePath,
           startFromOrigin: false,
+          ...(selectedEnvironmentServerConfig?.settings.enableDurableChangeRequestStatus
+            ? { changeRequest: input.changeRequest }
+            : {}),
         },
       });
     },
-    [selectedProjectDraftKey],
+    [
+      selectedEnvironmentServerConfig?.settings.enableDurableChangeRequestStatus,
+      selectedProjectDraftKey,
+    ],
   );
 
   const setStartFromOrigin = useCallback(
@@ -605,10 +625,17 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: selectedBranchName,
           worktreePath: selectedWorktreePath,
           startFromOrigin: value,
+          ...(selectedChangeRequest && !value ? { changeRequest: selectedChangeRequest } : {}),
         },
       });
     },
-    [selectedBranchName, selectedProjectDraftKey, selectedWorktreePath, workspaceMode],
+    [
+      selectedBranchName,
+      selectedChangeRequest,
+      selectedProjectDraftKey,
+      selectedWorktreePath,
+      workspaceMode,
+    ],
   );
 
   const refreshBranches = branchState.refresh;
@@ -669,6 +696,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: message.creation.branch,
           worktreePath: message.creation.worktreePath,
           startFromOrigin: message.creation.startFromOrigin ?? false,
+          ...(message.creation.changeRequest
+            ? { changeRequest: message.creation.changeRequest }
+            : {}),
         },
       });
     }
@@ -724,6 +754,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           branch: workspaceSelection?.branch ?? null,
           worktreePath: mode === "worktree" ? null : (workspaceSelection?.worktreePath ?? null),
           ...(workspaceSelection?.startFromOrigin ? { startFromOrigin: true } : {}),
+          ...(workspaceSelection?.changeRequest
+            ? { changeRequest: workspaceSelection.changeRequest }
+            : {}),
         },
         createdAt: metadata.createdAt,
       };

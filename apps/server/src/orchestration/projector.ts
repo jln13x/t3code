@@ -36,7 +36,9 @@ import {
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
 
-type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
+type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId" | "changeRequest">> & {
+  readonly changeRequest?: Exclude<OrchestrationThread["changeRequest"], undefined> | null;
+};
 const MAX_THREAD_MESSAGES = 2_000;
 const MAX_THREAD_CHECKPOINTS = 500;
 
@@ -83,7 +85,20 @@ function updateThread(
   if (Option.isNone(existing)) {
     return threads;
   }
-  return HashMap.set(threads, threadId, { ...existing.value, ...patch });
+  const { changeRequest, ...patchWithoutChangeRequest } = patch;
+  if (changeRequest === null) {
+    const { changeRequest: _existingChangeRequest, ...existingWithoutChangeRequest } =
+      existing.value;
+    return HashMap.set(threads, threadId, {
+      ...existingWithoutChangeRequest,
+      ...patchWithoutChangeRequest,
+    });
+  }
+  return HashMap.set(threads, threadId, {
+    ...existing.value,
+    ...patchWithoutChangeRequest,
+    ...(changeRequest !== undefined ? { changeRequest } : {}),
+  });
 }
 
 /**
@@ -303,6 +318,9 @@ export function projectEvent(
             interactionMode: payload.interactionMode,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
+            ...(payload.changeRequest !== undefined
+              ? { changeRequest: payload.changeRequest }
+              : {}),
             latestTurn: null,
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
@@ -373,6 +391,11 @@ export function projectEvent(
               : {}),
             ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
             ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
+            ...(payload.changeRequest !== undefined
+              ? payload.changeRequest === null
+                ? { changeRequest: null }
+                : { changeRequest: payload.changeRequest }
+              : {}),
             updatedAt: payload.updatedAt,
           }),
         })),

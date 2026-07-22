@@ -5,6 +5,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type {
+  ChangeRequestAssociation,
   GitActionProgressEvent,
   GitRunStackedActionResult,
   GitStackedAction,
@@ -13,6 +14,7 @@ import type {
   SourceControlProviderKind,
   SourceControlPublishRepositoryResult,
   SourceControlRepositoryVisibility,
+  VcsStatusInput,
   VcsStatusResult,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -136,22 +138,71 @@ interface RunGitActionWithToastInput {
   filePaths?: string[];
 }
 
+function changeRequestAssociationsEqual(
+  left: ChangeRequestAssociation | undefined,
+  right: ChangeRequestAssociation | undefined,
+): boolean {
+  return (
+    left?.provider === right?.provider &&
+    left?.number === right?.number &&
+    left?.title === right?.title &&
+    left?.url === right?.url &&
+    left?.baseRefName === right?.baseRefName &&
+    left?.headRefName === right?.headRefName &&
+    left?.state === right?.state
+  );
+}
+
+function refreshedChangeRequestAssociation(input: {
+  current: ChangeRequestAssociation | undefined;
+  status: VcsStatusResult | null | undefined;
+  enabled: boolean | undefined;
+}): ChangeRequestAssociation | undefined {
+  const provider = input.status?.sourceControlProvider?.kind;
+  const pr = input.status?.pr;
+  if (
+    !input.enabled ||
+    !input.current ||
+    !pr ||
+    pr.stale ||
+    !provider ||
+    provider === "unknown" ||
+    provider !== input.current.provider ||
+    pr.number !== input.current.number
+  ) {
+    return undefined;
+  }
+  return {
+    provider,
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    baseRefName: pr.baseRef,
+    headRefName: pr.headRef,
+    state: pr.state,
+  };
+}
+
 const GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS = 250;
 
 type RefreshVcsStatus = (target: {
   readonly environmentId: ScopedThreadRef["environmentId"];
-  readonly input: { readonly cwd: string };
+  readonly input: VcsStatusInput;
 }) => Promise<unknown>;
 
 function requestVcsStatusRefresh(
   refresh: RefreshVcsStatus,
   environmentId: ScopedThreadRef["environmentId"] | null,
   cwd: string | null,
+  changeRequest?: ChangeRequestAssociation,
 ): void {
   if (environmentId === null || cwd === null) {
     return;
   }
-  void refresh({ environmentId, input: { cwd } });
+  void refresh({
+    environmentId,
+    input: { cwd, ...(changeRequest ? { changeRequest } : {}) },
+  });
 }
 const RUNNING_SOURCE_CONTROL_ACTIONS = ["runStackedAction", "pull", "publishRepository"] as const;
 
@@ -1023,14 +1074,19 @@ export default function GitActionsControl({
     });
   }, []);
 
-  const persistThreadBranchSync = useCallback(
-    (branch: string | null) => {
+  const persistThreadMetadataSync = useCallback(
+    (input: { branch?: string | null; changeRequest?: ChangeRequestAssociation }) => {
       if (!activeThreadRef) {
         return;
       }
 
       if (activeServerThread) {
-        if (activeServerThread.branch === branch) {
+        const branchChanged =
+          input.branch !== undefined && activeServerThread.branch !== input.branch;
+        const changeRequestChanged =
+          input.changeRequest !== undefined &&
+          !changeRequestAssociationsEqual(activeServerThread.changeRequest, input.changeRequest);
+        if (!branchChanged && !changeRequestChanged) {
           return;
         }
 
@@ -1038,20 +1094,32 @@ export default function GitActionsControl({
           environmentId: activeThreadRef.environmentId,
           input: {
             threadId: activeThreadRef.threadId,
-            ...resolveThreadBranchMetadataPatch(branch, activeServerThread.branch),
+            ...(branchChanged
+              ? resolveThreadBranchMetadataPatch(input.branch ?? null, activeServerThread.branch)
+              : {}),
+            ...(input.changeRequest ? { changeRequest: input.changeRequest } : {}),
           },
         });
 
         return;
       }
 
-      if (!activeDraftThread || activeDraftThread.branch === branch) {
+      if (!activeDraftThread) {
+        return;
+      }
+
+      const branchChanged = input.branch !== undefined && activeDraftThread.branch !== input.branch;
+      const changeRequestChanged =
+        input.changeRequest !== undefined &&
+        !changeRequestAssociationsEqual(activeDraftThread.changeRequest, input.changeRequest);
+      if (!branchChanged && !changeRequestChanged) {
         return;
       }
 
       setDraftThreadContext(draftId ?? activeThreadRef, {
-        branch,
+        ...(input.branch !== undefined ? { branch: input.branch } : {}),
         worktreePath: activeDraftThread.worktreePath,
+        ...(input.changeRequest ? { changeRequest: input.changeRequest } : {}),
       });
     },
     [
@@ -1064,23 +1132,49 @@ export default function GitActionsControl({
     ],
   );
 
-  const syncThreadBranchAfterGitAction = useCallback(
-    (result: GitRunStackedActionResult) => {
+  const syncThreadMetadataAfterGitAction = useCallback(
+    (result: GitRunStackedActionResult, provider: SourceControlProviderKind | undefined) => {
       const branchUpdate = resolveThreadBranchUpdate(result);
-      if (!branchUpdate) {
+      const changeRequest =
+        serverConfig?.settings.enableDurableChangeRequestStatus &&
+        provider &&
+        provider !== "unknown" &&
+        result.pr.number &&
+        result.pr.url &&
+        result.pr.title &&
+        result.pr.baseBranch &&
+        result.pr.headBranch
+          ? {
+              provider,
+              number: result.pr.number,
+              title: result.pr.title,
+              url: result.pr.url,
+              baseRefName: result.pr.baseBranch,
+              headRefName: result.pr.headBranch,
+              state: "open" as const,
+            }
+          : undefined;
+      if (!branchUpdate && !changeRequest) {
         return;
       }
 
-      persistThreadBranchSync(branchUpdate.branch);
+      persistThreadMetadataSync({
+        ...(branchUpdate ? { branch: branchUpdate.branch } : {}),
+        ...(changeRequest ? { changeRequest } : {}),
+      });
     },
-    [persistThreadBranchSync],
+    [persistThreadMetadataSync, serverConfig?.settings.enableDurableChangeRequestStatus],
   );
 
+  const activeChangeRequest = activeServerThread?.changeRequest ?? activeDraftThread?.changeRequest;
   const gitStatusQuery = useEnvironmentQuery(
     activeEnvironmentId !== null && gitCwd !== null
       ? vcsEnvironment.status({
           environmentId: activeEnvironmentId,
-          input: { cwd: gitCwd },
+          input: {
+            cwd: gitCwd,
+            ...(activeChangeRequest ? { changeRequest: activeChangeRequest } : {}),
+          },
         })
       : null,
   );
@@ -1125,18 +1219,32 @@ export default function GitActionsControl({
       threadBranch: activeServerThread?.branch ?? activeDraftThread?.branch ?? null,
       gitStatus: gitStatusForActions,
     });
-    if (!branchUpdate) {
+    const refreshedChangeRequest = refreshedChangeRequestAssociation({
+      current: activeChangeRequest,
+      status: gitStatusForActions,
+      enabled: serverConfig?.settings.enableDurableChangeRequestStatus,
+    });
+    if (!branchUpdate && !refreshedChangeRequest) {
       return;
     }
 
-    persistThreadBranchSync(branchUpdate.branch);
+    const branchStillMatchesChangeRequest =
+      !branchUpdate || refreshedChangeRequest?.headRefName === branchUpdate.branch;
+    persistThreadMetadataSync({
+      ...(branchUpdate ? { branch: branchUpdate.branch } : {}),
+      ...(refreshedChangeRequest && branchStillMatchesChangeRequest
+        ? { changeRequest: refreshedChangeRequest }
+        : {}),
+    });
   }, [
+    activeChangeRequest,
     activeServerThread?.branch,
     activeDraftThread?.branch,
     gitStatusForActions,
     isGitActionRunning,
     isSelectingWorktreeBase,
-    persistThreadBranchSync,
+    persistThreadMetadataSync,
+    serverConfig?.settings.enableDurableChangeRequestStatus,
   ]);
 
   const isDefaultRef = useMemo(() => {
@@ -1189,7 +1297,7 @@ export default function GitActionsControl({
       }
       refreshTimeout = window.setTimeout(() => {
         refreshTimeout = null;
-        requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd);
+        requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd, activeChangeRequest);
       }, GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS);
     };
     const handleVisibilityChange = () => {
@@ -1208,7 +1316,7 @@ export default function GitActionsControl({
       window.removeEventListener("focus", scheduleRefreshCurrentGitStatus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeEnvironmentId, gitCwd, refreshVcsStatus]);
+  }, [activeChangeRequest, activeEnvironmentId, gitCwd, refreshVcsStatus]);
 
   const openExistingPr = useCallback(async () => {
     const api = readLocalApi();
@@ -1416,7 +1524,7 @@ export default function GitActionsControl({
       }
 
       const actionResult = result.value;
-      syncThreadBranchAfterGitAction(actionResult);
+      syncThreadMetadataAfterGitAction(actionResult, gitStatus?.sourceControlProvider?.kind);
       const closeResultToast = () => {
         toastManager.close(resolvedProgressToastId);
       };
@@ -1726,7 +1834,12 @@ export default function GitActionsControl({
           <Menu
             onOpenChange={(open) => {
               if (open) {
-                requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd);
+                requestVcsStatusRefresh(
+                  refreshVcsStatus,
+                  activeEnvironmentId,
+                  gitCwd,
+                  activeChangeRequest,
+                );
               }
             }}
           >

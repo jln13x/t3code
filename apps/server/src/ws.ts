@@ -1005,6 +1005,9 @@ const makeWsRpcLayer = (
                 interactionMode: bootstrap.createThread.interactionMode,
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
+                ...(bootstrap.createThread.changeRequest !== undefined
+                  ? { changeRequest: bootstrap.createThread.changeRequest }
+                  : {}),
                 createdAt: bootstrap.createThread.createdAt,
               });
               createdThread = true;
@@ -1882,7 +1885,7 @@ const makeWsRpcLayer = (
         [WS_METHODS.vcsRefreshStatus]: (input) =>
           observeRpcEffect(
             WS_METHODS.vcsRefreshStatus,
-            vcsStatusBroadcaster.refreshStatus(input.cwd),
+            vcsStatusBroadcaster.refreshStatus(input.cwd, input.changeRequest),
             {
               "rpc.aggregate": "vcs",
             },

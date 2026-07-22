@@ -1,5 +1,6 @@
 import {
   type ApprovalRequestId,
+  type ChangeRequestAssociation,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -1663,7 +1664,12 @@ function ChatViewContent(props: ChatViewProps) {
   }, []);
 
   const openOrReuseProjectDraftThread = useCallback(
-    async (input: { branch: string; worktreePath: string | null; envMode: DraftThreadEnvMode }) => {
+    async (input: {
+      branch: string;
+      worktreePath: string | null;
+      envMode: DraftThreadEnvMode;
+      changeRequest?: ChangeRequestAssociation;
+    }) => {
       if (!activeProject) {
         throw new Error("No active project is available for this pull request.");
       }
@@ -1740,14 +1746,21 @@ function ChatViewContent(props: ChatViewProps) {
   );
 
   const handlePreparedPullRequestThread = useCallback(
-    async (input: { branch: string; worktreePath: string | null }) => {
+    async (input: {
+      branch: string;
+      worktreePath: string | null;
+      changeRequest: ChangeRequestAssociation;
+    }) => {
       await openOrReuseProjectDraftThread({
         branch: input.branch,
         worktreePath: input.worktreePath,
         envMode: input.worktreePath ? "worktree" : "local",
+        ...(settings.enableDurableChangeRequestStatus
+          ? { changeRequest: input.changeRequest }
+          : {}),
       });
     },
-    [openOrReuseProjectDraftThread],
+    [openOrReuseProjectDraftThread, settings.enableDurableChangeRequestStatus],
   );
 
   useEffect(() => {
@@ -4516,6 +4529,9 @@ function ChatViewContent(props: ChatViewProps) {
                       interactionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeWorktreePath,
+                      ...(activeThread.changeRequest
+                        ? { changeRequest: activeThread.changeRequest }
+                        : {}),
                       createdAt: activeThread.createdAt,
                     },
                   }

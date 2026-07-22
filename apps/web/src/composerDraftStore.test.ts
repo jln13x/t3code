@@ -1057,6 +1057,43 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
+  it("keeps PR identity with its draft branch and clears it when that context changes", () => {
+    const store = useComposerDraftStore.getState();
+    const changeRequest = {
+      provider: "github" as const,
+      number: 42,
+      title: "Durable association",
+      url: "https://github.com/acme/repo/pull/42",
+      baseRefName: "main",
+      headRefName: "feature/durable",
+      state: "open" as const,
+    };
+    store.setProjectDraftThreadId(projectRef, draftId, {
+      threadId,
+      branch: "feature/durable",
+      worktreePath: "/tmp/feature-durable",
+      changeRequest,
+    });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.changeRequest).toEqual(
+      changeRequest,
+    );
+
+    store.setDraftThreadContext(draftId, { branch: "feature/replacement" });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)).not.toHaveProperty(
+      "changeRequest",
+    );
+
+    store.setDraftThreadContext(draftId, {
+      branch: "feature/durable",
+      changeRequest,
+    });
+    store.setDraftThreadContext(draftId, { startFromOrigin: true });
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)).not.toHaveProperty(
+      "changeRequest",
+    );
+  });
+
   it("stores the start-from-origin choice with the draft thread", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {

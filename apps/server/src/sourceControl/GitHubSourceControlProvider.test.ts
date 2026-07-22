@@ -68,6 +68,36 @@ it.effect("maps GitHub PR summaries into provider-neutral change requests", () =
   }),
 );
 
+it.effect("uses a pull request URL's repository instead of the current checkout", () =>
+  Effect.gen(function* () {
+    let getInput: Parameters<GitHubCli.GitHubCli["Service"]["getPullRequest"]>[0] | null = null;
+    const provider = yield* makeProvider({
+      getPullRequest: (input) => {
+        getInput = input;
+        return Effect.succeed({
+          number: 42,
+          title: "Canonical repository",
+          url: "https://github.com/pingdotgg/t3code/pull/42",
+          baseRefName: "main",
+          headRefName: "feature/source-control",
+          state: "open",
+        });
+      },
+    });
+
+    yield* provider.getChangeRequest({
+      cwd: "/unrelated-checkout",
+      reference: "https://github.com/pingdotgg/t3code/pull/42",
+    });
+
+    assert.deepStrictEqual(getInput, {
+      cwd: "/unrelated-checkout",
+      reference: "https://github.com/pingdotgg/t3code/pull/42",
+      repository: "pingdotgg/t3code",
+    });
+  }),
+);
+
 it.effect("adds safe request context while retaining GitHub CLI causes", () =>
   Effect.gen(function* () {
     const cause = new GitHubCli.GitHubPullRequestNotFoundError({

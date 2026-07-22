@@ -269,6 +269,7 @@ export function useThreadOutboxDrain(): void {
           workspaceMode: creation.workspaceMode,
           branch: creation.branch,
           worktreePath: creation.worktreePath,
+          ...(creation.changeRequest ? { changeRequest: creation.changeRequest } : {}),
           startFromOrigin: creation.startFromOrigin ?? false,
           worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
         }),

@@ -266,6 +266,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
+          ...(command.changeRequest !== undefined ? { changeRequest: command.changeRequest } : {}),
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -345,12 +346,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const branch =
+      const branchUpdateRejected =
         command.branch !== undefined &&
         command.expectedBranch !== undefined &&
-        thread.branch !== command.expectedBranch
-          ? thread.branch
-          : command.branch;
+        thread.branch !== command.expectedBranch;
+      const branch = branchUpdateRejected ? thread.branch : command.branch;
+      const changeRequest = branchUpdateRejected
+        ? undefined
+        : command.changeRequest !== undefined
+          ? command.changeRequest
+          : branch !== undefined && branch !== thread.branch
+            ? null
+            : undefined;
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -368,6 +375,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(branch !== undefined ? { branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
+          ...(changeRequest !== undefined ? { changeRequest } : {}),
           updatedAt: occurredAt,
         },
       };

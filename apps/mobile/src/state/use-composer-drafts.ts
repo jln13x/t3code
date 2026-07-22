@@ -1,10 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
+  ChangeRequestAssociation,
   ModelSelection as ModelSelectionSchema,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProviderInteractionMode as ProviderInteractionModeSchema,
   RuntimeMode as RuntimeModeSchema,
   type EnvironmentId,
+  type ChangeRequestAssociation as ChangeRequestAssociationType,
   type ModelSelection,
   type ProviderInteractionMode,
   type RuntimeMode,
@@ -58,6 +60,7 @@ export interface ComposerDraftWorkspaceSelection {
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
+  readonly changeRequest?: ChangeRequestAssociationType;
 }
 
 export type ComposerDraftSettingsUpdate = Pick<
@@ -70,6 +73,7 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   startFromOrigin: Schema.optional(Schema.Boolean),
+  changeRequest: Schema.optional(ChangeRequestAssociation),
 });
 
 const ComposerDraftSchema = Schema.Struct({

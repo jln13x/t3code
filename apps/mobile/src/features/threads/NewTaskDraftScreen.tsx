@@ -879,6 +879,9 @@ export function NewTaskDraftScreen(props: {
       envMode: workspaceMode,
       branch: selectedBranchName,
       worktreePath: workspaceMode === "worktree" ? null : selectedWorktreePath,
+      ...(draft.workspaceSelection?.changeRequest
+        ? { changeRequest: draft.workspaceSelection.changeRequest }
+        : {}),
       startFromOrigin,
       runtimeMode,
       interactionMode,

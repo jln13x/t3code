@@ -107,6 +107,9 @@ export function applyThreadDetailEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
+          ...(event.payload.changeRequest !== undefined
+            ? { changeRequest: event.payload.changeRequest }
+            : {}),
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -140,11 +143,12 @@ export function applyThreadDetailEvent(
       };
 
     // ── Thread metadata ─────────────────────────────────────────────
-    case "thread.meta-updated":
+    case "thread.meta-updated": {
+      const { changeRequest: _changeRequest, ...threadWithoutChangeRequest } = thread;
       return {
         kind: "updated",
         thread: {
-          ...thread,
+          ...(event.payload.changeRequest === null ? threadWithoutChangeRequest : thread),
           ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
           ...(event.payload.modelSelection !== undefined
             ? { modelSelection: event.payload.modelSelection }
@@ -153,9 +157,15 @@ export function applyThreadDetailEvent(
           ...(event.payload.worktreePath !== undefined
             ? { worktreePath: event.payload.worktreePath }
             : {}),
+          ...(event.payload.changeRequest !== undefined
+            ? event.payload.changeRequest === null
+              ? {}
+              : { changeRequest: event.payload.changeRequest }
+            : {}),
           updatedAt: event.payload.updatedAt,
         },
       };
+    }
 
     case "thread.runtime-mode-set":
       return {

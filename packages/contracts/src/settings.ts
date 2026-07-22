@@ -396,6 +396,9 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   enableForkPullRequests: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableDurableChangeRequestStatus: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   enableProviderSkillDiscovery: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),

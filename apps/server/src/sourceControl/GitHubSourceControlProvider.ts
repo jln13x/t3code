@@ -37,6 +37,20 @@ function toChangeRequest(summary: GitHubCli.GitHubPullRequestSummary): ChangeReq
   };
 }
 
+function repositoryFromPullRequestUrl(reference: string): string | undefined {
+  try {
+    const url = new URL(reference.trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    const segments = url.pathname.split("/").filter(Boolean);
+    const [owner, repository, pullSegment, number] = segments;
+    return owner && repository && pullSegment === "pull" && /^\d+$/u.test(number ?? "")
+      ? `${owner}/${repository}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseGitHubAuth(input: SourceControlAuthProbeInput) {
   const output = combinedAuthOutput(input);
   const authStatus = parseGitHubAuthStatus(input.stdout);
@@ -104,6 +118,13 @@ export const make = Effect.gen(function* () {
     const repository = repositoryFromContext(context);
     return repository ? { ...input, repository } : input;
   };
+  const withRepositoryFromPullRequestUrl = <Input extends { readonly reference: string }>(
+    input: Input,
+    context: SourceControlProvider.SourceControlProviderContext | undefined,
+  ): Input | (Input & { readonly repository: string }) => {
+    const repository = repositoryFromPullRequestUrl(input.reference);
+    return repository ? { ...input, repository } : withRepositoryFromContext(input, context);
+  };
 
   const listChangeRequests: SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"] =
     (input) =>
@@ -141,7 +162,7 @@ export const make = Effect.gen(function* () {
     kind: "github",
     listChangeRequests,
     getChangeRequest: (input) =>
-      github.getPullRequest(withRepositoryFromContext(input, input.context)).pipe(
+      github.getPullRequest(withRepositoryFromPullRequestUrl(input, input.context)).pipe(
         Effect.map(toChangeRequest),
         Effect.mapError(
           (error) =>
