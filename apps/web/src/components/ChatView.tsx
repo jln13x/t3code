@@ -247,6 +247,7 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  requiresDraftProjectSelection,
   resolveEffectiveServerThreadWorktreePath,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
@@ -1525,6 +1526,12 @@ function ChatViewContent(props: ChatViewProps) {
     ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
     : null;
   const activeProject = useProject(activeProjectRef);
+  const isStandaloneThread = activeThread?.projectId === null;
+  const projectSelectionRequired = requiresDraftProjectSelection({
+    isLocalDraftThread,
+    projectId: activeThread?.projectId,
+    hasActiveProject: activeProject !== null,
+  });
   const activeEnvironmentShell = useEnvironmentQuery(
     activeThread ? environmentShell.stateAtom(activeThread.environmentId) : null,
   );
@@ -4300,7 +4307,6 @@ function ChatViewContent(props: ChatViewProps) {
       }
       return;
     }
-    const isStandaloneThread = activeThread.projectId === null;
     if (!activeProject && !isStandaloneThread) {
       toastManager.add(
         stackedThreadToast({
@@ -5596,6 +5602,7 @@ function ChatViewContent(props: ChatViewProps) {
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
+                          isStandalone={isStandaloneThread}
                         />
                       </div>
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
@@ -5628,7 +5635,7 @@ function ChatViewContent(props: ChatViewProps) {
                         isServerThread={isServerThread}
                         isLocalDraftThread={isLocalDraftThread}
                         forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
-                        projectSelectionRequired={isLocalDraftThread && activeProject === null}
+                        projectSelectionRequired={projectSelectionRequired}
                         phase={phase}
                         isConnecting={isConnecting}
                         isSendBusy={isSendBusy}

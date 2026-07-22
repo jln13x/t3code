@@ -56,6 +56,14 @@ export function buildLocalDraftThread(
   };
 }
 
+export function requiresDraftProjectSelection(input: {
+  readonly isLocalDraftThread: boolean;
+  readonly projectId: ProjectId | null | undefined;
+  readonly hasActiveProject: boolean;
+}): boolean {
+  return input.isLocalDraftThread && input.projectId !== null && !input.hasActiveProject;
+}
+
 export function shouldWriteThreadErrorToCurrentServerThread(input: {
   serverThread:
     | {

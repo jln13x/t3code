@@ -68,6 +68,8 @@ Upstream PRs integrated into the fork are listed in
 - Creating a standalone chat opens a local draft immediately, matching project-thread creation;
   the server thread is materialized atomically with the first message instead of blocking
   navigation on an empty-thread request.
+- Standalone drafts remain writable in the shared new-thread composer and use projectless hero
+  copy; missing-project guards continue to apply only to orphaned project drafts.
 - Standalone chats participate in the same desktop completion sounds and macOS notifications as
   project threads. When agent-activity publishing is enabled, they also publish completion and
   attention states to connected mobile clients under the generic `Chats` activity group.
