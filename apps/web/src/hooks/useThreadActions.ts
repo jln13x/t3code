@@ -24,7 +24,9 @@ import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 import { readLocalApi } from "../localApi";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { readEnvironmentThreadRefs, readProject, readThreadShell } from "../state/entities";
+import { environmentShell } from "../state/shell";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import {
@@ -166,6 +168,7 @@ export function useThreadActions() {
       if (archiveResult._tag === "Failure") {
         return archiveResult;
       }
+      appAtomRegistry.refresh(environmentShell.stateAtom(threadRef.environmentId));
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       opts.onArchived?.();
 
