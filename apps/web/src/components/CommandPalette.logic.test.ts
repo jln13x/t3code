@@ -46,6 +46,15 @@ describe("reduceCommandPaletteUiState", () => {
     });
   });
 
+  it("routes new-thread-in requests back to command mode", () => {
+    const filesOpen = reduceCommandPaletteUiState(closedState, { _tag: "ToggleFiles" });
+    expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenNewThreadIn" })).toEqual({
+      open: true,
+      mode: "command",
+      openIntent: { kind: "new-thread-in" },
+    });
+  });
+
   it("resets file-picker mode for dialog trigger opens and closes", () => {
     const filesOpen = reduceCommandPaletteUiState(closedState, { _tag: "ToggleFiles" });
 
@@ -76,6 +85,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     proposedPlans: [],
     createdAt: "2026-03-01T00:00:00.000Z",
     archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
     deletedAt: null,
     updatedAt: "2026-03-01T00:00:00.000Z",
     latestTurn: null,

@@ -8,9 +8,13 @@ import { getLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { usePrimarySettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
 import ThreadSidebar from "./Sidebar";
-import { resolveThreadSidebarPresentation } from "./AppSidebarLayout.logic";
+import ThreadSidebarV2 from "./SidebarV2";
+import {
+  resolveThreadSidebarPresentation,
+  resolveThreadSidebarVariant,
+} from "./AppSidebarLayout.logic";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import {
   resolveInitialThreadSidebarWidth,
@@ -107,8 +111,18 @@ function SidebarControl() {
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
-  const sidebarPresentation = resolveThreadSidebarPresentation(enableNativeMacSidebar);
+  const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
+  // Settings routes render the settings nav, which lives in the v1 component
+  // and is identical for both sidebars — so v1 stays mounted there.
   const pathname = useLocation({ select: (location) => location.pathname });
+  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const sidebarVariant = resolveThreadSidebarVariant({
+    enableNativeMacSidebar,
+    sidebarV2Enabled,
+    isOnSettings,
+  });
+  const useSidebarV2 = sidebarVariant === "upstream-v2";
+  const sidebarPresentation = resolveThreadSidebarPresentation(sidebarVariant === "native");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     readInitialThreadSidebarWidth(sidebarPresentation),
@@ -172,7 +186,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <Sidebar
         side="left"
         collapsible="offcanvas"
-        className={sidebarPresentation.className}
+        className={
+          useSidebarV2
+            ? "app-sidebar border-r border-border text-foreground"
+            : sidebarPresentation.className
+        }
         resizable={{
           maxWidth: sidebarMaximumWidth,
           minWidth: sidebarPresentation.minWidth,
@@ -183,7 +201,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        <ThreadSidebar />
+        {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
         <SidebarRail />
       </Sidebar>
       {children}

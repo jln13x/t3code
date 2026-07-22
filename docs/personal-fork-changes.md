@@ -116,12 +116,15 @@ Upstream PRs integrated into the fork are listed in
 - Worktrees use compact branch headers with subtly inset conversation rows, keeping each checkout
   visually distinct without repeating its branch on every thread. Worktree labels omit redundant
   thread counts. Empty worktrees remain standalone rows so they are still available for new-chat
-  and archive actions. Turning off the native sidebar flag restores the upstream grouped layout
-  and counts.
+  and archive actions.
 - The native layout omits the generic "No threads yet" row. It hides the redundant main-checkout
   label when no other checkout is shown, but restores a "Main checkout" header when multiple
-  checkout groups need a visible boundary. Actionable worktree rows use a pointer cursor. Turning
-  the flag off restores upstream labels.
+  checkout groups need a visible boundary. Actionable worktree rows use a pointer cursor.
+- Turning off the native sidebar flag makes upstream Sidebar v2 the default outside Settings. The
+  upstream Beta preference can also opt into Sidebar v2 while the personal flag remains on.
+  Settings continues to use the v1 shell because its navigation is hosted there; with the personal
+  flag off, that shell uses upstream styling. Turning the Beta preference back off restores the
+  personal sidebar only when the personal flag is on.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
   is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
   registration intact. Worktree rows do not show inline archive buttons; every non-main worktree

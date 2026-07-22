@@ -141,7 +141,8 @@ const PERSONAL_FEATURE_SETTINGS = [
   {
     key: "enableNativeMacSidebar",
     title: "Native macOS sidebar",
-    description: "Use the wider, spacious macOS-inspired sidebar presentation.",
+    description:
+      "Use the wider, spacious macOS-inspired sidebar presentation. Turning this off makes upstream Sidebar v2 the default.",
   },
   {
     key: "enableMacosCompletionNotifications",

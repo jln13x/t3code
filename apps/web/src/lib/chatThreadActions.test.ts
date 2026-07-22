@@ -145,12 +145,47 @@ describe("chatThreadActions", () => {
     });
   });
 
-  it("starts ordinary new threads in the local checkout", async () => {
+  it("does not carry branch or worktree context into a different project", async () => {
+    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
+    const targetProjectRef = scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID);
+
+    await startNewThreadInProjectFromContext(
+      createContext({
+        activeThread: {
+          environmentId: ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          branch: "feature/refactor",
+          worktreePath: "/tmp/worktree",
+        },
+        handleNewThread,
+      }),
+      targetProjectRef,
+    );
+
+    expect(handleNewThread).toHaveBeenCalledWith(targetProjectRef);
+  });
+
+  it("delegates the target environment defaults to the new-thread handler", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
     const didStart = await startNewLocalThreadFromContext(
       createContext({
         defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
+        handleNewThread,
+      }),
+    );
+
+    expect(didStart).toBe(true);
+    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
+  });
+
+  it("starts ordinary new threads in the local checkout when checkout-aware creation is enabled", async () => {
+    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
+
+    const didStart = await startNewLocalThreadFromContext(
+      createContext({
+        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
+        defaultThreadEnvMode: "worktree",
         handleNewThread,
       }),
     );
@@ -217,7 +252,7 @@ describe("chatThreadActions", () => {
     });
   });
 
-  it("preserves legacy creation when checkout-aware defaults are disabled", async () => {
+  it("preserves upstream contextual creation when checkout-aware defaults are disabled", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
     await startNewThreadFromContext(
@@ -232,7 +267,11 @@ describe("chatThreadActions", () => {
       }),
     );
 
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
+    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
+      branch: "feature/refactor",
+      worktreePath: "/tmp/worktree",
+      envMode: "worktree",
+    });
   });
 
   it("does not carry an active worktree branch into another project", async () => {

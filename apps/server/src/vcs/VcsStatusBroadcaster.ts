@@ -450,10 +450,9 @@ export const make = Effect.gen(function* () {
   )(function* (rawCwd, changeRequest) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
     const input = { cwd, ...(changeRequest ? { changeRequest } : {}) };
-    yield* Effect.all([workflow.invalidateLocalStatus(cwd), workflow.invalidateRemoteStatus(cwd)], {
-      concurrency: "unbounded",
-      discard: true,
-    });
+    // invalidateStatus (not the two partial invalidations) so an explicit
+    // refresh also bypasses GitManager's slow PR-lookup cache.
+    yield* workflow.invalidateStatus(cwd);
     const [local, remote] = yield* Effect.all(
       [workflow.localStatus({ cwd }), workflow.remoteStatus(input)],
       { concurrency: "unbounded" },

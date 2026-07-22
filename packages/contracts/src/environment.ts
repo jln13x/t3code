@@ -25,6 +25,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   connectionProbe: Schema.optionalKey(Schema.Boolean),
   /** Supports index-aware worktree diffs and stage/unstage/discard RPCs. */
   worktreeSourceControl: Schema.optionalKey(Schema.Boolean),
+  /** Server understands thread.settle / thread.unsettle commands. Absent on
+      pre-settlement servers, so clients treat missing as unsupported and
+      never send the commands under version skew. */
+  threadSettlement: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

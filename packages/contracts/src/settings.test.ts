@@ -4,12 +4,14 @@ import * as Schema from "effect/Schema";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsSchema,
+  ClientSettingsPatch,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
   ServerSettingsPatch,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
+const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
@@ -88,6 +90,25 @@ describe("ClientSettings sidebar thread grouping", () => {
   });
 });
 
+describe("ClientSettings sidebar v2", () => {
+  it("defaults the beta off with a three-day auto-settle threshold", () => {
+    const settings = decodeClientSettings({});
+    expect(settings.sidebarV2Enabled).toBe(false);
+    expect(settings.sidebarAutoSettleAfterDays).toBe(3);
+  });
+
+  it("allows auto-settle by inactivity to be disabled", () => {
+    expect(
+      decodeClientSettings({ sidebarAutoSettleAfterDays: null }).sidebarAutoSettleAfterDays,
+    ).toBeNull();
+  });
+
+  it.each([-1, 0, 91])("rejects an auto-settle threshold outside 1..90: %s", (value) => {
+    expect(() => decodeClientSettings({ sidebarAutoSettleAfterDays: value })).toThrow();
+    expect(() => decodeClientSettingsPatch({ sidebarAutoSettleAfterDays: value })).toThrow();
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults to an empty record so legacy configs without the key still decode", () => {
     expect(DEFAULT_SERVER_SETTINGS.providerInstances).toEqual({});
@@ -145,14 +166,14 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
 });
 
 describe("ServerSettings worktree defaults", () => {
-  it("defaults start-from-origin off for legacy configs", () => {
-    expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(false);
+  it("defaults start-from-origin on for legacy configs", () => {
+    expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(true);
   });
 
   it("accepts start-from-origin updates", () => {
     expect(
-      decodeServerSettingsPatch({ newWorktreesStartFromOrigin: true }).newWorktreesStartFromOrigin,
-    ).toBe(true);
+      decodeServerSettingsPatch({ newWorktreesStartFromOrigin: false }).newWorktreesStartFromOrigin,
+    ).toBe(false);
   });
 });
 

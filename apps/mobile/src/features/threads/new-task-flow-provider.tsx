@@ -60,6 +60,8 @@ import { type VcsRef } from "@t3tools/client-runtime/state/vcs";
 
 type WorkspaceMode = "local" | "worktree";
 
+const EMPTY_BRANCH_REFS: ReadonlyArray<VcsRef> = [];
+
 function pendingTaskDraftKey(messageId: string): string {
   return `pending-task:${messageId}`;
 }
@@ -356,7 +358,14 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const workspaceMode = selectedProjectDraft.workspaceSelection?.mode ?? "local";
   const selectedBranchName = selectedProjectDraft.workspaceSelection?.branch ?? null;
   const selectedWorktreePath = selectedProjectDraft.workspaceSelection?.worktreePath ?? null;
-  const startFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin ?? false;
+  // Keep the user's explicit choice separate from the resolved display value:
+  // only the explicit flag is ever written back to the draft, so the resolved
+  // value keeps tracking the server setting when the config loads late.
+  const draftStartFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin;
+  const startFromOrigin =
+    draftStartFromOrigin ??
+    selectedEnvironmentServerConfig?.settings.newWorktreesStartFromOrigin ??
+    true;
   const selectedChangeRequest = selectedProjectDraft.workspaceSelection?.changeRequest;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE;
@@ -377,6 +386,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const selectedModel =
     selectedProjectDraft.modelSelection ??
     selectedProject?.defaultModelSelection ??
+    modelOptions.find((option) => option.isDefault)?.selection ??
     modelOptions[0]?.selection ??
     null;
   const selectedModelKey = selectedModel
@@ -484,9 +494,10 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
   const branchState = useBranches(branchTarget);
   const branchesLoading = branchState.isPending;
+  const allBranchRefs = branchState.data?.refs ?? EMPTY_BRANCH_REFS;
   const checkoutBranches = useMemo(
-    () => dedupeRemoteBranchesWithLocalMatches(branchState.data?.refs ?? []),
-    [branchState.data?.refs],
+    () => dedupeRemoteBranchesWithLocalMatches(allBranchRefs),
+    [allBranchRefs],
   );
   const availableBranches = useMemo(
     () =>
@@ -556,7 +567,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           mode,
           branch: selectedBranchName,
           worktreePath: selectedWorktreePath,
-          startFromOrigin,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
           ...(selectedChangeRequest ? { changeRequest: selectedChangeRequest } : {}),
         },
       });
@@ -566,7 +577,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedChangeRequest,
       selectedProjectDraftKey,
       selectedWorktreePath,
-      startFromOrigin,
+      draftStartFromOrigin,
     ],
   );
 
@@ -580,11 +591,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           mode: modeOverride ?? workspaceMode,
           branch: branch.name,
           worktreePath: normalizeSelectedWorktreePath(selectedProject, branch),
-          startFromOrigin,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
         },
       });
     },
-    [selectedProject, selectedProjectDraftKey, startFromOrigin, workspaceMode],
+    [draftStartFromOrigin, selectedProject, selectedProjectDraftKey, workspaceMode],
   );
 
   const selectPreparedCheckout = useCallback(
@@ -651,14 +662,16 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     if (workspaceMode !== "worktree" || selectedBranchName !== null) {
       return;
     }
+    // The default may only exist as origin/<default> (isRemote), which
+    // availableBranches filters out — search the unfiltered refs for it.
     const preferredBranch =
+      allBranchRefs.find((branch) => branch.isDefault) ??
       availableBranches.find((branch) => branch.current) ??
-      availableBranches.find((branch) => branch.isDefault) ??
       null;
     if (preferredBranch) {
       selectBranch(preferredBranch);
     }
-  }, [availableBranches, selectBranch, selectedBranchName, workspaceMode]);
+  }, [allBranchRefs, availableBranches, selectBranch, selectedBranchName, workspaceMode]);
 
   const setRuntimeMode = useCallback(
     (value: RuntimeMode) => {
@@ -753,7 +766,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           workspaceMode: mode,
           branch: workspaceSelection?.branch ?? null,
           worktreePath: mode === "worktree" ? null : (workspaceSelection?.worktreePath ?? null),
-          ...(workspaceSelection?.startFromOrigin ? { startFromOrigin: true } : {}),
+          ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
+            ? { startFromOrigin: true }
+            : {}),
           ...(workspaceSelection?.changeRequest
             ? { changeRequest: workspaceSelection.changeRequest }
             : {}),
@@ -767,6 +782,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedModel,
       selectedProject,
       selectedProjectDraftKey,
+      startFromOrigin,
     ],
   );
 

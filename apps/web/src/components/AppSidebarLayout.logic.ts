@@ -5,6 +5,22 @@ export interface ThreadSidebarPresentation {
   readonly storageKey: string;
 }
 
+export type ThreadSidebarVariant = "native" | "upstream-legacy" | "upstream-v2";
+
+export function resolveThreadSidebarVariant(input: {
+  readonly enableNativeMacSidebar: boolean;
+  readonly sidebarV2Enabled: boolean;
+  readonly isOnSettings: boolean;
+}): ThreadSidebarVariant {
+  if (input.isOnSettings) {
+    return input.enableNativeMacSidebar ? "native" : "upstream-legacy";
+  }
+  if (input.sidebarV2Enabled || !input.enableNativeMacSidebar) {
+    return "upstream-v2";
+  }
+  return "native";
+}
+
 const UPSTREAM_SIDEBAR_PRESENTATION: ThreadSidebarPresentation = {
   className: "border-r border-border bg-card text-foreground",
   defaultWidth: "16rem",

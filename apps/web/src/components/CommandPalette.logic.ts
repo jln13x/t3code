@@ -16,7 +16,7 @@ export const ITEM_ICON_CLASS = "size-4 text-muted-foreground/80";
 export const ADDON_ICON_CLASS = "size-4";
 
 export interface CommandPaletteOpenIntent {
-  readonly kind: "add-project";
+  readonly kind: "add-project" | "new-thread-in";
 }
 
 export interface CommandPaletteUiState {
@@ -30,6 +30,7 @@ export type CommandPaletteUiAction =
   | { readonly _tag: "ToggleCommand" }
   | { readonly _tag: "ToggleFiles" }
   | { readonly _tag: "OpenAddProject" }
+  | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "ClearOpenIntent" };
 
 export function reduceCommandPaletteUiState(
@@ -53,6 +54,8 @@ export function reduceCommandPaletteUiState(
         : { open: true, mode: "files", openIntent: null };
     case "OpenAddProject":
       return { open: true, mode: "command", openIntent: { kind: "add-project" } };
+    case "OpenNewThreadIn":
+      return { open: true, mode: "command", openIntent: { kind: "new-thread-in" } };
     case "ClearOpenIntent":
       return state.openIntent ? { ...state, openIntent: null } : state;
   }

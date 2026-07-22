@@ -163,7 +163,15 @@ export async function startNewThreadInProjectFromContext(
 ): Promise<void> {
   const defaults = await resolveThreadDefaults(context, projectRef);
   if (defaults === null) {
-    await context.handleNewThread(projectRef);
+    const contextualProjectRef = resolveThreadActionProjectRef(context);
+    const matchesContext =
+      contextualProjectRef?.environmentId === projectRef.environmentId &&
+      contextualProjectRef.projectId === projectRef.projectId;
+    if (matchesContext) {
+      await context.handleNewThread(projectRef, buildContextualThreadOptions(context));
+    } else {
+      await context.handleNewThread(projectRef);
+    }
     return;
   }
 
@@ -221,6 +229,11 @@ export async function startNewLocalThreadFromContext(
   const projectRef = resolveThreadActionProjectRef(context);
   if (!projectRef) {
     return false;
+  }
+
+  if (context.defaultThreadEnvMode === undefined) {
+    await context.handleNewThread(projectRef);
+    return true;
   }
 
   const mainCheckout = await resolveMainCheckout(context, projectRef);

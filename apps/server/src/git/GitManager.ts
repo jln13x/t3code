@@ -117,6 +117,9 @@ const TOAST_DESCRIPTION_MAX = 72;
 const OPEN_PULL_REQUEST_CANDIDATE_LIMIT = 100;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
+const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
+const PR_LOOKUP_FAILURE_TTL = Duration.seconds(20);
+const PR_LOOKUP_CACHE_CAPACITY = 2_048;
 type StripProgressContext<T> = T extends any ? Omit<T, "actionId" | "cwd" | "action"> : never;
 type GitActionProgressPayload = StripProgressContext<GitActionProgressEvent>;
 type GitActionProgressEmitter = (event: GitActionProgressPayload) => Effect.Effect<void, never>;
@@ -136,12 +139,6 @@ interface OpenPrInfo {
 interface PullRequestInfo extends OpenPrInfo, PullRequestHeadRemoteInfo {
   state: "open" | "closed" | "merged";
   updatedAt: Option.Option<DateTime.Utc>;
-}
-
-interface ChangeRequestStatusLookup {
-  readonly pr: PullRequestInfo | null;
-  readonly refreshState?: "stale";
-  readonly refName?: string;
 }
 
 class ExplicitChangeRequestRefreshCacheKey implements Equal.Equal {
@@ -194,6 +191,7 @@ interface BranchHeadContext {
   headSelectors: ReadonlyArray<string>;
   preferredHeadSelector: string;
   remoteName: string | null;
+  headRemoteUrlKey: string | null;
   headRepositoryNameWithOwner: string | null;
   headRepositoryOwnerLogin: string | null;
   isCrossRepository: boolean;
@@ -959,6 +957,160 @@ export const make = Effect.gen(function* () {
     normalizeStatusCacheKey(cwd).pipe(
       Effect.flatMap((cacheKey) => Cache.invalidate(localStatusResultCache, cacheKey)),
     );
+  // PR lookups hit the hosting provider's API (gh/glab/...), so they refresh
+  // on their own, slower cadence: ahead/behind counts stay fresh on every
+  // status poll while the PR association is re-fetched at most once per
+  // PR_LOOKUP_CACHE_TTL per branch. Git actions and user-driven refreshes bump
+  // the epoch (invalidateStatus) to bypass the cache immediately.
+  const prLookupEpochByCwd = new Map<string, number>();
+  const prLookupEpoch = (cwd: string) => prLookupEpochByCwd.get(cwd) ?? 0;
+  const bumpPrLookupEpoch = (cwd: string) =>
+    normalizeStatusCacheKey(cwd).pipe(
+      Effect.map((cacheKey) => {
+        prLookupEpochByCwd.set(cacheKey, prLookupEpoch(cacheKey) + 1);
+      }),
+    );
+  // Cache keys are NUL-joined [cwd, branch, upstreamRef, epoch] — none of the
+  // segments can contain a NUL byte, and refs are never empty, so "" decodes
+  // back to a null upstreamRef.
+  const prLookupCacheKey = (cwd: string, details: { branch: string; upstreamRef: string | null }) =>
+    [cwd, details.branch, details.upstreamRef ?? "", String(prLookupEpoch(cwd))].join("\u0000");
+  const prLookupCache = yield* Cache.makeWith(
+    (key: string) => {
+      const [cwd = "", branch = "", upstreamRef = ""] = key.split("\u0000");
+      const details = {
+        branch,
+        upstreamRef: upstreamRef.length > 0 ? upstreamRef : null,
+      };
+      return resolveBranchHeadContext(cwd, details).pipe(
+        Effect.flatMap((headContext) =>
+          findLatestPrForHeadContext(cwd, headContext).pipe(
+            Effect.map((latest) => ({ latest, headContext })),
+          ),
+        ),
+      );
+    },
+    {
+      capacity: PR_LOOKUP_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? PR_LOOKUP_CACHE_TTL : PR_LOOKUP_FAILURE_TTL),
+    },
+  );
+  // A transient lookup failure (rate limit, network blip) must not clear an
+  // already-known PR badge, so the last successful answer per branch sticks
+  // around as the fallback. Keep the resolved head context with it so a
+  // branch retargeted to another remote/fork cannot inherit the old badge.
+  interface LastKnownPr {
+    readonly pr: ReturnType<typeof toStatusPr> | null;
+    readonly upstreamRef: string | null;
+    readonly headBranch: string;
+    readonly remoteName: string | null;
+    readonly headRemoteUrlKey: string | null;
+  }
+  const lastKnownPrByBranchKey = new Map<string, LastKnownPr>();
+  const rememberLastKnownPr = (branchKey: string, entry: LastKnownPr) => {
+    if (
+      !lastKnownPrByBranchKey.has(branchKey) &&
+      lastKnownPrByBranchKey.size >= PR_LOOKUP_CACHE_CAPACITY
+    ) {
+      const oldestKey = lastKnownPrByBranchKey.keys().next().value;
+      if (oldestKey !== undefined) {
+        lastKnownPrByBranchKey.delete(oldestKey);
+      }
+    }
+    lastKnownPrByBranchKey.set(branchKey, entry);
+  };
+  const resolveLastKnownPr = (
+    branchKey: string,
+    current: Pick<LastKnownPr, "upstreamRef" | "headBranch" | "remoteName" | "headRemoteUrlKey">,
+  ): ReturnType<typeof toStatusPr> | null => {
+    const lastKnown = lastKnownPrByBranchKey.get(branchKey);
+    if (!lastKnown) return null;
+    if (lastKnown.headBranch !== current.headBranch) {
+      return null;
+    }
+
+    // The normalized URL catches both remote-alias changes and an existing
+    // alias being repointed. Both sides must be resolved before treating a
+    // mismatch as real: `readConfigValueNullable` swallows any git-config
+    // read failure into `null`, so a transient failure to resolve the
+    // *current* remote URL must read as "unknown", not as "no remote" — the
+    // latter would otherwise drop an already-known PR badge on every hiccup.
+    if (lastKnown.headRemoteUrlKey !== null && current.headRemoteUrlKey !== null) {
+      return lastKnown.headRemoteUrlKey === current.headRemoteUrlKey ? lastKnown.pr : null;
+    }
+
+    // If the remote URL can't be compared, fall back to the remote identity
+    // encoded by tracked branches — same "both sides known" requirement, for
+    // the same reason. A null-to-non-null transition (upstream/remoteName)
+    // is allowed because that is the expected first-push case.
+    if (
+      lastKnown.upstreamRef !== null &&
+      current.upstreamRef !== null &&
+      lastKnown.remoteName !== null &&
+      current.remoteName !== null
+    ) {
+      return lastKnown.remoteName === current.remoteName ? lastKnown.pr : null;
+    }
+    return lastKnown.pr;
+  };
+  const lookupStatusPr = Effect.fn("lookupStatusPr")(function* (
+    cwd: string,
+    details: { branch: string; upstreamRef: string | null; isDefaultBranch: boolean },
+  ) {
+    // Keyed by (cwd, branch) only: the upstream ref changing (e.g. a first
+    // `push -u`) must not orphan the fallback value for the same branch.
+    const branchKey = `${cwd}\u0000${details.branch}`;
+    return yield* Cache.get(prLookupCache, prLookupCacheKey(cwd, details)).pipe(
+      Effect.map(({ latest, headContext }) => {
+        if (!latest) return { pr: null, headContext };
+        // On the default branch, only surface open PRs.
+        // Merged/closed matches are usually reverse-merge history, not the thread's PR context.
+        if (details.isDefaultBranch && latest.state !== "open") {
+          return { pr: null, headContext };
+        }
+        return { pr: toStatusPr(latest), headContext };
+      }),
+      Effect.tap(({ pr, headContext }) =>
+        Effect.sync(() =>
+          rememberLastKnownPr(branchKey, {
+            pr,
+            upstreamRef: details.upstreamRef,
+            headBranch: headContext.headBranch,
+            remoteName: headContext.remoteName,
+            headRemoteUrlKey: headContext.headRemoteUrlKey,
+          }),
+        ),
+      ),
+      Effect.map(({ pr }) => ({ pr })),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning("PR lookup failed; keeping last known PR state.").pipe(
+            Effect.annotateLogs({
+              operation: "lookupStatusPr",
+              branch: details.branch,
+              errorTag:
+                typeof error === "object" && error !== null && "_tag" in error
+                  ? String(error._tag)
+                  : typeof error,
+            }),
+          );
+          const headContext = yield* resolveBranchHeadContext(cwd, details);
+          const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
+          return {
+            pr: resolveLastKnownPr(branchKey, {
+              upstreamRef: details.upstreamRef,
+              headBranch: headContext.headBranch,
+              remoteName: headContext.remoteName,
+              headRemoteUrlKey: headContext.headRemoteUrlKey,
+            }),
+            ...(pollingProtectionEnabled
+              ? { refreshState: "stale" as const, refName: details.branch }
+              : {}),
+          };
+        }),
+      ),
+    );
+  });
   const readRemoteStatus = Effect.fn("readRemoteStatus")(function* (
     cwd: string,
     options?: GitVcsDriver.GitRemoteStatusOptions,
@@ -971,7 +1123,11 @@ export const make = Effect.gen(function* () {
       return null;
     }
 
-    const changeRequestLookup = explicitChangeRequest
+    const changeRequestLookup: {
+      readonly pr: VcsStatusRemoteResult["pr"];
+      readonly refreshState?: "stale";
+      readonly refName?: string;
+    } = explicitChangeRequest
       ? yield* Cache.get(
           explicitChangeRequestRefreshCache,
           new ExplicitChangeRequestRefreshCacheKey(cwd, explicitChangeRequest),
@@ -991,27 +1147,13 @@ export const make = Effect.gen(function* () {
             return { pr: null };
           }),
         )
-      : details.branch !== null
-        ? yield* findLatestPrForStatus(cwd, {
+      : details.branch === null
+        ? { pr: null }
+        : yield* lookupStatusPr(cwd, {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
-          }).pipe(
-            Effect.map((lookup) => {
-              const latest = lookup.pr;
-              const pr =
-                latest === null || (details.isDefaultBranch && latest.state !== "open")
-                  ? null
-                  : toStatusPr(latest);
-              return {
-                pr,
-                ...("refreshState" in lookup && lookup.refreshState
-                  ? { refreshState: lookup.refreshState }
-                  : {}),
-                ...("refName" in lookup && lookup.refName ? { refName: lookup.refName } : {}),
-              };
-            }),
-          )
-        : { pr: null };
+            isDefaultBranch: details.isDefaultBranch,
+          });
 
     return {
       hasUpstream: details.hasUpstream,
@@ -1061,6 +1203,7 @@ export const make = Effect.gen(function* () {
   ) {
     if (!remoteName) {
       return {
+        remoteUrlKey: null,
         repositoryNameWithOwner: null,
         ownerLogin: null,
       };
@@ -1069,6 +1212,7 @@ export const make = Effect.gen(function* () {
     const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
     const repositoryNameWithOwner = parseGitHubRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
     return {
+      remoteUrlKey: remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null,
       repositoryNameWithOwner,
       ownerLogin: parseRepositoryOwnerLogin(repositoryNameWithOwner),
     };
@@ -1145,6 +1289,9 @@ export const make = Effect.gen(function* () {
       preferredHeadSelector:
         ownerHeadSelector && isCrossRepository ? ownerHeadSelector : headBranch,
       remoteName,
+      headRemoteUrlKey:
+        remoteRepository.remoteUrlKey ??
+        (remoteName === null ? originRepository.remoteUrlKey : null),
       headRepositoryNameWithOwner: remoteRepository.repositoryNameWithOwner,
       headRepositoryOwnerLogin: remoteRepository.ownerLogin,
       isCrossRepository,
@@ -1222,40 +1369,34 @@ export const make = Effect.gen(function* () {
     return parsed[0] ?? null;
   });
 
-  const findLatestPrForStatus = Effect.fn("findLatestPrForStatus")(
-    function* (cwd: string, details: { branch: string; upstreamRef: string | null }) {
-      const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
-      const headContext = yield* resolveBranchHeadContext(cwd, details);
-      const provider = yield* sourceControlProvider(cwd);
+  const findLatestPrForHeadContext = Effect.fn("findLatestPrForHeadContext")(function* (
+    cwd: string,
+    headContext: BranchHeadContext,
+  ) {
+    const provider = yield* sourceControlProvider(cwd);
+    const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
+    if (!pollingProtectionEnabled) {
+      return yield* queryLatestPr(cwd, headContext, provider);
+    }
 
-      if (!pollingProtectionEnabled) {
-        const pr = yield* queryLatestPr(cwd, headContext, provider).pipe(
-          Effect.orElseSucceed(() => null),
-        );
-        return { pr };
-      }
+    // GitHub CLI may first resolve the checkout's base repository with a
+    // separate `gh repo view`, so reserve that possible API call too.
+    const requestCost = headContext.headSelectors.length + (provider.kind === "github" ? 1 : 0);
+    return yield* changeRequestStatusRequestSemaphore.withPermit(
+      Effect.gen(function* () {
+        const permit = yield* takeStatusProviderRequestPermit(provider.kind, requestCost);
+        if (!permit.allowed) {
+          return yield* new GitManagerError({
+            operation: "lookupStatusPr",
+            cwd,
+            detail: "Change request discovery is temporarily throttled.",
+            cause: new Error(`Retry after ${permit.retryAfterMs}ms.`),
+          });
+        }
 
-      // GitHub CLI may first resolve the checkout's base repository with a
-      // separate `gh repo view`, so reserve that possible API call too.
-      const requestCost = headContext.headSelectors.length + (provider.kind === "github" ? 1 : 0);
-      return yield* changeRequestStatusRequestSemaphore
-        .withPermit(
-          Effect.gen(function* () {
-            const permit = yield* takeStatusProviderRequestPermit(provider.kind, requestCost);
-            if (!permit.allowed) {
-              return {
-                pr: null,
-                refreshState: "stale",
-                refName: details.branch,
-              } satisfies ChangeRequestStatusLookup;
-            }
-            const pr = yield* queryLatestPr(cwd, headContext, provider);
-            yield* recordStatusProviderRequestSuccess(provider.kind);
-            return { pr, refName: details.branch } satisfies ChangeRequestStatusLookup;
-          }),
-        )
-        .pipe(
-          Effect.catch((error) =>
+        return yield* queryLatestPr(cwd, headContext, provider).pipe(
+          Effect.tap(() => recordStatusProviderRequestSuccess(provider.kind)),
+          Effect.tapError((error) =>
             Effect.gen(function* () {
               const retryAfter = yield* recordStatusProviderRequestFailure(provider.kind);
               yield* Effect.logWarning(
@@ -1267,36 +1408,12 @@ export const make = Effect.gen(function* () {
                   retryAfterMs: Duration.toMillis(retryAfter),
                 },
               );
-              return {
-                pr: null,
-                refreshState: "stale",
-                refName: details.branch,
-              } satisfies ChangeRequestStatusLookup;
             }),
           ),
         );
-    },
-    Effect.catch((error) =>
-      durableChangeRequestStatusEnabled.pipe(
-        Effect.flatMap((pollingProtectionEnabled) =>
-          pollingProtectionEnabled
-            ? Effect.logWarning(
-                "Change request discovery setup failed; retaining last-known state",
-                {
-                  errorTag: error._tag,
-                },
-              ).pipe(
-                Effect.as({
-                  pr: null,
-                  refreshState: "stale" as const,
-                }),
-              )
-            : Effect.succeed({ pr: null }),
-        ),
-      ),
-    ),
-  );
-
+      }),
+    );
+  });
   const buildCompletionToast = Effect.fn("buildCompletionToast")(function* (
     cwd: string,
     result: Pick<GitRunStackedActionResult, "action" | "branch" | "commit" | "push" | "pr">,
@@ -1809,6 +1926,10 @@ export const make = Effect.gen(function* () {
     function* (cwd) {
       yield* invalidateLocalStatusResultCache(cwd);
       yield* invalidateRemoteStatusResultCache(cwd);
+      // Full invalidation is the explicit-freshness path (git actions, user
+      // refresh); it also bypasses the slow PR-lookup cache. The periodic
+      // status poll only invalidates local/remote and keeps the PR cache warm.
+      yield* bumpPrLookupEpoch(cwd);
     },
   );
 

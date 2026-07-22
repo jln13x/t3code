@@ -8,13 +8,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
-  DEFAULT_MODEL,
   type DesktopWslState,
   type EnvironmentId,
   type FilesystemBrowseResult,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   type ProjectId,
-  ProviderInstanceId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
@@ -45,7 +43,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { OpenAddProjectCommandPaletteProvider } from "../commandPaletteContext";
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
 import { desktopLocalBackendId, isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -71,6 +68,7 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
+import { onOpenCommandPalette } from "../commandPaletteBus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
@@ -80,7 +78,8 @@ import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import { filesystemEnvironment } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
-import { primaryServerKeybindingsAtom } from "../state/server";
+import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
+import { resolveDefaultProviderModelSelection } from "../providerInstances";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
@@ -348,6 +347,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const toggleCommand = useCallback(() => dispatch({ _tag: "ToggleCommand" }), []);
   const toggleFiles = useCallback(() => dispatch({ _tag: "ToggleFiles" }), []);
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
+  const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
@@ -382,22 +382,34 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enableProjectSearch, keybindings, terminalOpen, toggleCommand, toggleFiles]);
 
+  useEffect(
+    () =>
+      onOpenCommandPalette((detail) => {
+        if (detail.open === "new-thread-in") {
+          openNewThreadIn();
+        } else if (detail.open === "add-project") {
+          openAddProject();
+        } else {
+          setOpen(true);
+        }
+      }),
+    [openAddProject, openNewThreadIn, setOpen],
+  );
+
   return (
-    <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
-      <ComposerHandleContext value={composerHandleRef}>
-        <CommandDialog open={state.open} onOpenChange={setOpen}>
-          {children}
-          <CommandPaletteDialog
-            enableProjectSearch={enableProjectSearch}
-            mode={state.mode}
-            open={state.open}
-            openIntent={state.openIntent}
-            setOpen={setOpen}
-            clearOpenIntent={clearOpenIntent}
-          />
-        </CommandDialog>
-      </ComposerHandleContext>
-    </OpenAddProjectCommandPaletteProvider>
+    <ComposerHandleContext value={composerHandleRef}>
+      <CommandDialog open={state.open} onOpenChange={setOpen}>
+        {children}
+        <CommandPaletteDialog
+          enableProjectSearch={enableProjectSearch}
+          mode={state.mode}
+          open={state.open}
+          openIntent={state.openIntent}
+          setOpen={setOpen}
+          clearOpenIntent={clearOpenIntent}
+        />
+      </CommandDialog>
+    </ComposerHandleContext>
   );
 }
 
@@ -464,6 +476,7 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const threads = useThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const providers = useAtomValue(primaryServerProvidersAtom);
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
   const currentView = viewStack.at(-1) ?? null;
   const [browseGeneration, setBrowseGeneration] = useState(0);
@@ -973,6 +986,36 @@ function OpenCommandPaletteDialog(props: {
     openAddProjectFlow();
   }, [clearOpenIntent, openAddProjectFlow, openIntent]);
 
+  useLayoutEffect(() => {
+    if (openIntent?.kind !== "new-thread-in" || projectThreadItems.length === 0) {
+      return;
+    }
+    clearOpenIntent();
+    setAddProjectCloneFlow(null);
+    setViewStack([]);
+    setQuery("");
+    const currentPrefix =
+      currentProjectEnvironmentId && currentProjectId
+        ? `new-thread-in:${currentProjectEnvironmentId}:${currentProjectId}`
+        : null;
+    const prioritized = currentPrefix
+      ? [
+          ...projectThreadItems.filter((item) => item.value === currentPrefix),
+          ...projectThreadItems.filter((item) => item.value !== currentPrefix),
+        ]
+      : projectThreadItems;
+    pushPaletteView({
+      addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
+      groups: [{ value: "projects", label: "Projects", items: prioritized }],
+    });
+  }, [
+    clearOpenIntent,
+    currentProjectEnvironmentId,
+    currentProjectId,
+    openIntent,
+    projectThreadItems,
+  ]);
+
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
   const activeProjectTitle = currentProjectId
@@ -1166,6 +1209,10 @@ function OpenCommandPaletteDialog(props: {
       }
 
       const projectId = newProjectId();
+      const targetEnvironmentProviders =
+        environments.find((environment) => environment.environmentId === input.environmentId)
+          ?.serverConfig?.providers ??
+        (input.environmentId === primaryEnvironmentId ? providers : []);
       const createResult = await createProject({
         environmentId: input.environmentId,
         input: {
@@ -1173,10 +1220,10 @@ function OpenCommandPaletteDialog(props: {
           title: inferProjectTitleFromPath(cwd),
           workspaceRoot: cwd,
           createWorkspaceRootIfMissing: true,
-          defaultModelSelection: {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: DEFAULT_MODEL,
-          },
+          defaultModelSelection: resolveDefaultProviderModelSelection(
+            targetEnvironmentProviders,
+            null,
+          ),
         },
       });
       if (createResult._tag === "Failure") {
@@ -1212,8 +1259,11 @@ function OpenCommandPaletteDialog(props: {
     [
       handleNewThread,
       createProject,
+      environments,
       navigate,
+      primaryEnvironmentId,
       projects,
+      providers,
       setOpen,
       clientSettings.sidebarThreadSortOrder,
       threads,

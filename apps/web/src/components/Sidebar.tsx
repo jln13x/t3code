@@ -75,7 +75,6 @@ import {
   useUpdateClientSettings,
 } from "~/hooks/useSettings";
 import { APP_STAGE_LABEL } from "../branding";
-import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -129,7 +128,11 @@ import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { vcsEnvironment } from "../state/vcs";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
+import {
+  buildThreadRouteParams,
+  resolveActiveThreadRouteRef,
+  resolveThreadRouteTarget,
+} from "../threadRoutes";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
@@ -234,6 +237,7 @@ import {
 } from "./ui/sidebar";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { openCommandPalette } from "../commandPaletteBus";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -3752,7 +3756,6 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     </SidebarFooter>
   );
 });
-
 interface SidebarProjectsContentProps {
   enableNativeMacSidebar: boolean;
   showArm64IntelBuildWarning: boolean;
@@ -4144,10 +4147,17 @@ export default function Sidebar() {
   );
   const { archiveThread, deleteThread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
-  const routeThreadRef = useParams({
+  const routeTarget = useParams({
     strict: false,
-    select: (params) => resolveThreadRouteRef(params),
+    select: (params) => resolveThreadRouteTarget(params),
   });
+  const routeDraftThread = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
+  );
+  const routeThreadRef = useMemo(
+    () => resolveActiveThreadRouteRef(routeTarget, routeDraftThread),
+    [routeDraftThread, routeTarget],
+  );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
@@ -4155,7 +4165,10 @@ export default function Sidebar() {
       : false,
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const openAddProjectCommandPalette = useOpenAddProjectCommandPalette();
+  const openAddProjectCommandPalette = useCallback(
+    () => openCommandPalette({ open: "add-project" }),
+    [],
+  );
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());

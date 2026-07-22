@@ -4,6 +4,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   FlagIcon,
+  FlaskConicalIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -30,6 +31,7 @@ export type SettingsSectionPath =
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived"
+  | "/settings/beta"
   | "/settings/feature-flags";
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
@@ -42,6 +44,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
+  { label: "Beta", to: "/settings/beta", icon: FlaskConicalIcon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
   { label: "Feature Flags", to: "/settings/feature-flags", icon: FlagIcon },
 ];

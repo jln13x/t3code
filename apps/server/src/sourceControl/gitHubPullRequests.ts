@@ -30,18 +30,21 @@ const GitHubPullRequestSchema = Schema.Struct({
   mergedAt: Schema.optional(Schema.NullOr(Schema.String)),
   updatedAt: Schema.optional(Schema.OptionFromNullOr(Schema.DateTimeUtcFromString)),
   isCrossRepository: Schema.optional(Schema.Boolean),
+  // gh < 2.47 exports headRepository as {id, name} only; nameWithOwner was
+  // added later. Both fields stay optional so a version-drifted gh CLI can
+  // never fail the decode and silently drop the PR from the list.
   headRepository: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
-        name: Schema.optional(Schema.String),
-        nameWithOwner: Schema.optional(Schema.String),
+        nameWithOwner: Schema.optional(Schema.NullOr(Schema.String)),
+        name: Schema.optional(Schema.NullOr(Schema.String)),
       }),
     ),
   ),
   headRepositoryOwner: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
-        login: Schema.String,
+        login: Schema.optional(Schema.NullOr(Schema.String)),
       }),
     ),
   ),
@@ -72,16 +75,13 @@ function normalizeGitHubPullRequestState(input: {
 function normalizeGitHubPullRequestRecord(
   raw: Schema.Schema.Type<typeof GitHubPullRequestSchema>,
 ): NormalizedGitHubPullRequestRecord {
-  const explicitHeadRepositoryNameWithOwner = trimOptionalString(raw.headRepository?.nameWithOwner);
+  const explicitNameWithOwner = trimOptionalString(raw.headRepository?.nameWithOwner);
+  const headRepositoryName = trimOptionalString(raw.headRepository?.name);
   const headRepositoryOwnerLogin =
     trimOptionalString(raw.headRepositoryOwner?.login) ??
-    (typeof explicitHeadRepositoryNameWithOwner === "string" &&
-    explicitHeadRepositoryNameWithOwner.includes("/")
-      ? (explicitHeadRepositoryNameWithOwner.split("/")[0] ?? null)
-      : null);
-  const headRepositoryName = trimOptionalString(raw.headRepository?.name);
+    (explicitNameWithOwner?.includes("/") ? (explicitNameWithOwner.split("/")[0] ?? null) : null);
   const headRepositoryNameWithOwner =
-    explicitHeadRepositoryNameWithOwner ??
+    explicitNameWithOwner ??
     (headRepositoryOwnerLogin && headRepositoryName
       ? `${headRepositoryOwnerLogin}/${headRepositoryName}`
       : null);

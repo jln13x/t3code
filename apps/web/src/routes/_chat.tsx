@@ -3,7 +3,9 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { isCommandPaletteOpen } from "../commandPaletteContext";
+import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
+import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
+import { useProjects } from "../state/entities";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { resolveShortcutCommand } from "../keybindings";
@@ -34,6 +36,10 @@ function ChatRouteGlobalShortcuts() {
     routeThreadRef,
   } = useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
+  const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
+  const useSidebarV2 = sidebarV2Enabled || !enableNativeMacSidebar;
+  const projectCount = useProjects().length;
   const terminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
@@ -88,6 +94,13 @@ function ChatRouteGlobalShortcuts() {
       if (command === "chat.new") {
         event.preventDefault();
         event.stopPropagation();
+        // Sidebar v2 routes creation through the command palette whenever
+        // there is a real choice to make; v1 (and single-project setups)
+        // keep the immediate contextual create.
+        if (useSidebarV2 && projectCount > 1) {
+          openCommandPalette({ open: "new-thread-in" });
+          return;
+        }
         void startNewThreadFromContext({
           activeDraftThread,
           activeThread: activeThread ?? undefined,
@@ -177,8 +190,10 @@ function ChatRouteGlobalShortcuts() {
     keybindings,
     defaultProjectRef,
     previewOpen,
+    projectCount,
     routeThreadRef,
     selectedThreadKeysSize,
+    useSidebarV2,
     terminalOpen,
   ]);
 
