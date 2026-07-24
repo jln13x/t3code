@@ -94,7 +94,7 @@ function SidebarControl() {
                 "pointer-events-auto",
                 isSidebarVisible &&
                   stageBackdropVariant &&
-                  "hover:bg-white/15 [&_svg]:text-white/85! [&_svg]:hover:text-white!",
+                  "[:hover,[data-pressed]]:bg-white/15 focus-visible:ring-white/90 focus-visible:ring-offset-blue-700 [&_svg]:stroke-white/90! [&_svg]:opacity-100! [&_svg]:hover:stroke-white!",
               )}
               aria-label="Toggle main sidebar"
             />
@@ -122,6 +122,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     isOnSettings,
   });
   const useSidebarV2 = sidebarVariant === "upstream-v2";
+  const useSidebarV2Theme = sidebarVariant !== "native";
   const sidebarPresentation = resolveThreadSidebarPresentation(sidebarVariant === "native");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
@@ -186,10 +187,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <Sidebar
         side="left"
         collapsible="offcanvas"
+        data-app-sidebar=""
+        data-sidebar-version={useSidebarV2Theme ? "v2" : "v1"}
         className={
-          useSidebarV2
-            ? "app-sidebar border-r border-border text-foreground"
-            : sidebarPresentation.className
+          sidebarVariant === "native"
+            ? sidebarPresentation.className
+            : `${useSidebarV2 ? "app-sidebar " : ""}border-r border-sidebar-border bg-sidebar text-sidebar-foreground`
         }
         resizable={{
           maxWidth: sidebarMaximumWidth,

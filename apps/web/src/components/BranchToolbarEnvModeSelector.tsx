@@ -1,8 +1,9 @@
-import { FolderGit2Icon, FolderGitIcon, FolderIcon } from "lucide-react";
+import { FolderGit2Icon, FolderGitIcon, FolderIcon, HistoryIcon } from "lucide-react";
 import { memo, useMemo } from "react";
 
 import {
   resolveEnvModeLabel,
+  resolveLockedWorkspaceLabel,
   resolveWorkspaceSelection,
   type ExistingWorktreeOption,
   type EnvMode,
@@ -16,6 +17,8 @@ import {
   SelectTrigger,
 } from "./ui/select";
 
+export const PREVIOUS_WORKTREE_SELECT_VALUE = "previous-worktree";
+
 interface BranchToolbarEnvModeSelectorProps {
   envLocked: boolean;
   effectiveEnvMode: EnvMode;
@@ -24,6 +27,8 @@ interface BranchToolbarEnvModeSelectorProps {
   existingWorktrees: readonly ExistingWorktreeOption[];
   mainCheckout: ExistingWorktreeOption | null;
   onExistingWorktreeChange: (worktree: ExistingWorktreeOption) => void;
+  previousWorktreeLabel?: string | null;
+  onUsePreviousWorktree?: () => void;
 }
 
 export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSelector({
@@ -34,7 +39,10 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
   existingWorktrees,
   mainCheckout,
   onExistingWorktreeChange,
+  previousWorktreeLabel,
+  onUsePreviousWorktree,
 }: BranchToolbarEnvModeSelectorProps) {
+  const showPreviousWorktree = Boolean(previousWorktreeLabel && onUsePreviousWorktree);
   const {
     isMainCheckout,
     selectedExistingWorktree,
@@ -57,8 +65,11 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
         value: `existing:${worktree.path}`,
         label: worktree.label,
       })),
+      ...(showPreviousWorktree && previousWorktreeLabel
+        ? [{ value: PREVIOUS_WORKTREE_SELECT_VALUE, label: previousWorktreeLabel }]
+        : []),
     ],
-    [existingWorktrees, mainCheckout],
+    [existingWorktrees, mainCheckout, previousWorktreeLabel, showPreviousWorktree],
   );
 
   if (envLocked) {
@@ -71,8 +82,12 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
           </>
         ) : (
           <>
-            <FolderIcon className="size-3" />
-            Main checkout
+            {activeWorktreePath ? (
+              <FolderGitIcon className="size-3" />
+            ) : (
+              <FolderIcon className="size-3" />
+            )}
+            {resolveLockedWorkspaceLabel(activeWorktreePath)}
           </>
         )}
       </span>
@@ -84,6 +99,10 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       modal={false}
       value={selectValue}
       onValueChange={(value) => {
+        if (value === PREVIOUS_WORKTREE_SELECT_VALUE) {
+          onUsePreviousWorktree?.();
+          return;
+        }
         if (mainCheckout && value === `main:${mainCheckout.path}`) {
           onExistingWorktreeChange(mainCheckout);
           return;
@@ -130,6 +149,14 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
               {resolveEnvModeLabel("worktree")}
             </span>
           </SelectItem>
+          {showPreviousWorktree && previousWorktreeLabel ? (
+            <SelectItem value={PREVIOUS_WORKTREE_SELECT_VALUE}>
+              <span className="inline-flex items-center gap-1.5">
+                <HistoryIcon className="size-3" />
+                {previousWorktreeLabel}
+              </span>
+            </SelectItem>
+          ) : null}
         </SelectGroup>
         {existingWorktrees.length > 0 ? (
           <SelectGroup>

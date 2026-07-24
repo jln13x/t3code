@@ -1,12 +1,10 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type {
-  ChangeRequestAssociation,
   SourceControlProviderInfo,
   SourceControlProviderKind,
   VcsStatusResult,
 } from "@t3tools/contracts";
-import { resolveThreadChangeRequestStatus } from "@t3tools/shared/sourceControl";
-import { CloudIcon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
+import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useThreadChangeRequestStatus } from "../hooks/useThreadChangeRequestStatus";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
@@ -14,12 +12,15 @@ import { useUiStateStore } from "../uiStateStore";
 import { resolveChangeRequestPresentation } from "../sourceControlPresentation";
 import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
+import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export interface PrStatusIndicator {
   label: string;
   colorClass: string;
   tooltip: string;
+  tooltipLead: string;
+  tooltipTitle: string;
   url: string;
 }
 
@@ -35,14 +36,28 @@ export function prStatusIndicator(
   pr: ThreadPr,
   provider: SourceControlProviderInfo | SourceControlProviderKind | null | undefined,
 ): PrStatusIndicator | null {
+  function formatPrState(state: NonNullable<ThreadPr>["state"]): string {
+    return state.charAt(0).toUpperCase() + state.slice(1);
+  }
+
+  function formatPrStatusLead(pr: NonNullable<ThreadPr>, changeRequestShortName: string): string {
+    return `${changeRequestShortName} #${pr.number} - ${formatPrState(pr.state)}`;
+  }
   if (!pr) return null;
   const presentation = resolveChangeRequestPresentation(provider);
+
+  const tooltipLead = `${formatPrStatusLead(pr, presentation.shortName)}${
+    pr.stale ? " (last known)" : ""
+  }`;
+  const tooltip = `${tooltipLead}: ${pr.title}`;
 
   if (pr.state === "open") {
     return {
       label: `${presentation.shortName} open`,
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} open${pr.stale ? " (last known)" : ""}: ${pr.title}`,
+      tooltip,
+      tooltipLead,
+      tooltipTitle: pr.title,
       url: pr.url,
     };
   }
@@ -50,7 +65,9 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} closed`,
       colorClass: "text-zinc-500 dark:text-zinc-400/80",
-      tooltip: `#${pr.number} ${presentation.shortName} closed${pr.stale ? " (last known)" : ""}: ${pr.title}`,
+      tooltip,
+      tooltipLead,
+      tooltipTitle: pr.title,
       url: pr.url,
     };
   }
@@ -58,7 +75,9 @@ export function prStatusIndicator(
     return {
       label: `${presentation.shortName} merged`,
       colorClass: "text-violet-600 dark:text-violet-300/90",
-      tooltip: `#${pr.number} ${presentation.shortName} merged${pr.stale ? " (last known)" : ""}: ${pr.title}`,
+      tooltip,
+      tooltipLead,
+      tooltipTitle: pr.title,
       url: pr.url,
     };
   }
@@ -69,18 +88,35 @@ export function ChangeRequestStatusIcon({ className }: { className?: string }) {
   return <GitPullRequestIcon className={className} />;
 }
 
-export function resolveThreadPr(
-  threadBranch: string | null,
-  gitStatus: VcsStatusResult | null,
-  changeRequest?: ChangeRequestAssociation,
-  durableChangeRequestStatusEnabled = false,
-): ThreadPr | null {
-  return resolveThreadChangeRequestStatus({
-    threadBranch,
-    ...(changeRequest ? { changeRequest } : {}),
-    gitStatus,
-    durableChangeRequestStatusEnabled,
-  });
+export function PrStatusTooltipContent({ status }: { status: PrStatusIndicator }) {
+  return (
+    <span className="flex max-w-[min(34rem,calc(100vw-2rem))] items-stretch overflow-hidden whitespace-nowrap">
+      <span className="shrink-0 pr-2 font-medium">{status.tooltipLead}</span>
+      <span className="min-h-4 shrink-0 border-border/70 border-l" aria-hidden="true" />
+      <span className="min-w-0 truncate pl-2">{status.tooltipTitle}</span>
+    </span>
+  );
+}
+
+export function resolveThreadPr(input: {
+  threadBranch: string | null;
+  gitStatus: VcsStatusResult | null;
+  hasDedicatedWorktree: boolean;
+}): ThreadPr | null {
+  const { threadBranch, gitStatus, hasDedicatedWorktree } = input;
+  if (gitStatus === null) {
+    return null;
+  }
+
+  if (hasDedicatedWorktree) {
+    return gitStatus.pr ?? null;
+  }
+
+  if (threadBranch === null || gitStatus.refName !== threadBranch) {
+    return null;
+  }
+
+  return gitStatus.pr ?? null;
 }
 
 export function terminalStatusFromRunningIds(
@@ -94,6 +130,40 @@ export function terminalStatusFromRunningIds(
     colorClass: "text-teal-600 dark:text-teal-300/90",
     pulse: true,
   };
+}
+
+export function ThreadWorktreeIndicator({
+  thread,
+}: {
+  thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
+}) {
+  const worktreePath = thread.worktreePath?.trim();
+  if (!worktreePath) {
+    return null;
+  }
+
+  const displayPath = formatWorktreePathForDisplay(worktreePath);
+  const tooltip = thread.branch
+    ? `Worktree: ${displayPath} (${thread.branch})`
+    : `Worktree: ${displayPath}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label={tooltip}
+            data-testid={`thread-worktree-${thread.id}`}
+            className="inline-flex items-center justify-center"
+          />
+        }
+      >
+        <FolderGit2Icon className="size-3 text-muted-foreground/40" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{tooltip}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 export function ThreadStatusLabel({
@@ -186,7 +256,9 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
           >
             <ChangeRequestStatusIcon className="size-3" />
           </TooltipTrigger>
-          <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
+          <TooltipPopup side="top">
+            <PrStatusTooltipContent status={prStatus} />
+          </TooltipPopup>
         </Tooltip>
       ) : null}
       {threadStatus ? <ThreadStatusLabel status={threadStatus} /> : null}

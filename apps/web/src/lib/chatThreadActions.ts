@@ -163,15 +163,7 @@ export async function startNewThreadInProjectFromContext(
 ): Promise<void> {
   const defaults = await resolveThreadDefaults(context, projectRef);
   if (defaults === null) {
-    const contextualProjectRef = resolveThreadActionProjectRef(context);
-    const matchesContext =
-      contextualProjectRef?.environmentId === projectRef.environmentId &&
-      contextualProjectRef.projectId === projectRef.projectId;
-    if (matchesContext) {
-      await context.handleNewThread(projectRef, buildContextualThreadOptions(context));
-    } else {
-      await context.handleNewThread(projectRef);
-    }
+    await context.handleNewThread(projectRef);
     return;
   }
 

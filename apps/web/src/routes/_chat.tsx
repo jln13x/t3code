@@ -1,11 +1,14 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
+import { usePrimaryEnvironmentId } from "../state/environments";
+import { selectProjectGroupingSettings } from "../logicalProject";
+import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { resolveShortcutCommand } from "../keybindings";
@@ -39,7 +42,19 @@ function ChatRouteGlobalShortcuts() {
   const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const useSidebarV2 = sidebarV2Enabled || !enableNativeMacSidebar;
-  const projectCount = useProjects().length;
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const projects = useProjects();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const projectGroupCount = useMemo(
+    () =>
+      buildSidebarProjectSnapshots({
+        projects,
+        settings: projectGroupingSettings,
+        primaryEnvironmentId,
+        resolveEnvironmentLabel: () => null,
+      }).length,
+    [primaryEnvironmentId, projectGroupingSettings, projects],
+  );
   const terminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef).terminalOpen
@@ -97,7 +112,7 @@ function ChatRouteGlobalShortcuts() {
         // Sidebar v2 routes creation through the command palette whenever
         // there is a real choice to make; v1 (and single-project setups)
         // keep the immediate contextual create.
-        if (useSidebarV2 && projectCount > 1) {
+        if (useSidebarV2 && projectGroupCount > 1) {
           openCommandPalette({ open: "new-thread-in" });
           return;
         }
@@ -190,7 +205,7 @@ function ChatRouteGlobalShortcuts() {
     keybindings,
     defaultProjectRef,
     previewOpen,
-    projectCount,
+    projectGroupCount,
     routeThreadRef,
     selectedThreadKeysSize,
     useSidebarV2,
