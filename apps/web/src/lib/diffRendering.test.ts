@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildPatchCacheKey,
   canRenderFileDiff,
+  getDiffLineStat,
   getRenderablePatch,
   MAX_RENDERABLE_DIFF_LINE_LENGTH,
 } from "./diffRendering";
@@ -105,5 +106,35 @@ describe("diff render line limits", () => {
         deletionLines: ["small"],
       }),
     ).toBe(true);
+  });
+});
+
+describe("getDiffLineStat", () => {
+  it("totals additions and deletions across every file and hunk", () => {
+    const patch = [
+      "diff --git a/example.ts b/example.ts",
+      "--- a/example.ts",
+      "+++ b/example.ts",
+      "@@ -1,2 +1,3 @@",
+      "-before",
+      "+after",
+      "+added",
+      " context",
+      "@@ -10,2 +11,1 @@",
+      "-removed",
+      " context",
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1,2 @@",
+      " title",
+      "+description",
+    ].join("\n");
+
+    const parsed = getRenderablePatch(patch);
+    expect(parsed?.kind).toBe("files");
+    if (parsed?.kind !== "files") return;
+
+    expect(getDiffLineStat(parsed.files)).toEqual({ additions: 3, deletions: 2 });
   });
 });

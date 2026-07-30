@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
-import { useClientSettings, usePrimarySettings } from "../hooks/useSettings";
+import { useClientSettings, usePrimarySettings, useSidebarV2Enabled } from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { selectProjectGroupingSettings } from "../logicalProject";
@@ -39,7 +39,7 @@ function ChatRouteGlobalShortcuts() {
     routeThreadRef,
   } = useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
+  const sidebarV2Enabled = useSidebarV2Enabled();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const useSidebarV2 = sidebarV2Enabled || !enableNativeMacSidebar;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   useClientSettings,
   usePrimarySettings,
+  useSidebarV2Enabled,
   useUpdateClientSettings,
 } from "../../hooks/useSettings";
 import { Input } from "../ui/input";
@@ -55,7 +56,7 @@ function AutoSettleDaysInput({
 }
 
 export function BetaSettingsPanel() {
-  const sidebarV2Enabled = useClientSettings((settings) => settings.sidebarV2Enabled);
+  const sidebarV2Enabled = useSidebarV2Enabled();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const sidebarV2ForcedByPersonalFlag = !enableNativeMacSidebar;
   const sidebarV2Active = sidebarV2Enabled || sidebarV2ForcedByPersonalFlag;
@@ -78,7 +79,14 @@ export function BetaSettingsPanel() {
             <Switch
               checked={sidebarV2Active}
               disabled={sidebarV2ForcedByPersonalFlag}
-              onCheckedChange={(checked) => updateSettings({ sidebarV2Enabled: Boolean(checked) })}
+              // Touching the switch pins the choice, so a nightly build that
+              // defaults v2 on does not flip it back after the user opts out.
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  sidebarV2Enabled: Boolean(checked),
+                  sidebarV2ConfiguredByUser: true,
+                })
+              }
               aria-label="Enable the sidebar v2 beta"
             />
           }

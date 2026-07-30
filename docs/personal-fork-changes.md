@@ -26,6 +26,12 @@ Upstream PRs integrated into the fork are listed in
 - Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
   working-tree-first diff selection and active-worktree scoping. The redundant feature flag and
   settings control were removed.
+- Periodic client-side branch-ref revalidation: retired after upstream added generation-aware
+  refresh retries plus server-side ref snapshot invalidation for Git mutations. Checkout-aware
+  thread creation now uses that upstream refresh path instead of polling every 20 seconds.
+- The fork's `@pierre/diffs` beta 9 editor-identity compatibility patch: retired after beta 10
+  exposed the editor file state needed to distinguish local edits from external content changes.
+  File previews now use the upstream beta 10 API and environment/content-aware cache keys.
 
 ## Desktop fork identity
 
