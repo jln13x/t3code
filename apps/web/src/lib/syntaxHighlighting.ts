@@ -17,8 +17,12 @@ export function getSyntaxHighlighterPromise(language: string): Promise<DiffsHigh
     langs: [language as SupportedLanguages],
     preferredHighlighter: "shiki-js",
   }).catch((error) => {
-    highlighterPromiseCache.delete(language);
-    if (language === "text") throw error;
+    if (language === "text") {
+      highlighterPromiseCache.delete(language);
+      // "text" itself failed — Shiki cannot initialize at all, surface the error
+      throw error;
+    }
+    // Language not supported by Shiki — fall back to "text"
     return getSyntaxHighlighterPromise("text");
   });
   highlighterPromiseCache.set(language, promise);

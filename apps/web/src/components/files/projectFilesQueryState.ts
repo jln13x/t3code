@@ -137,33 +137,29 @@ export function useProjectEntriesQuery(
   };
 }
 
+/**
+ * Backing query for the project file picker: a debounced, bounded, file-only
+ * server search. An empty query is a valid request — the index answers it
+ * with frecency-ordered files, so the picker's initial view is recent files
+ * without transferring the full workspace listing. `matchedQuery` is the
+ * query the returned entries were computed for, so the caller can highlight
+ * against results instead of half-typed input.
+ */
 export function useProjectFilePickerQuery(
   environmentId: EnvironmentId,
   cwd: string,
   query: string,
   limit: number,
 ) {
-  const listing = useProjectEntriesQuery(environmentId, cwd);
-  const hasQuery = /\S/.test(query);
-  const search = useProjectPathSearch(
-    { environmentId, cwd, query: hasQuery ? query : null, kind: "file" },
-    limit,
-  );
-
-  if (hasQuery) {
-    return {
-      entries: search.isPending ? [] : search.entries,
-      error: search.error,
-      isPending: search.isPending,
-      matchedQuery: search.searchedQuery,
-    };
-  }
+  const search = useProjectPathSearch({ environmentId, cwd, query, kind: "file" }, limit, {
+    allowEmptyQuery: true,
+  });
 
   return {
-    entries: listing.data?.entries ?? [],
-    error: listing.data === null ? listing.error : null,
-    isPending: listing.data === null && listing.isPending,
-    matchedQuery: "",
+    entries: search.isPending ? [] : search.entries,
+    error: search.error,
+    isPending: search.isPending,
+    matchedQuery: search.searchedQuery,
   };
 }
 

@@ -32,6 +32,14 @@ Upstream PRs integrated into the fork are listed in
 - The fork's `@pierre/diffs` beta 9 editor-identity compatibility patch: retired after beta 10
   exposed the editor file state needed to distinguish local edits from external content changes.
   File previews now use the upstream beta 10 API and environment/content-aware cache keys.
+- The fork-local project file/content search implementation and `project.searchContents` command:
+  retired after upstream shipped the unified project search overlays, file picker, content search,
+  and `projectSearch.toggle` command. The personal `enableProjectSearch` flag remains the rollout
+  gate; turning it off hides those upstream-backed entry points.
+- The fork's `SidebarV2` component split and Beta settings toggle: retired after upstream promoted
+  that sidebar to the default `Sidebar` implementation. The personalized sidebar now lives at the
+  narrower `LegacySidebar` boundary, selected only by the personal native-sidebar flag or the
+  upstream legacy-sidebar preference.
 
 ## Desktop fork identity
 
@@ -128,11 +136,10 @@ Upstream PRs integrated into the fork are listed in
 - The native layout omits the generic "No threads yet" row. It hides the redundant main-checkout
   label when no other checkout is shown, but restores a "Main checkout" header when multiple
   checkout groups need a visible boundary. Actionable worktree rows use a pointer cursor.
-- Turning off the native sidebar flag makes upstream Sidebar v2 the default outside Settings. The
-  upstream Beta preference can also opt into Sidebar v2 while the personal flag remains on.
-  Settings continues to use the v1 shell because its navigation is hosted there; with the personal
-  flag off, that shell uses upstream styling. Turning the Beta preference back off restores the
-  personal sidebar only when the personal flag is on.
+- Turning off the native sidebar flag makes the current upstream Sidebar the default. The upstream
+  legacy-sidebar preference remains honored while the personal flag is off; when the personal flag
+  is on, the personalized `LegacySidebar` is selected directly. Settings uses upstream's current
+  settings navigation in either state.
 - With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
   is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
   registration intact. Worktree rows do not show inline archive buttons; every non-main worktree

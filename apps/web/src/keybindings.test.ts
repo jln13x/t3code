@@ -135,8 +135,12 @@ const DEFAULT_BINDINGS = compile([
   },
   {
     shortcut: modShortcut("f", { shiftKey: true }),
-    command: "project.searchContents",
+    command: "projectSearch.toggle",
     whenAst: whenNot(whenIdentifier("terminalFocus")),
+  },
+  {
+    shortcut: modShortcut("t", { altKey: true, shiftKey: true }),
+    command: "themeEditor.toggle",
   },
   {
     shortcut: modShortcut("m", { shiftKey: true }),
@@ -352,6 +356,10 @@ describe("shortcutLabelForCommand", () => {
       "⌘P",
     );
     assert.strictEqual(
+      shortcutLabelForCommand(DEFAULT_BINDINGS, "projectSearch.toggle", "MacIntel"),
+      "⇧⌘F",
+    );
+    assert.strictEqual(
       shortcutLabelForCommand(DEFAULT_BINDINGS, "modelPicker.toggle", "Linux"),
       "Ctrl+Shift+M",
     );
@@ -561,20 +569,39 @@ describe("chat/editor shortcuts", () => {
     );
   });
 
-  it("matches project.searchContents shortcut outside terminal focus", () => {
+  it("matches projectSearch.toggle shortcut outside terminal focus", () => {
     assert.strictEqual(
       resolveShortcutCommand(event({ key: "f", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: false },
       }),
-      "project.searchContents",
+      "projectSearch.toggle",
     );
     assert.notStrictEqual(
       resolveShortcutCommand(event({ key: "f", metaKey: true, shiftKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
         context: { terminalFocus: true },
       }),
-      "project.searchContents",
+      "projectSearch.toggle",
+    );
+  });
+
+  it("matches themeEditor.toggle on macOS and Windows", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "t", metaKey: true, altKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        { platform: "MacIntel" },
+      ),
+      "themeEditor.toggle",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "t", ctrlKey: true, altKey: true, shiftKey: true }),
+        DEFAULT_BINDINGS,
+        { platform: "Win32" },
+      ),
+      "themeEditor.toggle",
     );
   });
 

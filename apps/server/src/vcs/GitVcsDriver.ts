@@ -21,6 +21,8 @@ import {
   type VcsCreateWorktreeResult,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
+  type ReviewDiffFileContentsInput,
+  type ReviewDiffFileContentsResult,
   type VcsInitInput,
   type VcsListRefsInput,
   type VcsListRefsResult,
@@ -169,6 +171,11 @@ export interface GitFetchRemoteInput {
   remoteName: string;
 }
 
+export interface GitRemoteExistsInput {
+  cwd: string;
+  remoteName: string;
+}
+
 export interface GitResolveRemoteTrackingCommitInput {
   cwd: string;
   refName: string;
@@ -238,6 +245,9 @@ export class GitVcsDriver extends Context.Service<
     readonly getReviewDiffPreview: (
       input: ReviewDiffPreviewInput,
     ) => Effect.Effect<ReviewDiffPreviewResult, GitCommandError>;
+    readonly getReviewDiffFileContents: (
+      input: ReviewDiffFileContentsInput,
+    ) => Effect.Effect<ReviewDiffFileContentsResult, GitCommandError>;
     readonly readConfigValue: (
       cwd: string,
       key: string,
@@ -258,6 +268,7 @@ export class GitVcsDriver extends Context.Service<
     readonly ensureRemote: (input: GitEnsureRemoteInput) => Effect.Effect<string, GitCommandError>;
     readonly resolvePrimaryRemoteName: (cwd: string) => Effect.Effect<string, GitCommandError>;
     readonly fetchRemote: (input: GitFetchRemoteInput) => Effect.Effect<void, GitCommandError>;
+    readonly remoteExists: (input: GitRemoteExistsInput) => Effect.Effect<boolean, GitCommandError>;
     readonly resolveRemoteTrackingCommit: (
       input: GitResolveRemoteTrackingCommitInput,
     ) => Effect.Effect<

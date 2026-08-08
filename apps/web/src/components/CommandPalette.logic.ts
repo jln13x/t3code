@@ -13,8 +13,22 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
 
 export const RECENT_THREAD_LIMIT = 12;
-export const ITEM_ICON_CLASS = "size-4 text-muted-foreground/80";
+export const ITEM_ICON_CLASS = "size-4 text-icon-muted";
 export const ADDON_ICON_CLASS = "size-4";
+
+export function getDefaultCloneRemoteUrl(
+  repository: Pick<SourceControlRepositoryInfo, "url">,
+): string {
+  return repository.url;
+}
+
+/**
+ * The global search overlay hosts three mutually exclusive surfaces: the
+ * command palette (⌘K), the project file picker (⌘P), and project content
+ * search (⇧⌘F). One reducer owns open/mode state so the surfaces can never
+ * stack and re-triggering a mode's shortcut toggles it closed.
+ */
+export type SearchOverlayMode = "command" | "files" | "content";
 
 export interface CommandPaletteOpenIntent {
   readonly kind: "add-project" | "new-thread-in";
@@ -22,14 +36,13 @@ export interface CommandPaletteOpenIntent {
 
 export interface CommandPaletteUiState {
   readonly open: boolean;
-  readonly mode: "command" | "files";
+  readonly mode: SearchOverlayMode;
   readonly openIntent: CommandPaletteOpenIntent | null;
 }
 
 export type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
-  | { readonly _tag: "ToggleCommand" }
-  | { readonly _tag: "ToggleFiles" }
+  | { readonly _tag: "ToggleMode"; readonly mode: SearchOverlayMode }
   | { readonly _tag: "OpenAddProject" }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "ClearOpenIntent" };
@@ -45,14 +58,10 @@ export function reduceCommandPaletteUiState(
         mode: "command",
         openIntent: action.open ? state.openIntent : null,
       };
-    case "ToggleCommand":
-      return state.open && state.mode === "command"
-        ? { ...state, open: false, openIntent: null }
-        : { open: true, mode: "command", openIntent: null };
-    case "ToggleFiles":
-      return state.open && state.mode === "files"
-        ? { ...state, open: false, openIntent: null }
-        : { open: true, mode: "files", openIntent: null };
+    case "ToggleMode":
+      return state.open && state.mode === action.mode
+        ? { open: false, mode: "command", openIntent: null }
+        : { open: true, mode: action.mode, openIntent: null };
     case "OpenAddProject":
       return { open: true, mode: "command", openIntent: { kind: "add-project" } };
     case "OpenNewThreadIn":
@@ -62,12 +71,19 @@ export function reduceCommandPaletteUiState(
   }
 }
 
+export interface CommandPaletteThreadContentMatch {
+  readonly source: "user" | "assistant";
+  readonly snippet: string;
+  readonly query: string;
+}
+
 export interface CommandPaletteItem {
   readonly kind: "action" | "submenu";
   readonly value: string;
   readonly searchTerms: ReadonlyArray<string>;
   readonly title: ReactNode;
   readonly description?: ReactNode;
+  readonly threadContentMatch?: CommandPaletteThreadContentMatch;
   readonly timestamp?: string;
   readonly icon: ReactNode;
   readonly disabled?: boolean;
@@ -117,12 +133,6 @@ export function enumerateCommandPaletteItems(
 
 export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
 
-export function getDefaultCloneRemoteUrl(
-  repository: Pick<SourceControlRepositoryInfo, "url">,
-): string {
-  return repository.url;
-}
-
 export function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -167,6 +177,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   renderLeadingContent?: (thread: TThread) => ReactNode;
   /** Optional content rendered inline after the title text per-thread. */
   renderTrailingContent?: (thread: TThread) => ReactNode;
+  getContentMatch?: (thread: TThread) => CommandPaletteThreadContentMatch | undefined;
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
@@ -178,9 +189,8 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
     input.limit === undefined ? sortedThreads : sortedThreads.slice(0, input.limit);
 
   return visibleThreads.map((thread) => {
-    const projectTitle = thread.projectId
-      ? input.projectTitleById.get(thread.projectId)
-      : undefined;
+    const projectTitle =
+      thread.projectId === null ? undefined : input.projectTitleById.get(thread.projectId);
     const descriptionParts: string[] = [];
 
     if (projectTitle) {
@@ -195,12 +205,18 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
 
     const leadingContent = input.renderLeadingContent?.(thread);
     const trailingContent = input.renderTrailingContent?.(thread);
+    const contentMatch = input.getContentMatch?.(thread);
 
     return Object.assign(
       {
         kind: "action" as const,
         value: `thread:${thread.id}`,
-        searchTerms: [thread.title, projectTitle ?? ``, thread.branch ?? ``],
+        searchTerms: [
+          thread.title,
+          projectTitle ?? ``,
+          thread.branch ?? ``,
+          contentMatch?.snippet ?? ``,
+        ],
         title: thread.title,
         description: descriptionParts.join(` · `),
         timestamp: formatRelativeTimeLabel(
@@ -210,6 +226,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
       },
       leadingContent ? { titleLeadingContent: leadingContent } : {},
       trailingContent ? { titleTrailingContent: trailingContent } : {},
+      contentMatch ? { threadContentMatch: contentMatch } : {},
       {
         run: async () => {
           await input.runThread(thread);

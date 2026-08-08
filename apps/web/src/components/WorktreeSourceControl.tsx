@@ -685,6 +685,7 @@ export function WorktreeSourceControl({
               </div>
             ) : codeViewFiles.length > 0 ? (
               <AnnotatableCodeView
+                codeViewKey={`${reviewSectionId}:${status.data?.localGeneration ?? 0}:${ignoreWhitespace}`}
                 className="diff-render-surface h-full min-h-0 overflow-auto"
                 files={codeViewFiles}
                 sectionId={reviewSectionId}

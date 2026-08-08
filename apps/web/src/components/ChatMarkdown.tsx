@@ -53,11 +53,13 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsi
 import { ScrollArea } from "./ui/scroll-area";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import { recordVisitForThread } from "../browserHistoryStore";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
+import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
 import {
@@ -93,7 +95,6 @@ import {
 } from "../browser/openFileInPreview";
 import { useAssetUrl } from "../assets/assetUrls";
 import { normalizeGeneratedImageReference } from "./ChatMarkdown.logic";
-import { RenderErrorBoundary } from "./RenderErrorBoundary";
 
 interface ChatMarkdownProps {
   text: string;
@@ -600,7 +601,7 @@ function MarkdownCodeBlock({
 
   return (
     <div
-      className="chat-markdown-codeblock leading-snug"
+      className="chat-markdown-codeblock border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
       data-language={language}
       data-wrap={wrapped ? "true" : "false"}
     >
@@ -612,7 +613,7 @@ function MarkdownCodeBlock({
             theme={theme}
           />
         </span>
-        <span className="flex items-center gap-0.5">
+        <span className="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1401,7 +1402,10 @@ function ChatMarkdown({
           ),
         );
       }
-      return openUrlInPreview({ threadRef, url, openPreview });
+      return openUrlInPreview({ threadRef, url, openPreview }).then((result) => {
+        if (result._tag === "Success") recordVisitForThread(threadRef, url);
+        return result;
+      });
     },
     [openPreview, threadRef],
   );
@@ -1428,6 +1432,9 @@ function ChatMarkdown({
     },
     [createAssetUrl, openPreview, preparedConnection, threadRef],
   );
+  /* eslint-disable react/no-unstable-nested-components -- ReactMarkdown requires component
+   * renderers that close over this message's metadata. useMemo keeps them stable until that
+   * metadata changes. */
   const markdownComponents = useMemo<Components>(() => {
     const fileLinkChip = (
       fileLinkMeta: MarkdownFileLinkMeta,
@@ -1685,6 +1692,7 @@ function ChatMarkdown({
     text,
     threadRef,
   ]);
+  /* eslint-enable react/no-unstable-nested-components */
 
   return (
     <div

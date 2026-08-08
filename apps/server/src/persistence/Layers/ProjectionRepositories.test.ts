@@ -96,6 +96,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         settledAt: null,
         snoozedUntil: null,
         snoozedAt: null,
+        pinnedAt: null,
         latestUserMessageAt: null,
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
@@ -169,6 +170,8 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         settledAt: null,
         snoozedUntil: null,
         snoozedAt: null,
+        pinnedAt: null,
+        pinOrderKey: null,
         latestUserMessageAt: null,
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
@@ -208,6 +211,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         settledAt: "2026-03-25T00:00:00.000Z",
         snoozedUntil: "2026-03-26T09:00:00.000Z",
         snoozedAt: "2026-03-25T00:00:00.000Z",
+        pinnedAt: "2026-03-25T00:00:00.000Z",
         latestUserMessageAt: null,
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
@@ -226,6 +230,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
       assert.strictEqual(row.settledAt, "2026-03-25T00:00:00.000Z");
       assert.strictEqual(row.snoozedUntil, "2026-03-26T09:00:00.000Z");
       assert.strictEqual(row.snoozedAt, "2026-03-25T00:00:00.000Z");
+      assert.strictEqual(row.pinnedAt, "2026-03-25T00:00:00.000Z");
 
       // Un-settle to the keep-active pin and wake the snooze; confirm the
       // flips persist.
@@ -235,6 +240,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         settledAt: null,
         snoozedUntil: null,
         snoozedAt: null,
+        pinnedAt: null,
       });
       const repersisted = yield* threads.getById({
         threadId: ThreadId.make("thread-settled"),
@@ -244,6 +250,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
       assert.strictEqual(updated?.settledAt, null);
       assert.strictEqual(updated?.snoozedUntil, null);
       assert.strictEqual(updated?.snoozedAt, null);
+      assert.strictEqual(updated?.pinnedAt, null);
     }),
   );
 });

@@ -17,14 +17,13 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import {
   useEnvironmentIdentificationMode,
   usePrimarySettings,
-  useSidebarV2Enabled,
+  useLegacySidebarEnabled,
 } from "../hooks/useSettings";
+import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
-import ThreadSidebarV2 from "./SidebarV2";
-import {
-  resolveThreadSidebarPresentation,
-  resolveThreadSidebarVariant,
-} from "./AppSidebarLayout.logic";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { resolveThreadSidebarPresentation } from "./AppSidebarLayout.logic";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import {
   resolveInitialThreadSidebarWidth,
@@ -133,19 +132,10 @@ function SidebarControl() {
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
-  const sidebarV2Enabled = useSidebarV2Enabled();
-  // Settings routes render the settings nav, which lives in the v1 component
-  // and is identical for both sidebars — so v1 stays mounted there.
+  const legacySidebarEnabled = useLegacySidebarEnabled();
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const sidebarVariant = resolveThreadSidebarVariant({
-    enableNativeMacSidebar,
-    sidebarV2Enabled,
-    isOnSettings,
-  });
-  const useSidebarV2 = sidebarVariant === "upstream-v2";
-  const useSidebarV2Theme = sidebarVariant !== "native";
-  const sidebarPresentation = resolveThreadSidebarPresentation(sidebarVariant === "native");
+  const sidebarPresentation = resolveThreadSidebarPresentation(enableNativeMacSidebar);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     readInitialThreadSidebarWidth(sidebarPresentation),
@@ -214,11 +204,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         side="left"
         collapsible="offcanvas"
         data-app-sidebar=""
-        data-sidebar-version={useSidebarV2Theme ? "v2" : "v1"}
+        data-sidebar-version={enableNativeMacSidebar ? "v1" : "v2"}
         className={
-          sidebarVariant === "native"
+          enableNativeMacSidebar
             ? sidebarPresentation.className
-            : `${useSidebarV2 ? "app-sidebar " : ""}border-r border-sidebar-border bg-sidebar text-sidebar-foreground`
+            : "app-sidebar border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
         }
         resizable={{
           maxWidth: sidebarMaximumWidth,
@@ -230,7 +220,16 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
+        {isOnSettings ? (
+          <>
+            <SidebarChromeHeader isElectron={isElectron} />
+            <SettingsSidebarNav pathname={pathname} />
+          </>
+        ) : enableNativeMacSidebar || legacySidebarEnabled ? (
+          <LegacyThreadSidebar />
+        ) : (
+          <ThreadSidebar />
+        )}
         <SidebarRail />
       </Sidebar>
       {children}

@@ -4,7 +4,11 @@ import { useEffect, useMemo } from "react";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
-import { useClientSettings, usePrimarySettings, useSidebarV2Enabled } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useLegacySidebarEnabled,
+  usePrimarySettings,
+} from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { selectProjectGroupingSettings } from "../logicalProject";
@@ -39,9 +43,9 @@ function ChatRouteGlobalShortcuts() {
     routeThreadRef,
   } = useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const sidebarV2Enabled = useSidebarV2Enabled();
   const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
-  const useSidebarV2 = sidebarV2Enabled || !enableNativeMacSidebar;
+  const legacySidebarEnabled = useLegacySidebarEnabled();
+  const useDefaultSidebar = !enableNativeMacSidebar && !legacySidebarEnabled;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -109,10 +113,10 @@ function ChatRouteGlobalShortcuts() {
       if (command === "chat.new") {
         event.preventDefault();
         event.stopPropagation();
-        // Sidebar v2 routes creation through the command palette whenever
-        // there is a real choice to make; v1 (and single-project setups)
-        // keep the immediate contextual create.
-        if (useSidebarV2 && projectGroupCount > 1) {
+        // The default sidebar routes creation through the command palette
+        // whenever there is a real choice to make; the legacy sidebar (and
+        // single-project setups) keep the immediate contextual create.
+        if (useDefaultSidebar && projectGroupCount > 1) {
           openCommandPalette({ open: "new-thread-in" });
           return;
         }
@@ -208,7 +212,7 @@ function ChatRouteGlobalShortcuts() {
     projectGroupCount,
     routeThreadRef,
     selectedThreadKeysSize,
-    useSidebarV2,
+    useDefaultSidebar,
     terminalOpen,
   ]);
 

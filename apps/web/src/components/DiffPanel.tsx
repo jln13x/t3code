@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { FileDiffContentsLoader } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
 import {
   isAtomCommandInterrupted,
@@ -15,6 +16,7 @@ import {
   ChevronsUpDownIcon,
   Columns2Icon,
   PilcrowIcon,
+  RefreshCwIcon,
   Rows3Icon,
   SearchIcon,
   TextWrapIcon,
@@ -35,6 +37,7 @@ import {
   getRenderablePatch,
   resolveDiffThemeName,
   resolveFileDiffPath,
+  DIFF_SURFACE_THEME_UNSAFE_CSS,
 } from "../lib/diffRendering";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
@@ -45,7 +48,6 @@ import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
-import { DIFF_VIEW_UNSAFE_CSS } from "./diffs/diffViewStyles";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -69,6 +71,7 @@ import {
 } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useEnvironmentQuery } from "../state/query";
+import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
 import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
@@ -85,6 +88,214 @@ interface CollapsedDiffFilesState {
 
 const EMPTY_COLLAPSED_DIFF_FILE_KEYS: ReadonlySet<string> = new Set();
 
+const DIFF_PANEL_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
+:is(
+  [data-line],
+  [data-line-annotation],
+  [data-merge-conflict],
+  [data-merge-conflict-actions],
+  [data-no-newline]
+)[data-selected-line] {
+  --diffs-line-bg: light-dark(
+    color-mix(
+      in lab,
+      var(--code-background) 88%,
+      color-mix(in srgb, var(--code-background) 50%, var(--diffs-modified-base))
+    ),
+    color-mix(
+      in lab,
+      var(--code-background) 80%,
+      color-mix(in srgb, var(--code-background) 70%, var(--diffs-modified-base))
+    )
+  ) !important;
+}
+
+:is([data-gutter-buffer], [data-column-number])[data-selected-line] {
+  --diffs-line-bg: light-dark(
+    color-mix(
+      in lab,
+      var(--code-background) 91%,
+      color-mix(in srgb, var(--code-background) 35%, var(--diffs-modified-base))
+    ),
+    color-mix(
+      in lab,
+      var(--code-background) 85%,
+      color-mix(in srgb, var(--code-background) 60%, var(--diffs-modified-base))
+    )
+  ) !important;
+}
+
+[data-indicators="bars"]
+  :is([data-column-number], [data-gutter-buffer="annotation"])[data-selected-line] {
+  position: relative;
+}
+
+[data-indicators="bars"]
+  :is([data-column-number], [data-gutter-buffer="annotation"])[data-selected-line]::before {
+  position: absolute !important;
+  inset-block: 0 !important;
+  inset-inline-start: 0 !important;
+  display: block !important;
+  width: 4px !important;
+  min-width: 4px !important;
+  max-width: 4px !important;
+  height: auto !important;
+  padding: 0 !important;
+  content: "" !important;
+  background-color: var(--diffs-modified-base) !important;
+  background-image: none !important;
+}
+
+[data-file-info] {
+  background-color: var(--code-background) !important;
+  border-block-color: transparent !important;
+  color: var(--code-foreground) !important;
+}
+
+[data-diffs-header] {
+  position: sticky !important;
+  top: 0;
+  z-index: 4;
+  background-color: var(--code-background) !important;
+  border-bottom-color: transparent !important;
+  align-items: center !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  min-height: 32px !important;
+  padding-block: 6px !important;
+  padding-inline: 8px 12px !important;
+}
+
+[data-diffs-header]:hover {
+  background-color: color-mix(in srgb, var(--code-background) 97%, var(--code-foreground)) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]) {
+  height: 24px !important;
+  margin-block: 0 !important;
+  background-color: var(--code-background) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-separator-wrapper] {
+  padding-inline: 8px 12px !important;
+  background-color: transparent !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-separator-content] {
+  gap: 8px;
+  padding-inline: 0 !important;
+  background-color: transparent !important;
+  color: color-mix(in srgb, var(--code-foreground) 52%, var(--code-background)) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  text-decoration: none !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-unmodified-lines] {
+  display: flex !important;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-unmodified-lines]::before,
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-unmodified-lines]::after {
+  width: auto;
+  height: 1px;
+  flex: 1 1 auto;
+  content: "";
+  background-color: color-mix(in srgb, var(--code-background) 92%, var(--code-foreground));
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])[data-expand-index]
+  [data-separator-wrapper] {
+  grid-template-columns: 0 minmax(0, 1fr) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])[data-expand-index]
+  [data-separator-content] {
+  grid-column: 2 !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"])
+  [data-expand-button] {
+  display: none !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]):has(
+    [data-expand-button]
+  )
+  [data-separator-content] {
+  cursor: pointer;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]):has(
+    [data-expand-button]
+  ):hover
+  [data-separator-content] {
+  color: color-mix(in srgb, var(--code-foreground) 76%, var(--code-background)) !important;
+}
+
+:is([data-separator="line-info"], [data-separator="line-info-basic"]):has(
+    [data-expand-button]
+  ):hover
+  [data-unmodified-lines]::before,
+:is([data-separator="line-info"], [data-separator="line-info-basic"]):has(
+    [data-expand-button]
+  ):hover
+  [data-unmodified-lines]::after {
+  background-color: color-mix(in srgb, var(--code-background) 84%, var(--code-foreground));
+}
+
+[data-diffs-header] [data-header-content] {
+  align-items: center !important;
+  line-height: 1 !important;
+}
+
+[data-diffs-header] [data-metadata] {
+  align-items: center !important;
+  line-height: 1 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-diffs-header] [data-additions-count],
+[data-diffs-header] [data-deletions-count] {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 1 !important;
+}
+
+[data-diffs-header] [data-change-icon],
+[data-diffs-header] [data-rename-icon] {
+  display: block;
+  flex-shrink: 0;
+}
+
+[data-title] {
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    text-decoration-color 120ms ease;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  font-family: var(--font-sans) !important;
+}
+
+[data-title]:hover {
+  color: color-mix(in srgb, var(--code-foreground) 84%, var(--primary)) !important;
+  text-decoration-color: currentColor;
+}
+`;
 interface DiffPanelProps {
   mode?: DiffPanelMode;
   composerDraftTarget: ScopedThreadRef | DraftId;
@@ -109,7 +320,12 @@ export default function DiffPanel({
     scopeKey: null,
     fileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
   }));
+  const [codeViewRevision, setCodeViewRevision] = useState(0);
   const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
+  const lastCompletedTurnRefreshRef = useRef<{
+    readonly threadKey: string | null;
+    readonly turnId: TurnId | null;
+  } | null>(null);
 
   const routeThreadRef = useParams({
     strict: false,
@@ -134,6 +350,7 @@ export default function DiffPanel({
     activeThread?.environmentId ?? null,
     serverConfig?.availableEditors ?? [],
   );
+  const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
   const gitStatusQuery = useEnvironmentQuery(
     activeThread !== null && activeThread !== undefined && activeCwd != null
       ? vcsEnvironment.status({
@@ -207,6 +424,7 @@ export default function DiffPanel({
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
+  const codeViewMountKey = `${collapseScopeKey ?? reviewSectionId}:${codeViewRevision}`;
   const collapsedDiffFileKeys =
     collapsedDiffFiles.scopeKey === collapseScopeKey
       ? collapsedDiffFiles.fileKeys
@@ -271,9 +489,93 @@ export default function DiffPanel({
   const branchDiffPreview = shouldRetryBranchDiffAtEnvironmentCwd
     ? fallbackBranchDiffPreview
     : primaryBranchDiffPreview;
+  const refreshBranchDiffPreview = branchDiffPreview.refresh;
+  const canRefreshGitDiff =
+    isGitRepo && selectedTurnId === null && activeThread != null && activeCwd != null;
+  const activeThreadRefreshKey = routeThreadRef
+    ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
+    : null;
+
+  useEffect(() => {
+    if (!canRefreshGitDiff) return;
+    const refreshOnFocus = () => refreshBranchDiffPreview();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, [canRefreshGitDiff, refreshBranchDiffPreview]);
+
+  useEffect(() => {
+    const current = {
+      threadKey: activeThreadRefreshKey,
+      turnId: latestTurn?.turnId ?? null,
+    };
+    const previous = lastCompletedTurnRefreshRef.current;
+    if (!canRefreshGitDiff) {
+      return;
+    }
+    if (previous === null || previous.threadKey !== current.threadKey) {
+      lastCompletedTurnRefreshRef.current = current;
+      return;
+    }
+    if (previous.turnId === current.turnId) return;
+    refreshBranchDiffPreview();
+    lastCompletedTurnRefreshRef.current = current;
+  }, [activeThreadRefreshKey, canRefreshGitDiff, latestTurn?.turnId, refreshBranchDiffPreview]);
+
   const selectedGitSource = branchDiffPreview.data?.sources.find(
     (source) => source.kind === (selectedGitScope === "unstaged" ? "working-tree" : "branch-range"),
   );
+  const loadDiffFiles = useMemo<FileDiffContentsLoader | undefined>(() => {
+    const preview = branchDiffPreview.data;
+    if (selectedTurnId !== null || !activeThread || !preview || !selectedGitSource) {
+      return undefined;
+    }
+
+    const source = selectedGitSource;
+    return async (fileDiff) => {
+      const newPath = resolveFileDiffPath(fileDiff);
+      const oldPath = fileDiff.prevName
+        ? resolveFileDiffPath({ ...fileDiff, name: fileDiff.prevName })
+        : newPath;
+      const result = await getDiffFileContents({
+        environmentId: activeThread.environmentId,
+        input: {
+          cwd: preview.cwd,
+          sourceKind: source.kind,
+          changeType: fileDiff.type,
+          baseRef: source.baseRef,
+          headRef: source.headRef,
+          oldPath,
+          newPath,
+        },
+      });
+      if (result._tag !== "Success") {
+        throw squashAtomCommandFailure(result);
+      }
+
+      const newFile = {
+        name: newPath,
+        contents: result.value.newContents,
+        cacheKey: `${source.diffHash}:new:${newPath}`,
+      };
+      if (fileDiff.type === "rename-pure") {
+        return { oldFile: null, newFile };
+      }
+      return {
+        oldFile: {
+          name: oldPath,
+          contents: result.value.oldContents,
+          cacheKey: `${source.diffHash}:old:${oldPath}`,
+        },
+        newFile,
+      };
+    };
+  }, [
+    activeThread,
+    branchDiffPreview.data,
+    getDiffFileContents,
+    selectedGitSource,
+    selectedTurnId,
+  ]);
   const localBranchRefs = useEnvironmentQuery(
     selectedTurnId === null &&
       selectedGitScope === "branch" &&
@@ -360,10 +662,19 @@ export default function DiffPanel({
         );
       });
   }, [renderablePatch]);
+  const renderableFileEntries = useMemo(
+    () =>
+      renderableFiles.map(({ canRender, fileDiff, filePath }) => ({
+        canRender,
+        fileDiff,
+        filePath,
+        fileKey: buildFileDiffRenderKey(fileDiff),
+      })),
+    [renderableFiles],
+  );
   const codeViewFiles = useMemo(
     () =>
-      renderableFiles.map(({ canRender, fileDiff, filePath }) => {
-        const fileKey = buildFileDiffRenderKey(fileDiff);
+      renderableFileEntries.map(({ canRender, fileDiff, fileKey, filePath }) => {
         return {
           canRender,
           fileDiff,
@@ -372,7 +683,7 @@ export default function DiffPanel({
           collapsed: !canRender || collapsedDiffFileKeys.has(fileKey),
         };
       }),
-    [collapsedDiffFileKeys, renderableFiles],
+    [collapsedDiffFileKeys, renderableFileEntries],
   );
   const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
   const allDiffFilesCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedDiffFileKeys);
@@ -380,13 +691,14 @@ export default function DiffPanel({
     () => getDiffLineStat(renderableFiles.map(({ fileDiff }) => fileDiff)),
     [renderableFiles],
   );
+  const selectedDiffFileKey = selectedFilePath
+    ? (codeViewFiles.find((candidate) => candidate.filePath === selectedFilePath)?.fileKey ?? null)
+    : null;
 
   useEffect(() => {
-    if (!selectedFilePath) return;
-    const file = codeViewFiles.find((candidate) => candidate.filePath === selectedFilePath);
-    if (!file) return;
-    codeViewRef.current?.scrollTo({ type: "item", id: file.fileKey, align: "start" });
-  }, [codeViewFiles, selectedFilePath, selectedFileRevealRequestId]);
+    if (!selectedDiffFileKey) return;
+    codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
+  }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -431,6 +743,7 @@ export default function DiffPanel({
   );
 
   const toggleDiffFileCollapse = useCallback(() => {
+    setCodeViewRevision((current) => current + 1);
     setCollapsedDiffFiles((current) => {
       const currentKeys =
         current.scopeKey === collapseScopeKey ? current.fileKeys : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
@@ -460,11 +773,11 @@ export default function DiffPanel({
       <div className="flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag]">
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="inline-flex h-6 max-w-full items-center gap-1 rounded-md bg-muted/70 px-2 text-xs font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-6 max-w-full items-center gap-1 rounded-md bg-accent px-2 text-xs font-medium text-accent-foreground outline-none transition-colors hover:bg-accent/80 focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={`Diff scope: ${selectedScopeLabel}`}
           >
             <span className="truncate">{selectedScopeLabel}</span>
-            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-60">
             <DropdownMenuItem
@@ -654,23 +967,45 @@ export default function DiffPanel({
             layout="inline"
           />
         )}
+        {canRefreshGitDiff && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
+                  onClick={refreshBranchDiffPreview}
+                />
+              }
+            >
+              <RefreshCwIcon
+                className={cn("size-3.5", branchDiffPreview.isPending && "animate-spin")}
+              />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {branchDiffPreview.isPending ? "Refreshing diff…" : "Refresh diff"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
         {codeViewFiles.length > 0 && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   type="button"
-                  size="icon-xs"
-                  variant="outline"
+                  size="icon-sm"
+                  variant="ghost"
                   aria-label={allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
                   onClick={toggleDiffFileCollapse}
                 />
               }
             >
               {allDiffFilesCollapsed ? (
-                <ChevronsUpDownIcon className="size-3" />
+                <ChevronsUpDownIcon className="size-3.5" />
               ) : (
-                <ChevronsDownUpIcon className="size-3" />
+                <ChevronsDownUpIcon className="size-3.5" />
               )}
             </TooltipTrigger>
             <TooltipPopup side="top">
@@ -679,9 +1014,8 @@ export default function DiffPanel({
           </Tooltip>
         )}
         <ToggleGroup
-          className="shrink-0"
-          variant="outline"
-          size="xs"
+          className="shrink-0 gap-1"
+          size="sm"
           value={[diffRenderMode]}
           onValueChange={(value) => {
             const next = value[0];
@@ -690,11 +1024,11 @@ export default function DiffPanel({
             }
           }}
         >
-          <Toggle aria-label="Stacked diff view" value="stacked">
-            <Rows3Icon className="size-3" />
+          <Toggle aria-label="Stacked diff view" value="stacked" variant="ghost">
+            <Rows3Icon className="size-3.5" />
           </Toggle>
-          <Toggle aria-label="Split diff view" value="split">
-            <Columns2Icon className="size-3" />
+          <Toggle aria-label="Split diff view" value="split" variant="ghost">
+            <Columns2Icon className="size-3.5" />
           </Toggle>
         </ToggleGroup>
         <Tooltip>
@@ -702,8 +1036,8 @@ export default function DiffPanel({
             render={
               <Toggle
                 aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
-                variant="outline"
-                size="xs"
+                variant="ghost"
+                size="sm"
                 pressed={wordWrap}
                 onPressedChange={(pressed) => {
                   setWordWrap(Boolean(pressed));
@@ -711,7 +1045,7 @@ export default function DiffPanel({
               />
             }
           >
-            <TextWrapIcon className="size-3" />
+            <TextWrapIcon className="size-3.5" />
           </TooltipTrigger>
           <TooltipPopup side="top">
             {wordWrap ? "Disable line wrapping" : "Enable line wrapping"}
@@ -724,8 +1058,8 @@ export default function DiffPanel({
                 aria-label={
                   diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"
                 }
-                variant="outline"
-                size="xs"
+                variant="ghost"
+                size="sm"
                 pressed={diffIgnoreWhitespace}
                 onPressedChange={(pressed) => {
                   setDiffIgnoreWhitespace(Boolean(pressed));
@@ -733,7 +1067,7 @@ export default function DiffPanel({
               />
             }
           >
-            <PilcrowIcon className="size-3" />
+            <PilcrowIcon className="size-3.5" />
           </TooltipTrigger>
           <TooltipPopup side="top">
             {diffIgnoreWhitespace ? "Show whitespace changes" : "Hide whitespace changes"}
@@ -768,7 +1102,7 @@ export default function DiffPanel({
             )}
             {selectedPatchError && !renderablePatch && (
               <div className="px-3">
-                <p className="mb-2 text-[11px] text-red-500/80">{selectedPatchError}</p>
+                <p className="mb-2 text-[11px] text-error/80">{selectedPatchError}</p>
               </div>
             )}
             {!renderablePatch ? (
@@ -805,8 +1139,9 @@ export default function DiffPanel({
                 }}
               >
                 <AnnotatableCodeView
-                  viewerRef={codeViewRef}
                   key={collapseScopeKey ?? reviewSectionId}
+                  viewerRef={codeViewRef}
+                  codeViewKey={codeViewMountKey}
                   className="diff-render-surface h-full min-h-0 overflow-auto"
                   files={codeViewFiles}
                   sectionId={reviewSectionId}
@@ -821,7 +1156,7 @@ export default function DiffPanel({
                             <button
                               type="button"
                               className={cn(
-                                "inline-flex size-5 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors focus-visible:outline-hidden",
+                                "-ms-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors focus-visible:outline-hidden",
                                 canRender
                                   ? "cursor-pointer hover:bg-foreground/10"
                                   : "cursor-not-allowed opacity-60",
@@ -860,10 +1195,16 @@ export default function DiffPanel({
                     overflow: wordWrap ? "wrap" : "scroll",
                     theme: resolveDiffThemeName(resolvedTheme),
                     themeType: resolvedTheme as DiffThemeType,
-                    unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
+                    unsafeCSS: DIFF_PANEL_UNSAFE_CSS,
                     stickyHeaders: true,
-                    itemMetrics: { diffHeaderHeight: 33 },
-                    layout: { paddingTop: 0, paddingBottom: 8, gap: 8 },
+                    ...(loadDiffFiles ? { loadDiffFiles } : {}),
+                    itemMetrics: {
+                      diffHeaderHeight: 32,
+                      hunkSeparatorHeight: 24,
+                      paddingTop: 0,
+                      paddingBottom: 0,
+                    },
+                    layout: { paddingTop: 0, paddingBottom: 0, gap: 0 },
                   }}
                 />
               </div>

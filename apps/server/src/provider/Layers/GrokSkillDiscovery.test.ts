@@ -5,12 +5,11 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { listGrokSkills, parseGrokInspectSkills } from "./GrokSkillDiscovery.ts";
 
-const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
+const encodeJson = (value: unknown): string => JSON.stringify(value);
 
 const inspectPayload = encodeJson({
   ignoredTopLevelField: true,

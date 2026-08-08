@@ -3,6 +3,11 @@ import {
   type CheckpointDiffTarget,
   type ComposerPathSearchTarget,
 } from "@t3tools/client-runtime/state/threads";
+import {
+  createThreadSearchResultsAtomFamily,
+  makeThreadSearchKey,
+  type EnvironmentThreadSearchMatch,
+} from "@t3tools/client-runtime/state/thread-search";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
 import {
   type EnvironmentId,
@@ -24,7 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { orchestrationEnvironment } from "./orchestration";
 import { isPaginatedBranchesNextPagePending } from "./paginatedBranches";
-import { projectEnvironment } from "./projects";
+import { projectContentSearch, projectEnvironment } from "./projects";
 import { useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
@@ -33,11 +38,26 @@ const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 120;
 const COMPOSER_PATH_SEARCH_LIMIT = 80;
 const PROJECT_CONTENT_SEARCH_DEBOUNCE_MS = 120;
 const PROJECT_CONTENT_SEARCH_LIMIT = 500;
+const THREAD_SEARCH_DEBOUNCE_MS = 200;
 const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
 const EMPTY_CONTENT_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 const INITIAL_BRANCH_CURSORS = [undefined] as const;
 const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
+const EMPTY_THREAD_SEARCH_MATCHES: ReadonlyArray<EnvironmentThreadSearchMatch> = Object.freeze([]);
+const EMPTY_THREAD_SEARCH_ATOM = Atom.make({
+  matches: EMPTY_THREAD_SEARCH_MATCHES,
+  isLoading: false,
+}).pipe(Atom.withLabel("web:thread-search:empty"));
+
+const threadSearchResultsAtom = createThreadSearchResultsAtomFamily({
+  getSearchAtom: (environmentId, query) =>
+    orchestrationEnvironment.threadSearch({
+      environmentId,
+      input: { query },
+    }),
+  labelPrefix: "web:thread-search",
+});
 
 export interface ThreadDetailView {
   readonly data: OrchestrationThread | null;
@@ -61,20 +81,29 @@ function useDebouncedValue<A>(value: A, delayMs: number): A {
   return debounced;
 }
 
-type ProjectPathSearchTarget = ComposerPathSearchTarget & {
-  readonly kind?: ProjectEntryKind | undefined;
-};
-
-export function areProjectPathSearchTargetsEqual(
-  left: ProjectPathSearchTarget,
-  right: ProjectPathSearchTarget,
-): boolean {
-  return (
-    left.environmentId === right.environmentId &&
-    left.cwd === right.cwd &&
-    left.query === right.query &&
-    left.kind === right.kind
+export function useThreadSearch(
+  environmentIds: ReadonlyArray<EnvironmentId>,
+  query: string,
+): {
+  readonly matches: ReadonlyArray<EnvironmentThreadSearchMatch>;
+  readonly isPending: boolean;
+} {
+  const normalizedQuery = query.trim();
+  const debouncedQuery = useDebouncedValue(normalizedQuery, THREAD_SEARCH_DEBOUNCE_MS);
+  const canSearch = environmentIds.length > 0 && normalizedQuery.length >= 2;
+  const settledQuery = canSearch && normalizedQuery === debouncedQuery ? debouncedQuery : null;
+  const searchKey = useMemo(
+    () => (settledQuery === null ? null : makeThreadSearchKey(environmentIds, settledQuery)),
+    [environmentIds, settledQuery],
   );
+  const result = useAtomValue(
+    searchKey === null ? EMPTY_THREAD_SEARCH_ATOM : threadSearchResultsAtom(searchKey),
+  );
+  const isDebouncing = canSearch && normalizedQuery !== debouncedQuery;
+  return {
+    matches: isDebouncing ? EMPTY_THREAD_SEARCH_MATCHES : result.matches,
+    isPending: canSearch && (isDebouncing || result.isLoading),
+  };
 }
 
 export function useThreadDetail(
@@ -164,9 +193,6 @@ export function usePaginatedBranches(target: VcsRefTarget) {
           refs: [...refs.values()],
           isRepo: first.isRepo,
           hasPrimaryRemote: first.hasPrimaryRemote,
-          ...(first.mainCheckoutPath !== undefined
-            ? { mainCheckoutPath: first.mainCheckoutPath }
-            : {}),
           nextCursor: last.nextCursor,
           totalCount: Math.max(...values.map((value) => value.totalCount)),
         };
@@ -181,7 +207,6 @@ export function usePaginatedBranches(target: VcsRefTarget) {
             : "Failed to load refs.";
         })()
       : null;
-  const failedPage = pageAtoms[results.findIndex((result) => result._tag === "Failure")] ?? null;
   const refresh = useCallback(() => {
     const firstPage = pageAtoms[0];
     setPagination({ targetKey, cursors: INITIAL_BRANCH_CURSORS });
@@ -190,10 +215,6 @@ export function usePaginatedBranches(target: VcsRefTarget) {
     }
   }, [pageAtoms, targetKey]);
   const loadNext = useCallback(() => {
-    if (failedPage !== null) {
-      appAtomRegistry.refresh(failedPage);
-      return;
-    }
     if (targetKey === null || data?.nextCursor === null || data?.nextCursor === undefined) {
       return;
     }
@@ -204,7 +225,7 @@ export function usePaginatedBranches(target: VcsRefTarget) {
         ? { targetKey, cursors: currentCursors }
         : { targetKey, cursors: [...currentCursors, data.nextCursor!] };
     });
-  }, [data?.nextCursor, failedPage, targetKey]);
+  }, [data?.nextCursor, targetKey]);
 
   return {
     data,
@@ -222,29 +243,47 @@ export function useAllBranches(target: VcsRefTarget) {
   const nextCursor = state.data?.nextCursor;
 
   useEffect(() => {
-    if (state.isPending) {
+    if (
+      state.isPending ||
+      state.error !== null ||
+      nextCursor === null ||
+      nextCursor === undefined
+    ) {
       return;
     }
-    if (state.error !== null) {
-      const retry = window.setInterval(state.loadNext, 1_000);
-      return () => {
-        window.clearInterval(retry);
-      };
-    }
-    if (nextCursor !== null && nextCursor !== undefined) {
-      state.loadNext();
-    }
+    state.loadNext();
   }, [nextCursor, state.error, state.isPending, state.loadNext]);
 
   return state;
 }
 
-export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: number) {
+type ProjectPathSearchTarget = ComposerPathSearchTarget & {
+  readonly kind?: ProjectEntryKind | undefined;
+};
+
+export function areProjectPathSearchTargetsEqual(
+  left: ProjectPathSearchTarget,
+  right: ProjectPathSearchTarget,
+): boolean {
+  return (
+    left.environmentId === right.environmentId &&
+    left.cwd === right.cwd &&
+    left.query === right.query &&
+    left.kind === right.kind
+  );
+}
+
+export function useProjectPathSearch(
+  target: ProjectPathSearchTarget,
+  limit: number,
+  options?: { readonly allowEmptyQuery?: boolean },
+) {
+  const allowEmptyQuery = options?.allowEmptyQuery === true;
   const normalizedTarget = useMemo(
     () => ({
       environmentId: target.environmentId,
       cwd: target.cwd,
-      query: target.query?.trim() ?? "",
+      query: target.query == null ? null : target.query.trim(),
       kind: target.kind,
     }),
     [target.cwd, target.environmentId, target.kind, target.query],
@@ -253,7 +292,8 @@ export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: num
   const result = useEnvironmentQuery(
     debouncedTarget.environmentId !== null &&
       debouncedTarget.cwd !== null &&
-      debouncedTarget.query.length > 0
+      debouncedTarget.query !== null &&
+      (allowEmptyQuery || debouncedTarget.query.length > 0)
       ? projectEnvironment.searchEntries({
           environmentId: debouncedTarget.environmentId,
           input: {
@@ -271,7 +311,7 @@ export function useProjectPathSearch(target: ProjectPathSearchTarget, limit: num
     error: result.error,
     isPending:
       !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
-    searchedQuery: debouncedTarget.query,
+    searchedQuery: debouncedTarget.query ?? "",
     refresh: result.refresh,
   };
 }
@@ -313,14 +353,17 @@ interface ProjectContentSearchTarget {
 }
 
 export function useProjectContentSearch(target: ProjectContentSearchTarget) {
-  const query = target.query.trim();
+  // Whitespace is significant in content queries; trimming is only used to
+  // decide whether the input is blank.
+  const query = target.query;
+  const hasQuery = query.trim().length > 0;
   const debouncedQuery = useDebouncedValue(query, PROJECT_CONTENT_SEARCH_DEBOUNCE_MS);
   const result = useEnvironmentQuery(
     target.environmentId !== null &&
       target.cwd !== null &&
-      query.length > 0 &&
-      debouncedQuery.length > 0
-      ? projectEnvironment.searchContents({
+      hasQuery &&
+      debouncedQuery.trim().length > 0
+      ? projectContentSearch({
           environmentId: target.environmentId,
           input: {
             cwd: target.cwd,
@@ -337,10 +380,10 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
   return {
     matches: result.data?.matches ?? EMPTY_CONTENT_MATCHES,
     error: result.error,
-    isPending: query !== debouncedQuery || result.isPending,
-    hasQuery: query.length > 0,
+    isPending: hasQuery && (query !== debouncedQuery || result.isPending),
+    hasQuery,
     truncated: result.data?.truncated ?? false,
-    invalidRegex: result.data?.regexFallbackError !== undefined,
+    invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
   };
 }
 
