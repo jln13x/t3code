@@ -171,6 +171,8 @@ effectIt("replays snapshots without rescanning unchanged terminal registrations"
         timedOut: false,
         stdoutTruncated: false,
         stderrTruncated: false,
+        stdoutInvalidUtf8: false,
+        stderrInvalidUtf8: false,
       };
     }),
   );
@@ -222,6 +224,8 @@ effectIt("serializes snapshot replay with concurrent broadcasts", () =>
           timedOut: false,
           stdoutTruncated: false,
           stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
         };
       }),
     );

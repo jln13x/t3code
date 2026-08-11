@@ -43,7 +43,6 @@ import { useTheme } from "../hooks/useTheme";
 import type { ReviewCommentContext } from "../reviewCommentContext";
 import { ComposerPendingReviewComments } from "./chat/ComposerPendingReviewComments";
 import { AnnotatableCodeView } from "./diffs/AnnotatableCodeView";
-import { DIFF_VIEW_UNSAFE_CSS } from "./diffs/diffViewStyles";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -698,9 +697,7 @@ export function WorktreeSourceControl({
                   overflow: wordWrap ? "wrap" : "scroll",
                   theme: resolveDiffThemeName(resolvedTheme),
                   themeType: resolvedTheme,
-                  unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
                   stickyHeaders: true,
-                  layout: { paddingTop: 8, paddingBottom: 8, gap: 8 },
                 }}
               />
             ) : (

@@ -47,6 +47,7 @@ import {
   resolveSidebarWorktreeLabelMode,
   shouldShowSidebarEmptyThreadState,
   shouldNavigateAfterProjectRemoval,
+  shouldCreateNewThreadInCurrentProject,
   searchSidebarThreadsByTitle,
   sortLogicalProjectsForSidebar,
   sortProjectsForSidebar,
@@ -853,6 +854,21 @@ describe("resolveSidebarNewThreadSeedContext", () => {
     });
   });
 });
+describe("shouldCreateNewThreadInCurrentProject", () => {
+  it("creates directly on shift+click in a multi-project setup", () => {
+    expect(shouldCreateNewThreadInCurrentProject(true, 2)).toBe(true);
+  });
+
+  it("opens the picker on a plain click in a multi-project setup", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 2)).toBe(false);
+  });
+
+  it("creates directly on any click with a single project", () => {
+    expect(shouldCreateNewThreadInCurrentProject(false, 1)).toBe(true);
+    expect(shouldCreateNewThreadInCurrentProject(true, 1)).toBe(true);
+  });
+});
+
 describe("orderItemsByPreferredIds", () => {
   it("keeps preferred ids first, skips stale ids, and preserves the relative order of remaining items", () => {
     const ordered = orderItemsByPreferredIds({

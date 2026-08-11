@@ -16,7 +16,6 @@ Turning a flag off preserves upstream behavior.
 | Project provider skill discovery   | `enableProviderSkillDiscovery`       | On      |
 | Markdown and text file attachments | `enableTextFileAttachments`          | On      |
 | Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
-| Project file and content search    | `enableProjectSearch`                | On      |
 
 Upstream PRs integrated into the fork are listed in
 [Upstream Integrations](./upstream-integrations.md).
@@ -32,10 +31,10 @@ Upstream PRs integrated into the fork are listed in
 - The fork's `@pierre/diffs` beta 9 editor-identity compatibility patch: retired after beta 10
   exposed the editor file state needed to distinguish local edits from external content changes.
   File previews now use the upstream beta 10 API and environment/content-aware cache keys.
-- The fork-local project file/content search implementation and `project.searchContents` command:
-  retired after upstream shipped the unified project search overlays, file picker, content search,
-  and `projectSearch.toggle` command. The personal `enableProjectSearch` flag remains the rollout
-  gate; turning it off hides those upstream-backed entry points.
+- The fork-local project file/content search implementation, `project.searchContents` command, and
+  `enableProjectSearch` rollout flag: retired after upstream shipped the unified project search
+  overlays, file picker, content search, and `projectSearch.toggle` command. Search now follows
+  upstream behavior directly.
 - The fork's `SidebarV2` component split and Beta settings toggle: retired after upstream promoted
   that sidebar to the default `Sidebar` implementation. The personalized sidebar now lives at the
   narrower `LegacySidebar` boundary, selected only by the personal native-sidebar flag or the

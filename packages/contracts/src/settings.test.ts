@@ -58,7 +58,6 @@ describe("personal fork feature flags", () => {
     "enableProviderSkillDiscovery",
     "enableTextFileAttachments",
     "enableGeneratedImageRendering",
-    "enableProjectSearch",
   ] as const;
 
   it("defaults every personal feature on", () => {

@@ -37,6 +37,8 @@ const makeCallCountingProcessRunner = (
           timedOut: false,
           stdoutTruncated: false,
           stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
         } satisfies ProcessRunner.ProcessRunOutput);
       if (input.args.includes("rev-parse") && input.args.includes("--show-toplevel")) {
         state.revParseCalls += 1;
@@ -312,6 +314,8 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
             timedOut: false,
             stdoutTruncated: false,
             stderrTruncated: false,
+            stdoutInvalidUtf8: false,
+            stderrInvalidUtf8: false,
           } satisfies ProcessRunner.ProcessRunOutput);
         const processRunner = ProcessRunner.ProcessRunner.of({
           run: (input) => {
@@ -325,6 +329,8 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
                     timedOut: true,
                     stdoutTruncated: false,
                     stderrTruncated: false,
+                    stdoutInvalidUtf8: false,
+                    stderrInvalidUtf8: false,
                   } satisfies ProcessRunner.ProcessRunOutput)
                 : succeed(topLevel);
             }
