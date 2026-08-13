@@ -10,7 +10,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
-import { getLocalStorageItem } from "../hooks/useLocalStorage";
+import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -163,6 +163,19 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     viewportWidth,
     sidebarPresentation.minWidth,
   );
+  const resetSidebarWidth = () => {
+    try {
+      removeLocalStorageItem(sidebarPresentation.storageKey);
+    } catch (error) {
+      console.error("Could not clear persisted thread sidebar width.", error);
+    }
+    setSidebarWidth(
+      resolveInitialThreadSidebarWidth(null, viewportWidth, {
+        defaultWidth: Number.parseFloat(sidebarPresentation.defaultWidth) * 16,
+        minimumWidth: sidebarPresentation.minWidth,
+      }),
+    );
+  };
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
     return isMacosDesktop && typeof getWindowFullscreenState === "function"
@@ -246,7 +259,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         ) : (
           <ThreadSidebar />
         )}
-        <SidebarRail />
+        <SidebarRail onDoubleClick={resetSidebarWidth} />
       </Sidebar>
       {children}
       <SidebarControl />

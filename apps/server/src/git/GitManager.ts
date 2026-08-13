@@ -16,6 +16,7 @@ import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
+import * as Schema from "effect/Schema";
 import {
   GitActionProgressEvent,
   GitActionProgressPhase,
@@ -32,6 +33,7 @@ import {
   type VcsStatusRemoteResult,
   VcsStatusResult,
   ModelSelection,
+  SourceControlProviderError,
   type SourceControlWritingStyleSettings,
 } from "@t3tools/contracts";
 import {
@@ -134,6 +136,7 @@ const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
 const PR_LOOKUP_FAILURE_BASE_TTL = Duration.seconds(20);
 const PR_LOOKUP_FAILURE_MAX_TTL = Duration.minutes(15);
 const PR_LOOKUP_CACHE_CAPACITY = 2_048;
+const isSourceControlProviderError = Schema.is(SourceControlProviderError);
 
 /**
  * How long a failed PR lookup is cached, given the number of consecutive
@@ -1240,6 +1243,14 @@ export const make = Effect.gen(function* () {
                 typeof error === "object" && error !== null && "_tag" in error
                   ? String(error._tag)
                   : typeof error,
+              ...(isSourceControlProviderError(error)
+                ? {
+                    provider: error.provider,
+                    providerOperation: error.operation,
+                    providerCommand: error.command ?? "unknown",
+                    errorDetail: error.detail,
+                  }
+                : {}),
             }),
           );
           const headContext = yield* resolveBranchHeadContext(cwd, details);

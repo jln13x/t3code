@@ -27,6 +27,7 @@ import {
   groupSidebarThreadsByWorktree,
   hasUnseenCompletion,
   isContextMenuPointerDown,
+  isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   orderSidebarThreadsByWorktree,
@@ -854,6 +855,27 @@ describe("resolveSidebarNewThreadSeedContext", () => {
     });
   });
 });
+describe("isSidebarNestedLinkClick", () => {
+  const linkTarget = {
+    closest: (selector: string) => (selector === "a[href]" ? ({} as Element) : null),
+  } as unknown as EventTarget;
+
+  it("ignores row clicks that originated on a nested link", () => {
+    expect(isSidebarNestedLinkClick(linkTarget)).toBe(true);
+  });
+
+  it("walks up from a text node to the enclosing link", () => {
+    expect(isSidebarNestedLinkClick({ parentElement: linkTarget } as unknown as EventTarget)).toBe(
+      true,
+    );
+  });
+
+  it("leaves ordinary row clicks alone", () => {
+    expect(isSidebarNestedLinkClick({ closest: () => null } as unknown as EventTarget)).toBe(false);
+    expect(isSidebarNestedLinkClick(null)).toBe(false);
+  });
+});
+
 describe("shouldCreateNewThreadInCurrentProject", () => {
   it("creates directly on shift+click in a multi-project setup", () => {
     expect(shouldCreateNewThreadInCurrentProject(true, 2)).toBe(true);
