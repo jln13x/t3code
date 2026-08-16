@@ -2,13 +2,10 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
-  type ChatThreadActionContext,
-  resolveNewDraftStartFromOrigin,
   resolveThreadActionProjectRef,
-  startNewLocalThreadFromContext,
+  resolveNewDraftStartFromOrigin,
   startNewThreadFromContext,
-  startNewThreadInProjectFromContext,
-  startNewThreadInSameWorktreeFromContext,
+  type ChatThreadActionContext,
 } from "./chatThreadActions";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -47,8 +44,6 @@ describe("chatThreadActions", () => {
         activeThread: {
           environmentId: ENVIRONMENT_ID,
           projectId: PROJECT_ID,
-          branch: null,
-          worktreePath: null,
         },
       }),
     );
@@ -62,10 +57,6 @@ describe("chatThreadActions", () => {
         activeDraftThread: {
           environmentId: ENVIRONMENT_ID,
           projectId: PROJECT_ID,
-          branch: null,
-          worktreePath: null,
-          envMode: "local",
-          startFromOrigin: false,
         },
       }),
     );
@@ -83,84 +74,7 @@ describe("chatThreadActions", () => {
     expect(projectRef).toEqual(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
   });
 
-  it("preserves context for the explicit same-worktree action", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    const didStart = await startNewThreadInSameWorktreeFromContext(
-      createContext({
-        activeDraftThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-          envMode: "worktree",
-          startFromOrigin: true,
-        },
-        handleNewThread,
-      }),
-    );
-
-    expect(didStart).toBe(true);
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "feature/refactor",
-      worktreePath: "/tmp/worktree",
-      envMode: "worktree",
-      startFromOrigin: true,
-    });
-  });
-
-  it("preserves an explicitly disabled origin base in contextual thread options", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    await startNewThreadInSameWorktreeFromContext(
-      createContext({
-        activeDraftThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-          envMode: "worktree",
-          startFromOrigin: false,
-        },
-        handleNewThread,
-      }),
-    );
-
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "feature/refactor",
-      worktreePath: "/tmp/worktree",
-      envMode: "worktree",
-      startFromOrigin: false,
-    });
-  });
-
-  it("uses the active draft settings for the ordinary new-thread command", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    await startNewThreadFromContext(
-      createContext({
-        activeDraftThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-          envMode: "worktree",
-          startFromOrigin: true,
-        },
-        defaultThreadEnvMode: "local",
-        handleNewThread,
-      }),
-    );
-
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "feature/refactor",
-      worktreePath: "/tmp/worktree",
-      envMode: "worktree",
-      startFromOrigin: true,
-    });
-  });
-
-  it("inherits only the project when checkout-aware creation is disabled", async () => {
+  it("inherits only the project from context, never branch or worktree state", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
     const didStart = await startNewThreadFromContext(
@@ -168,8 +82,6 @@ describe("chatThreadActions", () => {
         activeThread: {
           environmentId: ENVIRONMENT_ID,
           projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
         },
         handleNewThread,
       }),
@@ -177,259 +89,6 @@ describe("chatThreadActions", () => {
 
     expect(didStart).toBe(true);
     expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
-  });
-
-  it("starts ordinary new threads in the local checkout when checkout-aware creation is enabled", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    const didStart = await startNewLocalThreadFromContext(
-      createContext({
-        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
-        defaultThreadEnvMode: "worktree",
-        handleNewThread,
-      }),
-    );
-
-    expect(didStart).toBe(true);
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: null,
-      worktreePath: null,
-      envMode: "local",
-      startFromOrigin: false,
-    });
-  });
-
-  it("starts ordinary new threads using configured default thread mode", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    const didStart = await startNewThreadFromContext(
-      createContext({
-        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
-        defaultThreadEnvMode: "worktree",
-        defaultNewWorktreesStartFromOrigin: true,
-        resolveDefaultMainCheckout: async () => ({ branch: "main", path: "/repo/main" }),
-        handleNewThread,
-      }),
-    );
-
-    expect(didStart).toBe(true);
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "main",
-      worktreePath: null,
-      envMode: "worktree",
-      startFromOrigin: true,
-    });
-  });
-
-  it("preserves the active worktree for a new thread", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-    const resolveDefaultMainCheckout = vi.fn(async () => ({
-      branch: "main",
-      path: "/repo/main",
-    }));
-
-    const didStart = await startNewThreadFromContext(
-      createContext({
-        activeThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-        },
-        defaultThreadEnvMode: "worktree",
-        defaultNewWorktreesStartFromOrigin: false,
-        resolveDefaultMainCheckout,
-        handleNewThread,
-      }),
-    );
-
-    expect(didStart).toBe(true);
-    expect(resolveDefaultMainCheckout).not.toHaveBeenCalled();
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "feature/refactor",
-      worktreePath: "/tmp/worktree",
-      envMode: "worktree",
-    });
-  });
-
-  it("preserves upstream project-only creation when checkout-aware defaults are disabled", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    await startNewThreadFromContext(
-      createContext({
-        activeThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-        },
-        handleNewThread,
-      }),
-    );
-
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
-  });
-
-  it("does not carry an active worktree branch into another project", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-    const targetProjectRef = scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID);
-
-    await startNewThreadInProjectFromContext(
-      createContext({
-        activeThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-        },
-        defaultThreadEnvMode: "worktree",
-        resolveDefaultMainCheckout: async () => ({ branch: "main", path: "/repo/main" }),
-        handleNewThread,
-      }),
-      targetProjectRef,
-    );
-
-    expect(handleNewThread).toHaveBeenCalledWith(targetProjectRef, {
-      branch: "main",
-      worktreePath: null,
-      envMode: "worktree",
-      startFromOrigin: false,
-    });
-  });
-
-  it("resolves thread defaults for the target project", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-    const targetProjectRef = scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID);
-    const resolveNewThreadDefaults = vi.fn(() => ({
-      envMode: "worktree" as const,
-      newWorktreesStartFromOrigin: true,
-    }));
-
-    await startNewThreadFromContext(
-      createContext({
-        defaultProjectRef: targetProjectRef,
-        defaultThreadEnvMode: "local",
-        defaultNewWorktreesStartFromOrigin: false,
-        resolveNewThreadDefaults,
-        resolveDefaultMainCheckout: async () => ({ branch: "main", path: "/repo/main" }),
-        handleNewThread,
-      }),
-    );
-
-    expect(resolveNewThreadDefaults).toHaveBeenCalledWith(targetProjectRef);
-    expect(handleNewThread).toHaveBeenCalledWith(targetProjectRef, {
-      branch: "main",
-      worktreePath: null,
-      envMode: "worktree",
-      startFromOrigin: true,
-    });
-  });
-
-  it("still starts an ordinary new thread when main-checkout discovery is unavailable", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    const didStart = await startNewThreadFromContext(
-      createContext({
-        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
-        defaultThreadEnvMode: "worktree",
-        defaultNewWorktreesStartFromOrigin: true,
-        resolveDefaultMainCheckout: async () => undefined,
-        handleNewThread,
-      }),
-    );
-
-    expect(didStart).toBe(true);
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: null,
-      worktreePath: null,
-      envMode: "worktree",
-      startFromOrigin: true,
-    });
-  });
-
-  it("still starts an ordinary new thread when main-checkout discovery never settles", async () => {
-    vi.useFakeTimers();
-    try {
-      const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-      const didStart = startNewThreadFromContext(
-        createContext({
-          defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
-          defaultThreadEnvMode: "worktree",
-          defaultNewWorktreesStartFromOrigin: true,
-          resolveDefaultMainCheckout: () => new Promise(() => {}),
-          handleNewThread,
-        }),
-      );
-
-      await vi.advanceTimersByTimeAsync(500);
-
-      await expect(didStart).resolves.toBe(true);
-      expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-        branch: null,
-        worktreePath: null,
-        envMode: "worktree",
-        startFromOrigin: true,
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("preserves active worktree settings instead of applying the project default", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-
-    await startNewThreadFromContext(
-      createContext({
-        activeThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "feature/refactor",
-          worktreePath: "/tmp/worktree",
-        },
-        defaultThreadEnvMode: "local",
-        defaultNewWorktreesStartFromOrigin: false,
-        defaultMainCheckout: {
-          branch: "main",
-          path: "/tmp/main-checkout",
-        },
-        handleNewThread,
-      }),
-    );
-
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "feature/refactor",
-      worktreePath: "/tmp/worktree",
-      envMode: "worktree",
-    });
-  });
-
-  it("preserves an active local checkout without resolving project defaults", async () => {
-    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
-    const resolveDefaultMainCheckout = vi.fn(async () => ({
-      branch: "main",
-      path: "/repo/main",
-    }));
-
-    await startNewThreadFromContext(
-      createContext({
-        activeThread: {
-          environmentId: ENVIRONMENT_ID,
-          projectId: PROJECT_ID,
-          branch: "t3code/group-threads-worktrees",
-          worktreePath: null,
-        },
-        defaultThreadEnvMode: "local",
-        resolveDefaultMainCheckout,
-        handleNewThread,
-      }),
-    );
-
-    expect(resolveDefaultMainCheckout).not.toHaveBeenCalled();
-    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
-      branch: "t3code/group-threads-worktrees",
-      worktreePath: null,
-      envMode: "local",
-    });
   });
 
   it("does not start a thread when there is no project context", async () => {

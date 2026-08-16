@@ -1,21 +1,17 @@
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
-import * as Equal from "effect/Equal";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
-import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import {
   GitActionProgressEvent,
@@ -40,7 +36,6 @@ import {
   detectSourceControlProviderFromGitRemoteUrl,
   mergeGitStatusParts,
   normalizeGitRemoteUrl,
-  parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
   resolveAutoFeatureBranchName,
   sanitizeBranchFragment,
   sanitizeFeatureBranchName,
@@ -64,24 +59,9 @@ import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import * as SourceControlProvider from "../sourceControl/SourceControlProvider.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import {
-  CHANGE_REQUEST_STATUS_INVALID_TTL,
-  CHANGE_REQUEST_STATUS_MAX_CONCURRENCY,
-  recordChangeRequestStatusRequestFailure,
-  recordChangeRequestStatusRequestSuccess,
-  successfulChangeRequestStatusTtl,
-  takeChangeRequestStatusRequestPermit,
-  throttledChangeRequestStatusTtl,
-  type ChangeRequestStatusRequestBudgetState,
-} from "../sourceControl/ChangeRequestStatusPollingPolicy.ts";
-import type {
-  ChangeRequest,
-  ChangeRequestAssociation,
-  SourceControlProviderKind,
-} from "@t3tools/contracts";
 import { detectPrTemplate } from "../sourceControl/PrTemplateDetection.ts";
+import type { ChangeRequest } from "@t3tools/contracts";
 
 export interface GitActionProgressReporter {
   readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void, never>;
@@ -130,7 +110,6 @@ const COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_PROGRESS_TEXT_LENGTH = 500;
 const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
-const OPEN_PULL_REQUEST_CANDIDATE_LIMIT = 100;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
 const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
@@ -173,30 +152,6 @@ interface OpenPrInfo {
 interface PullRequestInfo extends OpenPrInfo, PullRequestHeadRemoteInfo {
   state: "open" | "closed" | "merged";
   updatedAt: Option.Option<DateTime.Utc>;
-}
-
-class ExplicitChangeRequestRefreshCacheKey implements Equal.Equal {
-  readonly identity: string;
-  readonly cwd: string;
-  readonly changeRequest: ChangeRequestAssociation;
-
-  constructor(cwd: string, changeRequest: ChangeRequestAssociation) {
-    this.cwd = cwd;
-    this.changeRequest = changeRequest;
-    this.identity = [
-      changeRequest.provider,
-      String(changeRequest.number),
-      normalizeChangeRequestUrl(changeRequest.url),
-    ].join("\u0000");
-  }
-
-  [Equal.symbol](that: Equal.Equal): boolean {
-    return that instanceof ExplicitChangeRequestRefreshCacheKey && this.identity === that.identity;
-  }
-
-  [Hash.symbol](): number {
-    return Hash.string(this.identity);
-  }
 }
 
 const pullRequestUpdatedAtDescOrder: Order.Order<PullRequestInfo> = Order.mapInput(
@@ -269,6 +224,20 @@ function resolvePullRequestWorktreeLocalBranchName(
   const sanitizedHeadBranch = sanitizeBranchFragment(pullRequest.headBranch).trim();
   const suffix = sanitizedHeadBranch.length > 0 ? sanitizedHeadBranch : "head";
   return `t3code/pr-${pullRequest.number}/${suffix}`;
+}
+
+function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string | null {
+  const trimmed = url?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const match =
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https:\/\/github\.com\/|git:\/\/github\.com\/)([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(
+      trimmed,
+    );
+  const repositoryNameWithOwner = match?.[1]?.trim() ?? "";
+  return repositoryNameWithOwner.length > 0 ? repositoryNameWithOwner : null;
 }
 
 function parseRepositoryOwnerLogin(nameWithOwner: string | null): string | null {
@@ -428,26 +397,6 @@ function toPullRequestInfo(summary: ChangeRequest): PullRequestInfo {
   };
 }
 
-function toChangeRequestAssociation(summary: ChangeRequest): ChangeRequestAssociation {
-  return {
-    provider: summary.provider,
-    number: summary.number,
-    title: summary.title,
-    url: summary.url,
-    baseRefName: summary.baseRefName,
-    headRefName: summary.headRefName,
-    state: summary.state,
-  };
-}
-
-function normalizeChangeRequestUrl(url: string): string {
-  return url.trim().replace(/\/+$/u, "").toLowerCase();
-}
-
-function changeRequestUrlsEqual(left: string, right: string): boolean {
-  return normalizeChangeRequestUrl(left) === normalizeChangeRequestUrl(right);
-}
-
 function limitContext(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}\n\n[truncated]`;
@@ -582,17 +531,13 @@ function appendUnique(values: string[], next: string | null | undefined): void {
   values.push(trimmed);
 }
 
-function toStatusPr(
-  pr: PullRequestInfo,
-  options?: { readonly stale?: boolean },
-): {
+function toStatusPr(pr: PullRequestInfo): {
   number: number;
   title: string;
   url: string;
   baseRef: string;
   headRef: string;
   state: "open" | "closed" | "merged";
-  stale?: boolean;
 } {
   return {
     number: pr.number,
@@ -601,19 +546,6 @@ function toStatusPr(
     baseRef: pr.baseRefName,
     headRef: pr.headRefName,
     state: pr.state,
-    ...(options?.stale ? { stale: true } : {}),
-  };
-}
-
-function associationToPullRequestInfo(association: ChangeRequestAssociation): PullRequestInfo {
-  return {
-    number: association.number,
-    title: association.title,
-    url: association.url,
-    baseRefName: association.baseRefName,
-    headRefName: association.headRefName,
-    state: association.state,
-    updatedAt: Option.none(),
   };
 }
 
@@ -672,129 +604,6 @@ export const make = Effect.gen(function* () {
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
-  const forkPullRequestsEnabled = serverSettingsService.getSettings.pipe(
-    Effect.map((settings) => settings.enableForkPullRequests),
-    Effect.orElseSucceed(() => true),
-  );
-  const durableChangeRequestStatusEnabled = serverSettingsService.getSettings.pipe(
-    Effect.map((settings) => settings.enableDurableChangeRequestStatus),
-    Effect.orElseSucceed(() => true),
-  );
-  const changeRequestStatusRequestBudgetsRef = yield* Ref.make(
-    new Map<SourceControlProviderKind, ChangeRequestStatusRequestBudgetState>(),
-  );
-  const changeRequestStatusRequestSemaphore = yield* Semaphore.make(
-    CHANGE_REQUEST_STATUS_MAX_CONCURRENCY,
-  );
-  const takeStatusProviderRequestPermit = Effect.fn("takeStatusProviderRequestPermit")(function* (
-    provider: SourceControlProviderKind,
-    requestedTokens = 1,
-  ) {
-    const nowMs = yield* Clock.currentTimeMillis;
-    return yield* Ref.modify(changeRequestStatusRequestBudgetsRef, (budgets) => {
-      const permit = takeChangeRequestStatusRequestPermit(
-        budgets.get(provider),
-        nowMs,
-        requestedTokens,
-      );
-      const nextBudgets = new Map(budgets);
-      nextBudgets.set(provider, permit.state);
-      return [permit, nextBudgets] as const;
-    });
-  });
-  const recordStatusProviderRequestSuccess = Effect.fn("recordStatusProviderRequestSuccess")(
-    function* (provider: SourceControlProviderKind) {
-      const nowMs = yield* Clock.currentTimeMillis;
-      yield* Ref.update(changeRequestStatusRequestBudgetsRef, (budgets) => {
-        const nextBudgets = new Map(budgets);
-        nextBudgets.set(
-          provider,
-          recordChangeRequestStatusRequestSuccess(budgets.get(provider), nowMs),
-        );
-        return nextBudgets;
-      });
-    },
-  );
-  const recordStatusProviderRequestFailure = Effect.fn("recordStatusProviderRequestFailure")(
-    function* (provider: SourceControlProviderKind) {
-      const nowMs = yield* Clock.currentTimeMillis;
-      return yield* Ref.modify(changeRequestStatusRequestBudgetsRef, (budgets) => {
-        const failure = recordChangeRequestStatusRequestFailure(budgets.get(provider), nowMs);
-        const nextBudgets = new Map(budgets);
-        nextBudgets.set(provider, failure.state);
-        return [failure.retryAfter, nextBudgets] as const;
-      });
-    },
-  );
-
-  const refreshExplicitChangeRequestBase = Effect.fn("refreshExplicitChangeRequest")(function* (
-    key: ExplicitChangeRequestRefreshCacheKey,
-  ) {
-    const { changeRequest, cwd } = key;
-    const provider = yield* sourceControlProvider(cwd);
-    if (provider.kind !== changeRequest.provider) {
-      return {
-        state: "invalid" as const,
-        cacheTtl: CHANGE_REQUEST_STATUS_INVALID_TTL,
-      };
-    }
-
-    return yield* changeRequestStatusRequestSemaphore.withPermit(
-      Effect.gen(function* () {
-        const permit = yield* takeStatusProviderRequestPermit(provider.kind);
-        if (!permit.allowed) {
-          return {
-            state: "unavailable" as const,
-            cacheTtl: throttledChangeRequestStatusTtl(permit.retryAfterMs),
-          };
-        }
-
-        const refreshed = yield* provider.getChangeRequest({
-          cwd,
-          reference: provider.kind === "github" ? changeRequest.url : String(changeRequest.number),
-        });
-        yield* recordStatusProviderRequestSuccess(provider.kind);
-        if (!changeRequestUrlsEqual(refreshed.url, changeRequest.url)) {
-          return {
-            state: "invalid" as const,
-            cacheTtl: CHANGE_REQUEST_STATUS_INVALID_TTL,
-          };
-        }
-
-        return {
-          state: "found" as const,
-          pr: toStatusPr(toPullRequestInfo(refreshed)),
-          cacheTtl: successfulChangeRequestStatusTtl(refreshed.state),
-        };
-      }),
-    );
-  });
-  const refreshExplicitChangeRequest = (key: ExplicitChangeRequestRefreshCacheKey) =>
-    refreshExplicitChangeRequestBase(key).pipe(
-      Effect.catch((error) =>
-        Effect.gen(function* () {
-          const retryAfter = yield* recordStatusProviderRequestFailure(key.changeRequest.provider);
-          yield* Effect.logWarning(
-            "Explicit change request refresh failed; using last-known state",
-            {
-              provider: key.changeRequest.provider,
-              number: key.changeRequest.number,
-              cwdLength: key.cwd.length,
-              errorTag: error._tag,
-              retryAfterMs: Duration.toMillis(retryAfter),
-            },
-          );
-          return {
-            state: "unavailable" as const,
-            cacheTtl: retryAfter,
-          };
-        }),
-      ),
-    );
-  const explicitChangeRequestRefreshCache = yield* Cache.makeWith(refreshExplicitChangeRequest, {
-    capacity: STATUS_RESULT_CACHE_CAPACITY,
-    timeToLive: (exit) => (Exit.isSuccess(exit) ? exit.value.cacheTtl : Duration.zero),
-  });
 
   const readRecentCommitSubjects = (cwd: string) =>
     gitCore
@@ -1232,48 +1041,41 @@ export const make = Effect.gen(function* () {
           }),
         ),
       ),
-      Effect.map(({ pr }) => ({ pr })),
+      Effect.map(({ pr }) => pr),
       Effect.catch((error) =>
-        Effect.gen(function* () {
-          yield* Effect.logWarning("PR lookup failed; keeping last known PR state.").pipe(
-            Effect.annotateLogs({
-              operation: "lookupStatusPr",
-              branch: details.branch,
-              errorTag:
-                typeof error === "object" && error !== null && "_tag" in error
-                  ? String(error._tag)
-                  : typeof error,
-              ...(isSourceControlProviderError(error)
-                ? {
-                    provider: error.provider,
-                    providerOperation: error.operation,
-                    providerCommand: error.command ?? "unknown",
-                    errorDetail: error.detail,
-                  }
-                : {}),
-            }),
-          );
-          const headContext = yield* resolveBranchHeadContext(cwd, details);
-          const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
-          return {
-            pr: resolveLastKnownPr(branchKey, {
+        Effect.logWarning("PR lookup failed; keeping last known PR state.").pipe(
+          Effect.annotateLogs({
+            operation: "lookupStatusPr",
+            branch: details.branch,
+            errorTag:
+              typeof error === "object" && error !== null && "_tag" in error
+                ? String(error._tag)
+                : typeof error,
+            ...(isSourceControlProviderError(error)
+              ? {
+                  provider: error.provider,
+                  providerOperation: error.operation,
+                  providerCommand: error.command ?? "unknown",
+                  errorDetail: error.detail,
+                }
+              : {}),
+          }),
+          Effect.andThen(resolveBranchHeadContext(cwd, details)),
+          Effect.map((headContext) =>
+            resolveLastKnownPr(branchKey, {
               upstreamRef: details.upstreamRef,
               headBranch: headContext.headBranch,
               remoteName: headContext.remoteName,
               headRemoteUrlKey: headContext.headRemoteUrlKey,
             }),
-            ...(pollingProtectionEnabled
-              ? { refreshState: "stale" as const, refName: details.branch }
-              : {}),
-          };
-        }),
+          ),
+        ),
       ),
     );
   });
   const readRemoteStatus = Effect.fn("readRemoteStatus")(function* (
     cwd: string,
     options?: GitVcsDriver.GitRemoteStatusOptions,
-    explicitChangeRequest?: ChangeRequestAssociation,
   ) {
     const details = yield* gitCore
       .statusDetailsRemote(cwd, options)
@@ -1282,51 +1084,21 @@ export const make = Effect.gen(function* () {
       return null;
     }
 
-    const changeRequestLookup: {
-      readonly pr: VcsStatusRemoteResult["pr"];
-      readonly refreshState?: "stale";
-      readonly refName?: string;
-    } = explicitChangeRequest
-      ? yield* Cache.get(
-          explicitChangeRequestRefreshCache,
-          new ExplicitChangeRequestRefreshCacheKey(cwd, explicitChangeRequest),
-        ).pipe(
-          Effect.map((refreshed) => {
-            if (refreshed.state === "found") {
-              return { pr: refreshed.pr };
-            }
-            if (refreshed.state === "unavailable") {
-              return {
-                pr: toStatusPr(associationToPullRequestInfo(explicitChangeRequest), {
-                  stale: true,
-                }),
-                refreshState: "stale" as const,
-              };
-            }
-            return { pr: null };
-          }),
-        )
-      : details.branch === null
-        ? { pr: null }
-        : yield* lookupStatusPr(cwd, {
+    const pr =
+      details.branch !== null
+        ? yield* lookupStatusPr(cwd, {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
             isDefaultBranch: details.isDefaultBranch,
-          });
+          })
+        : null;
 
     return {
       hasUpstream: details.hasUpstream,
       aheadCount: details.aheadCount,
       behindCount: details.behindCount,
       aheadOfDefaultCount: details.aheadOfDefaultCount,
-      ...(details.remoteRefHash == null ? {} : { remoteRefHash: details.remoteRefHash }),
-      ...("refreshState" in changeRequestLookup && changeRequestLookup.refreshState
-        ? { changeRequestRefreshState: changeRequestLookup.refreshState }
-        : {}),
-      ...("refName" in changeRequestLookup && changeRequestLookup.refName
-        ? { changeRequestRefName: changeRequestLookup.refName }
-        : {}),
-      pr: changeRequestLookup.pr,
+      pr,
     } satisfies VcsStatusRemoteResult;
   });
   const remoteStatusResultCache = yield* Cache.makeWith((cwd: string) => readRemoteStatus(cwd), {
@@ -1389,25 +1161,19 @@ export const make = Effect.gen(function* () {
     const shouldProbeLocalBranchSelector =
       headBranchFromUpstream.length === 0 || headBranch === details.branch;
 
-    const enableForkPullRequests = yield* forkPullRequestsEnabled;
-    const [remoteRepository, upstreamRepository, originRepository] = yield* Effect.all(
+    const [remoteRepository, originRepository] = yield* Effect.all(
       [
         resolveRemoteRepositoryContext(cwd, remoteName),
-        resolveRemoteRepositoryContext(cwd, "upstream"),
         resolveRemoteRepositoryContext(cwd, "origin"),
       ],
       { concurrency: "unbounded" },
     );
 
-    const targetRepository =
-      enableForkPullRequests && upstreamRepository.repositoryNameWithOwner !== null
-        ? upstreamRepository
-        : originRepository;
     const isCrossRepository =
       remoteRepository.repositoryNameWithOwner !== null &&
-      targetRepository.repositoryNameWithOwner !== null
+      originRepository.repositoryNameWithOwner !== null
         ? remoteRepository.repositoryNameWithOwner.toLowerCase() !==
-          targetRepository.repositoryNameWithOwner.toLowerCase()
+          originRepository.repositoryNameWithOwner.toLowerCase()
         : remoteName !== null &&
           remoteName !== "origin" &&
           remoteRepository.repositoryNameWithOwner !== null;
@@ -1510,7 +1276,7 @@ export const make = Effect.gen(function* () {
         cwd,
         headSelector,
         state: "open",
-        limit: OPEN_PULL_REQUEST_CANDIDATE_LIMIT,
+        limit: 1,
       });
       const normalizedPullRequests = pullRequests.map(toPullRequestInfo);
 
@@ -1533,15 +1299,14 @@ export const make = Effect.gen(function* () {
     return null;
   });
 
-  const queryLatestPr = Effect.fn("queryLatestPr")(function* (
+  const findLatestPrForHeadContext = Effect.fn("findLatestPrForHeadContext")(function* (
     cwd: string,
     headContext: BranchHeadContext,
-    provider: SourceControlProvider.SourceControlProvider["Service"],
   ) {
     const parsedByNumber = new Map<number, PullRequestInfo>();
 
     for (const headSelector of headContext.headSelectors) {
-      const pullRequests = yield* provider.listChangeRequests({
+      const pullRequests = yield* (yield* sourceControlProvider(cwd)).listChangeRequests({
         cwd,
         headSelector,
         state: "all",
@@ -1563,52 +1328,6 @@ export const make = Effect.gen(function* () {
       return latestOpenPr;
     }
     return parsed[0] ?? null;
-  });
-
-  const findLatestPrForHeadContext = Effect.fn("findLatestPrForHeadContext")(function* (
-    cwd: string,
-    headContext: BranchHeadContext,
-  ) {
-    const provider = yield* sourceControlProvider(cwd);
-    const pollingProtectionEnabled = yield* durableChangeRequestStatusEnabled;
-    if (!pollingProtectionEnabled) {
-      return yield* queryLatestPr(cwd, headContext, provider);
-    }
-
-    // GitHub CLI may first resolve the checkout's base repository with a
-    // separate `gh repo view`, so reserve that possible API call too.
-    const requestCost = headContext.headSelectors.length + (provider.kind === "github" ? 1 : 0);
-    return yield* changeRequestStatusRequestSemaphore.withPermit(
-      Effect.gen(function* () {
-        const permit = yield* takeStatusProviderRequestPermit(provider.kind, requestCost);
-        if (!permit.allowed) {
-          return yield* new GitManagerError({
-            operation: "lookupStatusPr",
-            cwd,
-            detail: "Change request discovery is temporarily throttled.",
-            cause: new Error(`Retry after ${permit.retryAfterMs}ms.`),
-          });
-        }
-
-        return yield* queryLatestPr(cwd, headContext, provider).pipe(
-          Effect.tap(() => recordStatusProviderRequestSuccess(provider.kind)),
-          Effect.tapError((error) =>
-            Effect.gen(function* () {
-              const retryAfter = yield* recordStatusProviderRequestFailure(provider.kind);
-              yield* Effect.logWarning(
-                "Change request discovery failed; retaining last-known state",
-                {
-                  provider: provider.kind,
-                  cwdLength: cwd.length,
-                  errorTag: error._tag,
-                  retryAfterMs: Duration.toMillis(retryAfter),
-                },
-              );
-            }),
-          ),
-        );
-      }),
-    );
   });
   const buildCompletionToast = Effect.fn("buildCompletionToast")(function* (
     cwd: string,
@@ -1737,61 +1456,6 @@ export const make = Effect.gen(function* () {
     cwd: string,
     baseBranch: string,
   ) {
-    const provider = yield* sourceControlProvider(cwd);
-    const enableForkPullRequests = yield* forkPullRequestsEnabled;
-    const targetCloneUrls =
-      enableForkPullRequests && provider.getTargetRepositoryCloneUrls
-        ? yield* provider
-            .getTargetRepositoryCloneUrls({ cwd })
-            .pipe(Effect.orElseSucceed(() => null))
-        : null;
-    if (targetCloneUrls) {
-      const originUrl = yield* readConfigValueNullable(cwd, "remote.origin.url");
-      const targetMatchesOrigin =
-        originUrl !== null &&
-        [targetCloneUrls.url, targetCloneUrls.sshUrl].some(
-          (targetUrl) => normalizeGitRemoteUrl(targetUrl) === normalizeGitRemoteUrl(originUrl),
-        );
-      const resolveTargetBaseRangeRef = Effect.gen(function* () {
-        const targetUrl = shouldPreferSshRemote(originUrl)
-          ? targetCloneUrls.sshUrl
-          : targetCloneUrls.url;
-        const remoteName = yield* gitCore.ensureRemote({
-          cwd,
-          preferredName: "upstream",
-          url: targetUrl,
-        });
-        yield* gitCore.fetchRemoteTrackingBranch({
-          cwd,
-          remoteName,
-          remoteBranch: baseBranch,
-        });
-        return yield* gitCore
-          .resolveRemoteTrackingCommit({
-            cwd,
-            refName: baseBranch,
-            fallbackRemoteName: remoteName,
-          })
-          .pipe(Effect.map((resolved) => resolved.commitSha));
-      });
-      const checkedTargetBaseRangeRef = resolveTargetBaseRangeRef.pipe(
-        Effect.catchTag(
-          "RemoteTrackingRefNotFoundError",
-          (cause) =>
-            new GitManagerError({
-              operation: "resolveBaseRangeRef",
-              cwd,
-              detail: cause.message,
-              cause,
-            }),
-        ),
-      );
-      const targetBaseRangeRef = targetMatchesOrigin
-        ? yield* checkedTargetBaseRangeRef.pipe(Effect.orElseSucceed(() => null))
-        : yield* checkedTargetBaseRangeRef;
-      if (targetBaseRangeRef) return targetBaseRangeRef;
-    }
-
     const remoteName = yield* gitCore
       .resolvePrimaryRemoteName(cwd)
       .pipe(Effect.orElseSucceed(() => null));
@@ -2099,13 +1763,6 @@ export const make = Effect.gen(function* () {
   const remoteStatus: GitManager["Service"]["remoteStatus"] = Effect.fn("remoteStatus")(
     function* (input, options) {
       const cacheKey = yield* normalizeStatusCacheKey(input.cwd);
-      const explicitChangeRequest =
-        input.changeRequest && (yield* durableChangeRequestStatusEnabled)
-          ? input.changeRequest
-          : undefined;
-      if (explicitChangeRequest) {
-        return yield* readRemoteStatus(cacheKey, options, explicitChangeRequest);
-      }
       if (options?.refreshUpstream === false) {
         return yield* readRemoteStatus(cacheKey, options);
       }
@@ -2201,7 +1858,6 @@ export const make = Effect.gen(function* () {
         );
         return {
           pullRequest,
-          changeRequest: toChangeRequestAssociation(pullRequestSummary),
           branch: details.branch ?? pullRequest.headBranch,
           worktreePath: null,
           isOnPullRequestHead: true,
@@ -2245,7 +1901,6 @@ export const make = Effect.gen(function* () {
           yield* ensureExistingWorktreeUpstream(worktreePath);
           return {
             pullRequest,
-            changeRequest: toChangeRequestAssociation(pullRequestSummary),
             branch: localPullRequestBranch,
             worktreePath,
             isOnPullRequestHead: false,
@@ -2320,7 +1975,6 @@ export const make = Effect.gen(function* () {
 
         return {
           pullRequest,
-          changeRequest: toChangeRequestAssociation(pullRequestSummary),
           branch: localPullRequestBranch,
           worktreePath,
           isOnPullRequestHead: refreshed.onTarget,
@@ -2413,7 +2067,6 @@ export const make = Effect.gen(function* () {
 
       return {
         pullRequest,
-        changeRequest: toChangeRequestAssociation(pullRequestSummary),
         branch: worktree.worktree.refName,
         worktreePath: worktree.worktree.path,
         isOnPullRequestHead: true,

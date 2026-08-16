@@ -22,7 +22,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";
-import { environmentServerConfigsAtom, serverEnvironment } from "./server";
+import { environmentServerConfigsAtom } from "./server";
 import { allEnvironmentShellsBootstrappedAtom } from "./shell";
 import { environmentThreadDetails, environmentThreadShells } from "./threads";
 
@@ -61,9 +61,6 @@ const EMPTY_PROPOSED_PLANS_ATOM = Atom.make(EMPTY_PROPOSED_PLANS).pipe(
 );
 const EMPTY_SESSION_ATOM = Atom.make<OrchestrationSession | null>(null).pipe(
   Atom.withLabel("web-thread-session:empty"),
-);
-const EMPTY_SERVER_CONFIG_ATOM = Atom.make<ServerConfig | null>(null).pipe(
-  Atom.withLabel("web-server-config:empty"),
 );
 
 export const activeEnvironmentIdAtom = Atom.make<EnvironmentId | null>(null).pipe(
@@ -117,16 +114,6 @@ export function useProjects(): ReadonlyArray<EnvironmentProject> {
 
 export function useServerConfigs(): ReadonlyMap<EnvironmentId, ServerConfig> {
   return useAtomValue(environmentServerConfigsAtom);
-}
-
-export function useEnvironmentServerConfig(
-  environmentId: EnvironmentId | null,
-): ServerConfig | null {
-  return useAtomValue(
-    environmentId === null
-      ? EMPTY_SERVER_CONFIG_ATOM
-      : serverEnvironment.configValueAtom(environmentId),
-  );
 }
 
 export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {

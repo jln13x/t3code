@@ -238,7 +238,6 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
   getBinding: () => Effect.succeed(Option.none()),
   listThreadIds: () => Effect.succeed([]),
   listBindings: () => Effect.succeed([]),
-  touchLastSeen: () => Effect.void,
 });
 
 // The adapter now receives its settings as a plain argument (the old design

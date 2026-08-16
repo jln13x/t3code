@@ -81,6 +81,7 @@ patchedDependencies:
   '@react-native-menu/menu@2.0.0': c7f66d121c726ade4f5c4e1aed11a691e5711d244c544084e289ac26132a0045
   '@react-native/gradle-plugin@0.85.3': c1b594a16e682d621b6a960926f8ce13fc92edfb397884cfe7fcb0518996a784
   '@react-navigation/native-stack@7.17.6': 0365b727005b3a830af80ccbd0b637666cc0338d33ddcb7a25b6de51a21ea027
+  cuelume@0.1.0: 28666ae78f0737c050abdb6e83ec0c8ba16237d306d075dda56040a636449867
   effect@4.0.0-beta.103: af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6
   expo-modules-jsi@56.0.10: 9170f8074ae4e35a0a086e756c8f815794fd3abe51eac67ca3ba02804225ec1f
   react-native-gesture-handler@2.31.2: 808eb26f9e57cf4945efd3985af4d9c764da6f91f4c9764433cc868602bbf4d3
@@ -576,6 +577,9 @@ importers:
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
+      cuelume:
+        specifier: 0.1.0
+        version: 0.1.0(patch_hash=28666ae78f0737c050abdb6e83ec0c8ba16237d306d075dda56040a636449867)
       culori:
         specifier: ^4.0.2
         version: 4.0.2
@@ -6030,6 +6034,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  cuelume@0.1.0:
+    resolution: {integrity: sha512-J2RRt92Gh1a0ztnjwLEyLfGnDIiWz14vC9aTmg7ZgxRkEk8vR+QxFOz+v1tqntFvl06n5G4si8QCQgHfWjnneA==}
 
   culori@4.0.2:
     resolution: {integrity: sha512-1+BhOB8ahCn4O0cep0Sh2l9KCOfOdY+BXJnKMHFFzDEouSr/el18QwXEMRlOj9UY5nCeA8UN3a/82rUWRBeyBw==}
@@ -16374,6 +16381,8 @@ snapshots:
       css-tree: 2.2.1
 
   csstype@3.2.3: {}
+
+  cuelume@0.1.0(patch_hash=28666ae78f0737c050abdb6e83ec0c8ba16237d306d075dda56040a636449867): {}
 
   culori@4.0.2: {}
 

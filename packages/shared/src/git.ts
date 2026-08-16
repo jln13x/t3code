@@ -148,31 +148,16 @@ export function normalizeGitRemoteUrl(value: string): string {
  */
 export function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string | null {
   const trimmed = url?.trim() ?? "";
-  if (
-    trimmed.length === 0 ||
-    detectSourceControlProviderFromRemoteUrl(trimmed)?.kind !== "github"
-  ) {
+  if (trimmed.length === 0) {
     return null;
   }
 
-  let repositoryPath = "";
-  if (/^(?:ssh|https?|git):\/\//i.test(trimmed)) {
-    try {
-      repositoryPath = new URL(trimmed).pathname;
-    } catch {
-      return null;
-    }
-  } else {
-    repositoryPath = /^git@[^:/\s]+[:/](.+)$/iu.exec(trimmed)?.[1] ?? "";
-  }
-
-  const parts = repositoryPath
-    .replace(/\/+$/gu, "")
-    .replace(/\.git$/iu, "")
-    .split("/");
-  const owner = parts.at(-2)?.trim() ?? "";
-  const repository = parts.at(-1)?.trim() ?? "";
-  return owner && repository ? `${owner}/${repository}` : null;
+  const match =
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https:\/\/github\.com\/|git:\/\/github\.com\/)([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(
+      trimmed,
+    );
+  const repositoryNameWithOwner = match?.[1]?.trim() ?? "";
+  return repositoryNameWithOwner.length > 0 ? repositoryNameWithOwner : null;
 }
 
 function deriveLocalBranchNameCandidatesFromRemoteRef(
@@ -241,12 +226,10 @@ const EMPTY_GIT_STATUS_REMOTE: VcsStatusRemoteResult = {
 export function mergeGitStatusParts(
   local: VcsStatusLocalResult,
   remote: VcsStatusRemoteResult | null,
-  localGeneration?: number,
 ): VcsStatusResult {
   return {
     ...local,
     ...(remote ?? EMPTY_GIT_STATUS_REMOTE),
-    ...(localGeneration === undefined ? {} : { localGeneration }),
   };
 }
 
@@ -258,7 +241,6 @@ function toRemoteStatusPart(status: VcsStatusResult): VcsStatusRemoteResult {
     ...(status.aheadOfDefaultCount === undefined
       ? {}
       : { aheadOfDefaultCount: status.aheadOfDefaultCount }),
-    ...(status.remoteRefHash === undefined ? {} : { remoteRefHash: status.remoteRefHash }),
     pr: status.pr,
   };
 }
@@ -283,13 +265,9 @@ export function applyGitStatusStreamEvent(
 ): VcsStatusResult {
   switch (event._tag) {
     case "snapshot":
-      return mergeGitStatusParts(event.local, event.remote, event.localGeneration);
+      return mergeGitStatusParts(event.local, event.remote);
     case "localUpdated":
-      return mergeGitStatusParts(
-        event.local,
-        current ? toRemoteStatusPart(current) : null,
-        event.localGeneration ?? current?.localGeneration,
-      );
+      return mergeGitStatusParts(event.local, current ? toRemoteStatusPart(current) : null);
     case "remoteUpdated":
       if (current === null) {
         return mergeGitStatusParts(
@@ -304,6 +282,6 @@ export function applyGitStatusStreamEvent(
           event.remote,
         );
       }
-      return mergeGitStatusParts(toLocalStatusPart(current), event.remote, current.localGeneration);
+      return mergeGitStatusParts(toLocalStatusPart(current), event.remote);
   }
 }

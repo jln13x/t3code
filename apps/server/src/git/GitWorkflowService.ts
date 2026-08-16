@@ -18,7 +18,6 @@ import {
   type GitPreparePullRequestThreadResult,
   type GitPullRequestRefInput,
   type VcsPullResult,
-  type VcsPathsInput,
   type VcsRemoveWorktreeInput,
   type GitResolvePullRequestResult,
   type GitRunStackedActionInput,
@@ -50,9 +49,6 @@ export class GitWorkflowService extends Context.Service<
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
-    readonly stagePaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
-    readonly unstagePaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
-    readonly discardPaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
       options?: GitManager.GitRunStackedActionOptions,
@@ -83,7 +79,7 @@ export class GitWorkflowService extends Context.Service<
       readonly fallbackRemoteName: string;
     }) => Effect.Effect<
       { readonly commitSha: string; readonly remoteRefName: string },
-      GitCommandError | GitVcsDriver.RemoteTrackingRefNotFoundError
+      GitCommandError
     >;
     readonly removeWorktree: (
       input: VcsRemoveWorktreeInput,
@@ -284,18 +280,6 @@ export const make = Effect.gen(function* () {
     pullCurrentBranch: (cwd) =>
       ensureGitCommand("GitWorkflowService.pullCurrentBranch", cwd).pipe(
         Effect.andThen(git.pullCurrentBranch(cwd)),
-      ),
-    stagePaths: (input) =>
-      ensureGitCommand("GitWorkflowService.stagePaths", input.cwd).pipe(
-        Effect.andThen(git.stagePaths(input)),
-      ),
-    unstagePaths: (input) =>
-      ensureGitCommand("GitWorkflowService.unstagePaths", input.cwd).pipe(
-        Effect.andThen(git.unstagePaths(input)),
-      ),
-    discardPaths: (input) =>
-      ensureGitCommand("GitWorkflowService.discardPaths", input.cwd).pipe(
-        Effect.andThen(git.discardPaths(input)),
       ),
     runStackedAction: (input, options) =>
       ensureGit("GitWorkflowService.runStackedAction", input.cwd).pipe(

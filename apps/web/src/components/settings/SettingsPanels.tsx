@@ -32,7 +32,6 @@ import {
   MIN_PROMPT_FONT_SIZE,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_TERMINAL_FONT_SIZE,
-  type UnifiedSettings,
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -149,92 +148,6 @@ const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, s
   pill: "Version pill",
   none: "None",
 };
-
-type PersonalFeatureFlagName = Extract<
-  keyof UnifiedSettings,
-  | "enableStandaloneChats"
-  | "enableNativeMacSidebar"
-  | "enableMacosCompletionNotifications"
-  | "enableSidebarWorktreeNavigation"
-  | "enableWorktreeSourceControl"
-  | "enableCheckoutAwareThreadCreation"
-  | "enableCompletionSounds"
-  | "enableForkPullRequests"
-  | "enableDurableChangeRequestStatus"
-  | "enableProviderSkillDiscovery"
-  | "enableTextFileAttachments"
-  | "enableGeneratedImageRendering"
->;
-
-const PERSONAL_FEATURE_SETTINGS = [
-  [
-    "enableCompletionSounds",
-    "Completion and attention sounds",
-    "Play a sound when a turn completes or needs attention.",
-  ],
-  [
-    "enableStandaloneChats",
-    "Standalone chats",
-    "Allow conversations that are not attached to a project.",
-  ],
-  [
-    "enableNativeMacSidebar",
-    "Native macOS sidebar",
-    "Use the macOS-inspired worktree sidebar. Turning this off restores upstream's default sidebar.",
-  ],
-  [
-    "enableMacosCompletionNotifications",
-    "macOS completion notifications",
-    "Show a native macOS notification when a thread finishes.",
-  ],
-  [
-    "enableSidebarWorktreeNavigation",
-    "Sidebar worktree navigation",
-    "Expose checkout-level actions from sidebar worktree groups.",
-  ],
-  [
-    "enableWorktreeSourceControl",
-    "Worktree source control",
-    "Open a staged and unstaged change viewer when selecting a worktree.",
-  ],
-  [
-    "enableCheckoutAwareThreadCreation",
-    "Checkout-aware thread creation",
-    "Carry the selected checkout into new threads and expose existing worktrees.",
-  ],
-  [
-    "enableForkPullRequests",
-    "Fork-aware pull requests",
-    "Target the upstream repository when working from a fork.",
-  ],
-  [
-    "enableDurableChangeRequestStatus",
-    "Durable pull request status",
-    "Keep resolved PR identity and last-known state attached to its thread with rate-limited polling.",
-  ],
-  [
-    "enableProviderSkillDiscovery",
-    "Project provider skills",
-    "Discover provider skills for the active project and worktree.",
-  ],
-  [
-    "enableTextFileAttachments",
-    "Text file attachments",
-    "Attach Markdown and other text files to a prompt.",
-  ],
-  [
-    "enableGeneratedImageRendering",
-    "Generated image rendering",
-    "Render generated image artifacts inline in chat.",
-  ],
-] as const satisfies ReadonlyArray<readonly [PersonalFeatureFlagName, string, string]>;
-
-function personalFeaturePatch(
-  key: PersonalFeatureFlagName,
-  enabled: boolean,
-): Partial<UnifiedSettings> {
-  return { [key]: enabled };
-}
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -587,6 +500,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
+      ...(settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds
+        ? ["Completion and attention sounds"]
+        : []),
       ...(settings.enableLegacyTokenStreaming !==
       DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming
         ? ["Stream token by token"]
@@ -616,9 +532,6 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Quit confirmation"]
         : []),
       ...(isTextGenerationModelDirty ? ["Text generation model"] : []),
-      ...PERSONAL_FEATURE_SETTINGS.filter(
-        ([key]) => settings[key] !== DEFAULT_UNIFIED_SETTINGS[key],
-      ).map(([, title]) => title),
     ],
     [
       isTextGenerationModelDirty,
@@ -630,6 +543,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
+      settings.enableCompletionSounds,
       settings.environmentIdentificationMode,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
@@ -642,18 +556,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.glassOpacity,
       settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
-      settings.enableStandaloneChats,
-      settings.enableNativeMacSidebar,
-      settings.enableMacosCompletionNotifications,
-      settings.enableSidebarWorktreeNavigation,
-      settings.enableWorktreeSourceControl,
-      settings.enableCheckoutAwareThreadCreation,
-      settings.enableCompletionSounds,
-      settings.enableForkPullRequests,
-      settings.enableDurableChangeRequestStatus,
-      settings.enableProviderSkillDiscovery,
-      settings.enableTextFileAttachments,
-      settings.enableGeneratedImageRendering,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
@@ -732,6 +634,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
+      enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
@@ -755,19 +658,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontFamilyComposer: DEFAULT_UNIFIED_SETTINGS.fontFamilyComposer,
       fontFamilyCode: DEFAULT_UNIFIED_SETTINGS.fontFamilyCode,
       fontFamilyTerminal: DEFAULT_UNIFIED_SETTINGS.fontFamilyTerminal,
-      enableStandaloneChats: DEFAULT_UNIFIED_SETTINGS.enableStandaloneChats,
-      enableNativeMacSidebar: DEFAULT_UNIFIED_SETTINGS.enableNativeMacSidebar,
-      enableMacosCompletionNotifications:
-        DEFAULT_UNIFIED_SETTINGS.enableMacosCompletionNotifications,
-      enableSidebarWorktreeNavigation: DEFAULT_UNIFIED_SETTINGS.enableSidebarWorktreeNavigation,
-      enableWorktreeSourceControl: DEFAULT_UNIFIED_SETTINGS.enableWorktreeSourceControl,
-      enableCheckoutAwareThreadCreation: DEFAULT_UNIFIED_SETTINGS.enableCheckoutAwareThreadCreation,
-      enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
-      enableForkPullRequests: DEFAULT_UNIFIED_SETTINGS.enableForkPullRequests,
-      enableDurableChangeRequestStatus: DEFAULT_UNIFIED_SETTINGS.enableDurableChangeRequestStatus,
-      enableProviderSkillDiscovery: DEFAULT_UNIFIED_SETTINGS.enableProviderSkillDiscovery,
-      enableTextFileAttachments: DEFAULT_UNIFIED_SETTINGS.enableTextFileAttachments,
-      enableGeneratedImageRendering: DEFAULT_UNIFIED_SETTINGS.enableGeneratedImageRendering,
       fontSizeInterface: DEFAULT_UNIFIED_SETTINGS.fontSizeInterface,
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
@@ -2089,6 +1979,32 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("completion-sounds")}
+          description="Play a sound when a turn completes or needs attention."
+          resetAction={
+            settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds ? (
+              <SettingResetButton
+                label="completion and attention sounds"
+                onClick={() =>
+                  updateSettings({
+                    enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.enableCompletionSounds}
+              onCheckedChange={(checked) =>
+                updateSettings({ enableCompletionSounds: Boolean(checked) })
+              }
+              aria-label="Completion and attention sounds"
+            />
+          }
+        />
+
+        <SettingsRow
           {...searchableSetting("provider-update-checks")}
           description="Check installed provider CLIs for newer available versions."
           resetAction={
@@ -2473,44 +2389,6 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <LegacyFeaturesSection />
-    </SettingsPageContainer>
-  );
-}
-
-export function PersonalFeatureFlagsSettingsPanel() {
-  const settings = usePrimarySettings();
-  const updateSettings = useUpdatePrimarySettings();
-
-  return (
-    <SettingsPageContainer>
-      <SettingsSection title="Personal fork feature flags">
-        {PERSONAL_FEATURE_SETTINGS.map(([key, title, description]) => (
-          <SettingsRow
-            key={key}
-            title={title}
-            description={description}
-            resetAction={
-              settings[key] !== DEFAULT_UNIFIED_SETTINGS[key] ? (
-                <SettingResetButton
-                  label={title.toLowerCase()}
-                  onClick={() =>
-                    updateSettings(personalFeaturePatch(key, DEFAULT_UNIFIED_SETTINGS[key]))
-                  }
-                />
-              ) : null
-            }
-            control={
-              <Switch
-                checked={settings[key]}
-                onCheckedChange={(checked) =>
-                  updateSettings(personalFeaturePatch(key, Boolean(checked)))
-                }
-                aria-label={title}
-              />
-            }
-          />
-        ))}
-      </SettingsSection>
     </SettingsPageContainer>
   );
 }

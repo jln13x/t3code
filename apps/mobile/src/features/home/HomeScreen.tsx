@@ -352,10 +352,8 @@ export function HomeScreen(props: HomeScreenProps) {
     () =>
       selectedProjectRefKeys === null
         ? props.threads
-        : props.threads.filter(
-            (thread) =>
-              thread.projectId !== null &&
-              selectedProjectRefKeys.has(scopedProjectKey(thread.environmentId, thread.projectId)),
+        : props.threads.filter((thread) =>
+            selectedProjectRefKeys.has(scopedProjectKey(thread.environmentId, thread.projectId)),
           ),
     [props.threads, selectedProjectRefKeys],
   );
@@ -795,8 +793,6 @@ export function HomeScreen(props: HomeScreenProps) {
         );
       }
       const thread = item.item.thread;
-      const threadProjectKey =
-        thread.projectId === null ? null : scopedProjectKey(thread.environmentId, thread.projectId);
       return (
         <ThreadListV2Row
           thread={thread}
@@ -806,10 +802,12 @@ export function HomeScreen(props: HomeScreenProps) {
           snoozePresetMinute={nowMinute}
           snoozeWakeLabelText={item.snoozeWakeLabelText}
           showTrailingDivider={showTrailingDivider}
-          project={threadProjectKey === null ? null : (projectByKey.get(threadProjectKey) ?? null)}
-          projectTitle={
-            threadProjectKey === null ? undefined : v2ProjectTitleByProjectKey.get(threadProjectKey)
+          project={
+            projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null
           }
+          projectTitle={v2ProjectTitleByProjectKey.get(
+            scopedProjectKey(thread.environmentId, thread.projectId),
+          )}
           providerDriver={
             serverConfigs
               .get(thread.environmentId)
@@ -854,7 +852,7 @@ export function HomeScreen(props: HomeScreenProps) {
           onMovePinnedThread={handleMovePinnedThread}
           onChangeRequestState={handleChangeRequestState}
           projectCwd={
-            threadProjectKey === null ? null : (projectCwdByKey.get(threadProjectKey) ?? null)
+            projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null
           }
           onSwipeableClose={handleSwipeableClose}
           onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -981,11 +979,8 @@ export function HomeScreen(props: HomeScreenProps) {
                 props.savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
               }
               projectCwd={
-                thread.projectId === null
-                  ? null
-                  : (projectCwdByKey.get(
-                      scopedProjectKey(thread.environmentId, thread.projectId),
-                    ) ?? null)
+                projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
+                null
               }
               isLast={item.isLast}
               searchMatch={threadSearchMatchByKey.get(

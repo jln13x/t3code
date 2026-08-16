@@ -2437,12 +2437,11 @@ export default function Sidebar() {
               (key) => !settledKeys.has(key) && !snoozedKeys.has(key) && !coParkingKeys?.has(key),
             ) ?? null);
       const nextThread = nextCardKey ? threadByKeyRef.current.get(nextCardKey) : null;
-      const shellProjectRef =
-        shell?.projectId == null ? null : scopeProjectRef(shell.environmentId, shell.projectId);
       return nextThread
         ? () => navigateToThread(scopeThreadRef(nextThread.environmentId, nextThread.id))
-        : shellProjectRef
-          ? () => void handleNewThreadRef.current(shellProjectRef)
+        : shell
+          ? () =>
+              void handleNewThreadRef.current(scopeProjectRef(shell.environmentId, shell.projectId))
           : () => void router.navigate({ to: "/" });
     },
     [navigateToThread, router],
@@ -3065,12 +3064,10 @@ export default function Sidebar() {
         }
         switch (clicked.value) {
           case "new-thread-on-branch": {
-            if (thread.projectId === null) return;
-            const projectId = thread.projectId;
             // Explicit branch carry-over: reuse the thread's worktree when it
             // has one, otherwise its branch on the local checkout.
             const result = await settlePromise(() =>
-              handleNewThreadRef.current(scopeProjectRef(thread.environmentId, projectId), {
+              handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId), {
                 branch: thread.branch,
                 worktreePath: thread.worktreePath,
                 envMode: thread.worktreePath ? "worktree" : "local",
@@ -3566,10 +3563,7 @@ export default function Sidebar() {
                         key={threadKey}
                         thread={thread}
                         projectCwd={
-                          thread.projectId === null
-                            ? null
-                            : (projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
-                              null)
+                          projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
                         }
                         projectFaviconPath={
                           projectFaviconPathByKey.get(
@@ -3577,11 +3571,9 @@ export default function Sidebar() {
                           ) ?? null
                         }
                         projectTitle={
-                          thread.projectId === null
-                            ? null
-                            : (projectDisplayNameByKey.get(
-                                `${thread.environmentId}:${thread.projectId}`,
-                              ) ?? null)
+                          projectDisplayNameByKey.get(
+                            `${thread.environmentId}:${thread.projectId}`,
+                          ) ?? null
                         }
                         environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
                         providerEntryByInstanceId={providerEntryByInstanceId}
@@ -3681,10 +3673,7 @@ export default function Sidebar() {
                         currentEnvironmentId={primaryEnvironmentId}
                         environmentLabel={environmentLabelById.get(thread.environmentId) ?? null}
                         projectCwd={
-                          thread.projectId === null
-                            ? null
-                            : (projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
-                              null)
+                          projectCwdByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
                         }
                         projectFaviconPath={
                           projectFaviconPathByKey.get(
@@ -3692,11 +3681,9 @@ export default function Sidebar() {
                           ) ?? null
                         }
                         projectTitle={
-                          thread.projectId === null
-                            ? null
-                            : (projectDisplayNameByKey.get(
-                                `${thread.environmentId}:${thread.projectId}`,
-                              ) ?? null)
+                          projectDisplayNameByKey.get(
+                            `${thread.environmentId}:${thread.projectId}`,
+                          ) ?? null
                         }
                         providerEntryByInstanceId={providerEntryByInstanceId}
                         timestampFormat={timestampFormat}

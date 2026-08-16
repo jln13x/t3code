@@ -68,36 +68,6 @@ it.effect("maps GitHub PR summaries into provider-neutral change requests", () =
   }),
 );
 
-it.effect("uses a pull request URL's repository instead of the current checkout", () =>
-  Effect.gen(function* () {
-    let getInput: Parameters<GitHubCli.GitHubCli["Service"]["getPullRequest"]>[0] | null = null;
-    const provider = yield* makeProvider({
-      getPullRequest: (input) => {
-        getInput = input;
-        return Effect.succeed({
-          number: 42,
-          title: "Canonical repository",
-          url: "https://github.com/pingdotgg/t3code/pull/42",
-          baseRefName: "main",
-          headRefName: "feature/source-control",
-          state: "open",
-        });
-      },
-    });
-
-    yield* provider.getChangeRequest({
-      cwd: "/unrelated-checkout",
-      reference: "https://github.com/pingdotgg/t3code/pull/42",
-    });
-
-    assert.deepStrictEqual(getInput, {
-      cwd: "/unrelated-checkout",
-      reference: "https://github.com/pingdotgg/t3code/pull/42",
-      repository: "pingdotgg/t3code",
-    });
-  }),
-);
-
 it.effect("adds safe request context while retaining GitHub CLI causes", () =>
   Effect.gen(function* () {
     const cause = new GitHubCli.GitHubPullRequestNotFoundError({
@@ -139,23 +109,27 @@ it.effect("adds safe request context while retaining GitHub CLI causes", () =>
   }),
 );
 
-it.effect("maps non-open change request state queries", () =>
+it.effect("uses gh json listing for non-open change request state queries", () =>
   Effect.gen(function* () {
-    let listInput: Parameters<GitHubCli.GitHubCli["Service"]["listPullRequests"]>[0] | null = null;
+    let executeArgs: ReadonlyArray<string> = [];
     const provider = yield* makeProvider({
-      listPullRequests: (input) => {
-        listInput = input;
-        return Effect.succeed([
-          {
-            number: 7,
-            title: "Merged work",
-            url: "https://github.com/pingdotgg/t3code/pull/7",
-            baseRefName: "main",
-            headRefName: "feature/merged",
-            state: "merged",
-            updatedAt: Option.some(DateTime.makeUnsafe("2026-01-02T00:00:00.000Z")),
-          },
-        ]);
+      execute: (input) => {
+        executeArgs = input.args;
+        return Effect.succeed(
+          processResult(
+            JSON.stringify([
+              {
+                number: 7,
+                title: "Merged work",
+                url: "https://github.com/pingdotgg/t3code/pull/7",
+                baseRefName: "main",
+                headRefName: "feature/merged",
+                state: "merged",
+                updatedAt: "2026-01-02T00:00:00.000Z",
+              },
+            ]),
+          ),
+        );
       },
     });
 
@@ -166,12 +140,18 @@ it.effect("maps non-open change request state queries", () =>
       limit: 10,
     });
 
-    assert.deepStrictEqual(listInput, {
-      cwd: "/repo",
-      headSelector: "feature/merged",
-      state: "all",
-      limit: 10,
-    });
+    assert.deepStrictEqual(executeArgs, [
+      "pr",
+      "list",
+      "--head",
+      "feature/merged",
+      "--state",
+      "all",
+      "--limit",
+      "10",
+      "--json",
+      "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
+    ]);
     assert.strictEqual(changeRequests[0]?.provider, "github");
     assert.strictEqual(changeRequests[0]?.state, "merged");
     assert.deepStrictEqual(
@@ -184,7 +164,7 @@ it.effect("maps non-open change request state queries", () =>
 it.effect("treats empty non-open change request listing output as no results", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({
-      listPullRequests: () => Effect.succeed([]),
+      execute: () => Effect.succeed(processResult("")),
     });
 
     const changeRequests = yield* provider.listChangeRequests({
@@ -195,36 +175,6 @@ it.effect("treats empty non-open change request listing output as no results", (
     });
 
     assert.deepStrictEqual(changeRequests, []);
-  }),
-);
-
-it.effect("targets the conventional upstream repository for fork pull request lookups", () =>
-  Effect.gen(function* () {
-    let listInput: Parameters<GitHubCli.GitHubCli["Service"]["listPullRequests"]>[0] | null = null;
-    const provider = yield* makeProvider({
-      listPullRequests: (input) => {
-        listInput = input;
-        return Effect.succeed([]);
-      },
-    });
-
-    yield* provider.listChangeRequests({
-      cwd: "/repo",
-      context: {
-        provider: { kind: "github", name: "github.com", baseUrl: "https://github.com" },
-        remoteName: "upstream",
-        remoteUrl: "git@github.com:T3Tools/t3code.git",
-      },
-      headSelector: "contributor:feature/fork-pr",
-      state: "open",
-    });
-
-    assert.deepStrictEqual(listInput, {
-      cwd: "/repo",
-      headSelector: "contributor:feature/fork-pr",
-      state: "open",
-      repository: "T3Tools/t3code",
-    });
   }),
 );
 

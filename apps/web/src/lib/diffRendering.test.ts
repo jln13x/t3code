@@ -2,10 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildFileDiffRenderKey,
   buildPatchCacheKey,
-  canRenderFileDiff,
   getDiffLineStat,
   getRenderablePatch,
-  MAX_RENDERABLE_DIFF_LINE_LENGTH,
 } from "./diffRendering";
 
 describe("buildPatchCacheKey", () => {
@@ -87,26 +85,6 @@ describe("getRenderablePatch", () => {
     expect(parsed?.kind).toBe("files");
     if (parsed?.kind !== "files") return;
     expect(parsed.files[0]?.hunks[0]?.unifiedLineStart).toBe(47);
-  });
-});
-
-describe("diff render line limits", () => {
-  it("rejects file diffs with pathological line lengths", () => {
-    expect(
-      canRenderFileDiff({
-        additionLines: ["small"],
-        deletionLines: ["x".repeat(MAX_RENDERABLE_DIFF_LINE_LENGTH + 1)],
-      }),
-    ).toBe(false);
-  });
-
-  it("allows file diffs within the line length limit", () => {
-    expect(
-      canRenderFileDiff({
-        additionLines: ["x".repeat(MAX_RENDERABLE_DIFF_LINE_LENGTH)],
-        deletionLines: ["small"],
-      }),
-    ).toBe(true);
   });
 });
 

@@ -7,8 +7,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/source-control"
   | "/settings/connections"
-  | "/settings/archived"
-  | "/settings/feature-flags";
+  | "/settings/archived";
 
 export interface SettingsSearchItem {
   readonly id: string;
@@ -32,7 +31,6 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
-  "/settings/feature-flags": "Feature Flags",
 };
 
 /**
@@ -123,6 +121,11 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "hide-whitespace-changes",
     title: "Hide whitespace changes",
+    to: "/settings/general",
+  },
+  {
+    id: "completion-sounds",
+    title: "Completion and attention sounds",
     to: "/settings/general",
   },
   {

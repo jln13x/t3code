@@ -18,7 +18,6 @@ import {
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import { normalizeModelSlug } from "@t3tools/shared/model";
-import { extractProviderErrorMessage } from "@t3tools/shared/providerError";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -53,7 +52,6 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
 const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
-const CODEX_INTERRUPT_THREAD_READ_TIMEOUT = "2 seconds" as const;
 const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "not found",
   "missing thread",
@@ -884,75 +882,6 @@ function parseThreadSnapshot(
   };
 }
 
-type CodexTurnOrderingCandidate = Pick<
-  EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number],
-  "startedAt"
->;
-
-export function shouldReplaceActiveCodexTurnCandidate(
-  candidate: CodexTurnOrderingCandidate,
-  selected: CodexTurnOrderingCandidate | undefined,
-): boolean {
-  if (selected === undefined) {
-    return true;
-  }
-
-  // When either timestamp is absent, provider response order is authoritative.
-  // The caller scans in response order, so the later candidate replaces the selection.
-  if (candidate.startedAt == null || selected.startedAt == null) {
-    return true;
-  }
-
-  return candidate.startedAt >= selected.startedAt;
-}
-
-export function findActiveCodexTurnId(
-  response: EffectCodexSchema.V2ThreadReadResponse,
-): TurnId | undefined {
-  let activeTurn: EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number] | undefined;
-  for (const turn of response.thread.turns) {
-    if (turn.status !== "inProgress") {
-      continue;
-    }
-    if (shouldReplaceActiveCodexTurnCandidate(turn, activeTurn)) {
-      activeTurn = turn;
-    }
-  }
-  return activeTurn === undefined ? undefined : TurnId.make(activeTurn.id);
-}
-
-export function resolveCodexInterruptTurnId<E>(input: {
-  readonly providerThreadId: string;
-  readonly requestedTurnId: TurnId | undefined;
-  readonly readSessionActiveTurnId: Effect.Effect<TurnId | undefined>;
-  readonly readThread: (
-    params: CodexRpc.ClientRequestParamsByMethod["thread/read"],
-  ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod["thread/read"], E>;
-}): Effect.Effect<TurnId | undefined> {
-  if (input.requestedTurnId !== undefined) {
-    return Effect.succeed(input.requestedTurnId);
-  }
-
-  return input
-    .readThread({
-      threadId: input.providerThreadId,
-      includeTurns: true,
-    })
-    .pipe(
-      Effect.timeout(CODEX_INTERRUPT_THREAD_READ_TIMEOUT),
-      Effect.map(findActiveCodexTurnId),
-      Effect.tapError((cause) =>
-        Effect.logWarning("Failed to resolve active Codex turn before interrupt.", {
-          providerThreadId: input.providerThreadId,
-          cause,
-        }),
-      ),
-      // A failed lookup can still use the locally projected id. A successful
-      // lookup with no active turn must not revive a stale local id.
-      Effect.catch(() => input.readSessionActiveTurnId),
-    );
-}
-
 export const makeCodexSessionRuntime = (
   options: CodexSessionRuntimeOptions,
 ): Effect.Effect<
@@ -1528,7 +1457,7 @@ export const makeCodexSessionRuntime = (
           }
           const lastError =
             payload.turn.status === "failed" && "error" in payload.turn && payload.turn.error
-              ? extractProviderErrorMessage(payload.turn.error.message)
+              ? payload.turn.error.message
               : undefined;
           return updateSession(sessionRef, {
             status: payload.turn.status === "failed" ? "error" : "ready",
@@ -1546,7 +1475,7 @@ export const makeCodexSessionRuntime = (
           if (providerThreadId && payloadThreadId && payloadThreadId !== providerThreadId) {
             return Effect.void;
           }
-          const errorMessage = extractProviderErrorMessage(payload.error.message);
+          const errorMessage = payload.error.message;
           const willRetry = payload.willRetry;
           return updateSession(sessionRef, {
             status: willRetry ? "running" : "error",
@@ -1946,12 +1875,7 @@ export const makeCodexSessionRuntime = (
                 .pipe(Effect.timeoutOption("3 seconds"), Effect.ignore),
             { concurrency: 8, discard: true },
           ).pipe(Effect.timeoutOption("10 seconds"), Effect.ignore);
-          const effectiveTurnId = yield* resolveCodexInterruptTurnId({
-            providerThreadId,
-            requestedTurnId: turnId,
-            readSessionActiveTurnId: Effect.succeed(session.activeTurnId),
-            readThread: (params) => client.request("thread/read", params),
-          });
+          const effectiveTurnId = turnId ?? session.activeTurnId;
           if (!effectiveTurnId) {
             return;
           }

@@ -1,11 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import {
-  resolveThreadChangeRequestProviderKind,
-  resolveThreadChangeRequestStatus,
-  shouldQueryThreadVcsStatus,
-} from "@t3tools/shared/sourceControl";
 
-import { useEnvironmentServerConfig } from "./entities";
 import { useEnvironmentQuery } from "./query";
 import { presentThreadPr, type ThreadPrPresentation } from "./thread-pr-presentation";
 import { vcsEnvironment } from "./vcs";
@@ -17,50 +11,31 @@ export {
 } from "./thread-pr-presentation";
 
 /**
- * Live PR status for a thread's branch. Known PR identities remain distinct;
- * otherwise subscriptions are deduplicated per (environmentId, cwd). List
- * virtualization means only visible rows subscribe.
+ * Live PR status for a thread's branch. Subscriptions are deduplicated per
+ * (environmentId, cwd) by the atom family, so many rows on the same worktree
+ * or project root share one stream — and virtualization means only visible
+ * rows subscribe at all.
  */
 export function useThreadPr(
   thread: EnvironmentThreadShell,
   projectCwd: string | null,
 ): ThreadPrPresentation | null {
   const cwd = thread.worktreePath ?? projectCwd;
-  const durableChangeRequestStatusEnabled =
-    useEnvironmentServerConfig(thread.environmentId)?.settings.enableDurableChangeRequestStatus ??
-    false;
-  const changeRequest = durableChangeRequestStatusEnabled ? thread.changeRequest : undefined;
   const gitStatus = useEnvironmentQuery(
-    cwd !== null &&
-      shouldQueryThreadVcsStatus({
-        threadBranch: thread.branch,
-        ...(changeRequest ? { changeRequest } : {}),
-        durableChangeRequestStatusEnabled,
-      })
+    thread.branch !== null && cwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
-          input: {
-            cwd,
-            ...(changeRequest ? { changeRequest } : {}),
-          },
+          input: { cwd },
         })
       : null,
   );
 
   const status = gitStatus.data;
-  const pr = resolveThreadChangeRequestStatus({
-    threadBranch: thread.branch,
-    ...(changeRequest ? { changeRequest } : {}),
-    gitStatus: status,
-    durableChangeRequestStatusEnabled,
-  });
-  if (!pr) {
+  if (status === null || thread.branch === null || status.refName !== thread.branch) {
     return null;
   }
-  const providerKind = resolveThreadChangeRequestProviderKind({
-    ...(changeRequest ? { changeRequest } : {}),
-    gitStatus: status,
-    durableChangeRequestStatusEnabled,
-  });
-  return presentThreadPr(pr, providerKind);
+  if (!status.pr) {
+    return null;
+  }
+  return presentThreadPr(status.pr, status.sourceControlProvider);
 }

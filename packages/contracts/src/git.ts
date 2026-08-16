@@ -1,10 +1,6 @@
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import {
-  ChangeRequestAssociation,
-  SourceControlProviderError,
-  SourceControlProviderInfo,
-} from "./sourceControl.ts";
+import { SourceControlProviderError, SourceControlProviderInfo } from "./sourceControl.ts";
 import { VcsDriverKind } from "./vcs.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
@@ -105,15 +101,8 @@ export type GitResolvedPullRequest = typeof GitResolvedPullRequest.Type;
 
 export const VcsStatusInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
 });
 export type VcsStatusInput = typeof VcsStatusInput.Type;
-
-export const VcsPathsInput = Schema.Struct({
-  cwd: TrimmedNonEmptyStringSchema,
-  paths: Schema.Array(TrimmedNonEmptyStringSchema).check(Schema.isMinLength(1)),
-});
-export type VcsPathsInput = typeof VcsPathsInput.Type;
 
 export const VcsPullInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -187,18 +176,6 @@ export const VcsCreateRefResult = Schema.Struct({
 });
 export type VcsCreateRefResult = typeof VcsCreateRefResult.Type;
 
-export const VcsRenameBranchInput = Schema.Struct({
-  cwd: TrimmedNonEmptyStringSchema,
-  oldBranch: TrimmedNonEmptyStringSchema,
-  newBranch: TrimmedNonEmptyStringSchema,
-});
-export type VcsRenameBranchInput = typeof VcsRenameBranchInput.Type;
-
-export const VcsRenameBranchResult = Schema.Struct({
-  branch: TrimmedNonEmptyStringSchema,
-});
-export type VcsRenameBranchResult = typeof VcsRenameBranchResult.Type;
-
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   refName: TrimmedNonEmptyStringSchema,
@@ -220,7 +197,6 @@ const VcsStatusChangeRequest = Schema.Struct({
   baseRef: TrimmedNonEmptyStringSchema,
   headRef: TrimmedNonEmptyStringSchema,
   state: VcsStatusChangeRequestState,
-  stale: Schema.optionalKey(Schema.Boolean),
 });
 
 const VcsStatusLocalShape = {
@@ -234,8 +210,6 @@ const VcsStatusLocalShape = {
     files: Schema.Array(
       Schema.Struct({
         path: TrimmedNonEmptyStringSchema,
-        indexStatus: Schema.optional(TrimmedNonEmptyStringSchema),
-        worktreeStatus: Schema.optional(TrimmedNonEmptyStringSchema),
         insertions: NonNegativeInt,
         deletions: NonNegativeInt,
       }),
@@ -250,9 +224,6 @@ const VcsStatusRemoteShape = {
   aheadCount: NonNegativeInt,
   behindCount: NonNegativeInt,
   aheadOfDefaultCount: Schema.optional(NonNegativeInt),
-  remoteRefHash: Schema.optional(TrimmedNonEmptyStringSchema),
-  changeRequestRefreshState: Schema.optionalKey(Schema.Literals(["fresh", "stale"])),
-  changeRequestRefName: Schema.optionalKey(TrimmedNonEmptyStringSchema),
   pr: Schema.NullOr(VcsStatusChangeRequest),
 };
 
@@ -265,7 +236,6 @@ export type VcsStatusRemoteResult = typeof VcsStatusRemoteResult.Type;
 export const VcsStatusResult = Schema.Struct({
   ...VcsStatusLocalShape,
   ...VcsStatusRemoteShape,
-  localGeneration: Schema.optional(NonNegativeInt),
 });
 export type VcsStatusResult = typeof VcsStatusResult.Type;
 
@@ -273,11 +243,9 @@ export const VcsStatusStreamEvent = Schema.Union([
   Schema.TaggedStruct("snapshot", {
     local: VcsStatusLocalResult,
     remote: Schema.NullOr(VcsStatusRemoteResult),
-    localGeneration: Schema.optional(NonNegativeInt),
   }),
   Schema.TaggedStruct("localUpdated", {
     local: VcsStatusLocalResult,
-    localGeneration: Schema.optional(NonNegativeInt),
   }),
   Schema.TaggedStruct("remoteUpdated", {
     remote: Schema.NullOr(VcsStatusRemoteResult),
@@ -289,7 +257,6 @@ export const VcsListRefsResult = Schema.Struct({
   refs: Schema.Array(VcsRef),
   isRepo: Schema.Boolean,
   hasPrimaryRemote: Schema.Boolean,
-  mainCheckoutPath: Schema.optional(TrimmedNonEmptyStringSchema.pipe(Schema.NullOr)),
   nextCursor: NonNegativeInt.pipe(Schema.NullOr),
   totalCount: NonNegativeInt,
 });
@@ -307,7 +274,6 @@ export type GitResolvePullRequestResult = typeof GitResolvePullRequestResult.Typ
 
 export const GitPreparePullRequestThreadResult = Schema.Struct({
   pullRequest: GitResolvedPullRequest,
-  changeRequest: ChangeRequestAssociation,
   branch: TrimmedNonEmptyStringSchema,
   worktreePath: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
   /**

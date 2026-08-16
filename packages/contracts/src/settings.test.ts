@@ -33,59 +33,18 @@ describe("ClientSettings word wrap", () => {
   });
 });
 
-describe("ClientSettings completion sound", () => {
-  it("defaults the completion sound on", () => {
+describe("ClientSettings completion sounds", () => {
+  it("defaults completion and attention sounds on", () => {
     expect(decodeClientSettings({}).enableCompletionSounds).toBe(true);
   });
 
-  it("preserves an explicit disabled preference", () => {
+  it("allows completion and attention sounds to be disabled", () => {
     expect(decodeClientSettings({ enableCompletionSounds: false }).enableCompletionSounds).toBe(
       false,
     );
-  });
-});
-
-describe("personal fork feature flags", () => {
-  const flagNames = [
-    "enableStandaloneChats",
-    "enableNativeMacSidebar",
-    "enableMacosCompletionNotifications",
-    "enableSidebarWorktreeNavigation",
-    "enableWorktreeSourceControl",
-    "enableCheckoutAwareThreadCreation",
-    "enableForkPullRequests",
-    "enableDurableChangeRequestStatus",
-    "enableProviderSkillDiscovery",
-    "enableTextFileAttachments",
-    "enableGeneratedImageRendering",
-  ] as const;
-
-  it("defaults every personal feature on", () => {
-    const settings = decodeServerSettings({});
-    for (const flagName of flagNames) {
-      expect(settings[flagName]).toBe(true);
-    }
-  });
-
-  it("preserves an explicit disabled state for every personal feature", () => {
-    const settings = decodeServerSettings(
-      Object.fromEntries(flagNames.map((name) => [name, false])),
-    );
-    for (const flagName of flagNames) {
-      expect(settings[flagName]).toBe(false);
-    }
-  });
-});
-
-describe("ClientSettings sidebar thread grouping", () => {
-  it("groups threads by worktree by default", () => {
-    expect(decodeClientSettings({}).sidebarThreadGroupingMode).toBe("worktree");
-  });
-
-  it("preserves the legacy separate-thread presentation when selected", () => {
     expect(
-      decodeClientSettings({ sidebarThreadGroupingMode: "separate" }).sidebarThreadGroupingMode,
-    ).toBe("separate");
+      decodeClientSettingsPatch({ enableCompletionSounds: false }).enableCompletionSounds,
+    ).toBe(false);
   });
 });
 

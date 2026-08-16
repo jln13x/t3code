@@ -1,17 +1,17 @@
+import * as React from "react";
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
-import * as React from "react";
-import { resolveServerBackedAppStageLabel } from "../branding.logic";
 import {
   getThreadSortTimestamp,
   sortThreads,
-  type ThreadSortInput,
   toSortableTimestamp,
+  type ThreadSortInput,
 } from "../lib/threadSort";
+import type { SidebarThreadSummary, Thread } from "../types";
 import type { ThreadRouteTarget } from "../threadRoutes";
 import { cn } from "../lib/utils";
 import { isLatestTurnSettled } from "../session-logic";
-import type { SidebarThreadSummary, Thread } from "../types";
+import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
@@ -22,196 +22,7 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 // so this limit is a direct renderer-heap and server-load multiplier — keep
 // it small; cold opens still render instantly from the cached snapshot.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 3;
-export type SidebarNewThreadEnvMode = "local" | "worktree";
-export type SidebarWorktreePrimaryAction = "source_control" | "new_chat" | null;
 
-export function resolveSidebarWorktreePrimaryAction(input: {
-  readonly enableSidebarWorktreeNavigation: boolean;
-  readonly enableWorktreeSourceControl: boolean;
-}): SidebarWorktreePrimaryAction {
-  if (!input.enableSidebarWorktreeNavigation) return null;
-  return input.enableWorktreeSourceControl ? "source_control" : "new_chat";
-}
-
-export function buildSidebarWorktreeSourceControlSearch(input: {
-  readonly branch: string | null;
-  readonly worktreePath: string | null;
-  readonly projectCwd: string;
-}): {
-  readonly cwd: string;
-  readonly branch?: string;
-  readonly scope: "unstaged";
-} {
-  return {
-    cwd: input.worktreePath ?? input.projectCwd,
-    ...(input.branch ? { branch: input.branch } : {}),
-    scope: "unstaged",
-  };
-}
-
-export interface SidebarWorktreeNewThreadOptions {
-  readonly branch: string | null;
-  readonly worktreePath: string | null;
-  readonly envMode: SidebarNewThreadEnvMode;
-  readonly startFromOrigin: false;
-}
-
-export function resolveSidebarWorktreeNewThreadOptions(input: {
-  readonly enableSidebarWorktreeNavigation: boolean;
-  readonly branch: string | null;
-  readonly worktreePath: string | null;
-  readonly isMainCheckout: boolean;
-}): SidebarWorktreeNewThreadOptions | null {
-  if (!input.enableSidebarWorktreeNavigation) return null;
-
-  return {
-    branch: input.branch,
-    worktreePath: input.worktreePath,
-    envMode: input.isMainCheckout ? "local" : "worktree",
-    startFromOrigin: false,
-  };
-}
-
-export interface SidebarWorktreeThreadGroup<TThread> {
-  readonly key: string;
-  readonly label: string;
-  readonly threads: readonly TThread[];
-}
-
-export interface ResolvedSidebarWorktreeThreadGroup<
-  TThread extends {
-    readonly environmentId: string;
-    readonly projectId: string | null;
-    readonly branch: string | null;
-    readonly worktreePath: string | null;
-  },
-> extends SidebarWorktreeThreadGroup<TThread> {
-  readonly environmentId: TThread["environmentId"];
-  readonly projectId: TThread["projectId"];
-  readonly branch: string | null;
-  readonly worktreePath: string | null;
-  readonly isMainCheckout: boolean;
-}
-
-export interface SidebarWorkspaceIdentity {
-  readonly environmentId: string;
-  readonly projectId: string;
-  readonly projectCheckoutPath: string;
-  readonly projectCheckoutLabel: string | null;
-  readonly mainCheckoutPath: string | null;
-}
-
-function normalizeWorkspacePath(path: string): string {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")
-    ? normalized.toLowerCase()
-    : normalized;
-}
-
-function worktreeDisplayName(path: string): string {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-  return normalized.split("/").at(-1) || path;
-}
-
-export function groupSidebarThreadsByWorktree<
-  TThread extends {
-    readonly environmentId: string;
-    readonly projectId: string | null;
-    readonly branch: string | null;
-    readonly worktreePath: string | null;
-  },
->(
-  threads: readonly TThread[],
-  workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
-): SidebarWorktreeThreadGroup<TThread>[] {
-  return resolveSidebarWorktreeThreadGroups(threads, workspaceIdentities).map(
-    ({ key, label, threads }) => ({ key, label, threads }),
-  );
-}
-
-export function resolveSidebarWorktreeThreadGroups<
-  TThread extends {
-    readonly environmentId: string;
-    readonly projectId: string | null;
-    readonly branch: string | null;
-    readonly worktreePath: string | null;
-  },
->(
-  threads: readonly TThread[],
-  workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
-): ResolvedSidebarWorktreeThreadGroup<TThread>[] {
-  const groups = new Map<
-    string,
-    {
-      label: string;
-      threads: TThread[];
-      environmentId: TThread["environmentId"];
-      projectId: TThread["projectId"];
-      branch: string | null;
-      worktreePath: string | null;
-      isMainCheckout: boolean;
-    }
-  >();
-
-  for (const thread of threads) {
-    const workspaceIdentity = workspaceIdentities.find(
-      (identity) =>
-        identity.environmentId === thread.environmentId && identity.projectId === thread.projectId,
-    );
-    const matchesWorkspaceIdentity = workspaceIdentity !== undefined;
-    const worktreePath = thread.worktreePath?.trim() || null;
-    const effectivePath =
-      worktreePath ?? (matchesWorkspaceIdentity ? workspaceIdentity.projectCheckoutPath : null);
-    const normalizedEffectivePath = effectivePath ? normalizeWorkspacePath(effectivePath) : null;
-    const isMainCheckout =
-      matchesWorkspaceIdentity &&
-      workspaceIdentity.mainCheckoutPath !== null &&
-      normalizedEffectivePath === normalizeWorkspacePath(workspaceIdentity.mainCheckoutPath);
-    const key = normalizedEffectivePath
-      ? `${thread.environmentId}:worktree:${normalizedEffectivePath}`
-      : `${thread.environmentId}:project:${thread.projectId}:checkout`;
-    const existing = groups.get(key);
-    if (existing) {
-      existing.threads.push(thread);
-      continue;
-    }
-    groups.set(key, {
-      label: isMainCheckout
-        ? "Main"
-        : worktreePath
-          ? thread.branch?.trim() || worktreeDisplayName(worktreePath)
-          : matchesWorkspaceIdentity
-            ? (workspaceIdentity.projectCheckoutLabel ??
-              thread.branch?.trim() ??
-              "Project checkout")
-            : thread.branch?.trim() || "Project checkout",
-      threads: [thread],
-      environmentId: thread.environmentId,
-      projectId: thread.projectId,
-      branch: thread.branch,
-      worktreePath: effectivePath,
-      isMainCheckout,
-    });
-  }
-
-  return [...groups].map(([key, group]) => ({ key, ...group }));
-}
-
-export function orderSidebarThreadsByWorktree<
-  TThread extends {
-    readonly environmentId: string;
-    readonly projectId: string | null;
-    readonly branch: string | null;
-    readonly worktreePath: string | null;
-  },
->(
-  threads: readonly TThread[],
-  workspaceIdentities: readonly SidebarWorkspaceIdentity[] = [],
-): TThread[] {
-  return groupSidebarThreadsByWorktree(threads, workspaceIdentities).flatMap(
-    (group) => group.threads,
-  );
-}
 type SidebarProject = {
   id: string;
   title: string;
@@ -225,7 +36,7 @@ type ScopedSidebarProject = SidebarProject & {
 
 type ScopedSidebarThread = ThreadSortInput & {
   environmentId: string;
-  projectId: string | null;
+  projectId: string;
   archivedAt: string | null;
 };
 
@@ -463,55 +274,6 @@ export function isTrailingDoubleClick(detail: number): boolean {
   return detail > 1;
 }
 
-export function resolveSidebarNewThreadEnvMode(input: {
-  requestedEnvMode?: SidebarNewThreadEnvMode;
-  defaultEnvMode: SidebarNewThreadEnvMode;
-}): SidebarNewThreadEnvMode {
-  return input.requestedEnvMode ?? input.defaultEnvMode;
-}
-
-export function resolveSidebarNewThreadSeedContext(input: {
-  projectId: string;
-  defaultEnvMode: SidebarNewThreadEnvMode;
-  activeThread?: {
-    projectId: string;
-    branch: string | null;
-    worktreePath: string | null;
-  } | null;
-  activeDraftThread?: {
-    projectId: string;
-    branch: string | null;
-    worktreePath: string | null;
-    envMode: SidebarNewThreadEnvMode;
-    startFromOrigin: boolean;
-  } | null;
-}): {
-  branch?: string | null;
-  worktreePath?: string | null;
-  envMode: SidebarNewThreadEnvMode;
-  startFromOrigin?: boolean;
-} {
-  if (input.activeDraftThread?.projectId === input.projectId) {
-    return {
-      branch: input.activeDraftThread.branch,
-      worktreePath: input.activeDraftThread.worktreePath,
-      envMode: input.activeDraftThread.envMode,
-      startFromOrigin: input.activeDraftThread.startFromOrigin,
-    };
-  }
-
-  if (input.activeThread?.projectId === input.projectId) {
-    return {
-      branch: input.activeThread.branch,
-      worktreePath: input.activeThread.worktreePath,
-      envMode: input.activeThread.worktreePath ? "worktree" : "local",
-    };
-  }
-
-  return {
-    envMode: input.defaultEnvMode,
-  };
-}
 function nodeClosest(node: object | null, selector: string): unknown {
   if (node === null || !("closest" in node) || typeof node.closest !== "function") return null;
   return node.closest(selector);
@@ -659,7 +421,6 @@ export function isContextMenuPointerDown(input: {
 export function resolveThreadRowClassName(input: {
   isActive: boolean;
   isSelected: boolean;
-  hasUnseenCompletion: boolean;
 }): string {
   const baseClassName =
     "h-8 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-sm select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
@@ -685,40 +446,10 @@ export function resolveThreadRowClassName(input: {
     );
   }
 
-  if (input.hasUnseenCompletion) {
-    return cn(baseClassName, "text-foreground font-medium hover:bg-accent hover:text-foreground");
-  }
-
   return cn(
     baseClassName,
     "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
   );
-}
-
-export function resolveProjectTitleClassName(hasUnseenCompletion: boolean): string {
-  return cn(
-    "native-sidebar-project-title truncate text-[13px] font-medium",
-    hasUnseenCompletion
-      ? "native-sidebar-project-title-unseen text-foreground"
-      : "native-sidebar-project-title-idle text-foreground/80",
-  );
-}
-
-export function resolveSidebarWorktreeLabelMode(input: {
-  enableNativeMacSidebar: boolean;
-  isMainCheckout: boolean;
-  threadGroupingMode: "separate" | "worktree";
-  worktreeGroupCount: number;
-}): "header" | "hidden" {
-  if (!input.enableNativeMacSidebar || input.threadGroupingMode !== "worktree") return "header";
-  return input.isMainCheckout && input.worktreeGroupCount === 1 ? "hidden" : "header";
-}
-
-export function shouldShowSidebarEmptyThreadState(input: {
-  enableNativeMacSidebar: boolean;
-  showEmptyThreadState: boolean;
-}): boolean {
-  return input.showEmptyThreadState && !input.enableNativeMacSidebar;
 }
 
 // ── Sidebar thread status model ─────────────────────────────────────
@@ -766,8 +497,6 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   }
   return "ready";
 }
-
-export const resolveSidebarV2Status = resolveSidebarThreadStatus;
 
 /** NaN-safe Date.parse for sort comparators: a malformed timestamp must not
     poison the whole ordering, so it sinks to the epoch instead. */
@@ -1136,7 +865,6 @@ export function sortProjectsForSidebar<
 ): TProject[] {
   const threadsByProjectId = new Map<string, TThread[]>();
   for (const thread of threads) {
-    if (thread.projectId === null) continue;
     const existing = threadsByProjectId.get(thread.projectId) ?? [];
     existing.push(thread);
     threadsByProjectId.set(thread.projectId, existing);
@@ -1205,7 +933,7 @@ export function sortScopedProjectsForSidebar<
     `${environmentId}\u0000${projectId}`;
   const threadsByProject = new Map<string, TThread[]>();
   for (const thread of threads) {
-    if (thread.archivedAt !== null || thread.projectId === null) {
+    if (thread.archivedAt !== null) {
       continue;
     }
     const key = scopedKey(thread.environmentId, thread.projectId);

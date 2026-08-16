@@ -116,7 +116,6 @@ export function remoteRefreshFailureDiagnostics(cause: Cause.Cause<unknown>) {
 
 interface VcsStatusChange {
   readonly cwd: string;
-  readonly statusKey: string | null;
   readonly event: VcsStatusStreamEvent;
 }
 
@@ -126,10 +125,8 @@ interface CachedValue<T> {
 }
 
 interface CachedVcsStatus {
-  readonly input: VcsStatusInput;
-  readonly local: VcsStatusLocalResult | null;
+  readonly local: CachedValue<VcsStatusLocalResult> | null;
   readonly remote: CachedValue<VcsStatusRemoteResult | null> | null;
-  readonly localGeneration: number;
 }
 
 interface ActiveRemotePoller {
@@ -165,10 +162,7 @@ export class VcsStatusBroadcaster extends Context.Service<
     readonly refreshLocalStatus: (
       cwd: string,
     ) => Effect.Effect<VcsStatusLocalResult, GitManagerServiceError>;
-    readonly refreshStatus: (
-      cwd: string,
-      changeRequest?: VcsStatusInput["changeRequest"],
-    ) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
+    readonly refreshStatus: (cwd: string) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
     readonly streamStatus: (
       input: VcsStatusInput,
       options?: StreamStatusOptions,
@@ -178,39 +172,6 @@ export class VcsStatusBroadcaster extends Context.Service<
 
 function fingerprintStatusPart(status: unknown): string {
   return JSON.stringify(status);
-}
-
-function preserveStaleChangeRequest(
-  previous: VcsStatusRemoteResult | null | undefined,
-  next: VcsStatusRemoteResult | null,
-): VcsStatusRemoteResult | null {
-  const previousPr = previous?.pr;
-  const nextPr = next?.pr ?? null;
-  const preservedPr =
-    previousPr &&
-    ((nextPr?.stale && previousPr.number === nextPr.number) ||
-      (next?.changeRequestRefreshState === "stale" &&
-        nextPr === null &&
-        previous?.changeRequestRefName !== undefined &&
-        previous.changeRequestRefName === next.changeRequestRefName))
-      ? { ...previousPr, stale: true as const }
-      : nextPr;
-  return next && preservedPr !== nextPr ? { ...next, pr: preservedPr } : next;
-}
-
-function statusInputKey(input: VcsStatusInput): string {
-  return JSON.stringify({
-    cwd: input.cwd,
-    ...(input.changeRequest
-      ? {
-          changeRequest: {
-            provider: input.changeRequest.provider,
-            number: input.changeRequest.number,
-            url: input.changeRequest.url,
-          },
-        }
-      : {}),
-  });
 }
 
 const normalizeCwd = (cwd: string) =>
@@ -234,49 +195,33 @@ export const make = Effect.gen(function* () {
   const pollersRef = yield* SynchronizedRef.make(new Map<string, ActiveRemotePoller>());
 
   const getCachedStatus = Effect.fn("VcsStatusBroadcaster.getCachedStatus")(function* (
-    input: VcsStatusInput,
+    cwd: string,
   ) {
-    return yield* Ref.get(cacheRef).pipe(
-      Effect.map((cache) => cache.get(statusInputKey(input)) ?? null),
-    );
+    return yield* Ref.get(cacheRef).pipe(Effect.map((cache) => cache.get(cwd) ?? null));
   });
 
   const updateCachedLocalStatus = Effect.fn("VcsStatusBroadcaster.updateCachedLocalStatus")(
-    function* (
-      input: VcsStatusInput,
-      local: VcsStatusLocalResult,
-      options?: { publish?: boolean },
-    ) {
-      const statusKey = statusInputKey(input);
-      const localGeneration = yield* Ref.modify(cacheRef, (cache) => {
+    function* (cwd: string, local: VcsStatusLocalResult, options?: { publish?: boolean }) {
+      const nextLocal = {
+        fingerprint: fingerprintStatusPart(local),
+        value: local,
+      } satisfies CachedValue<VcsStatusLocalResult>;
+      const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
+        const previous = cache.get(cwd) ?? { local: null, remote: null };
         const nextCache = new Map(cache);
-        if (!nextCache.has(statusKey)) {
-          nextCache.set(statusKey, {
-            input,
-            local: null,
-            remote: null,
-            localGeneration: 0,
-          });
-        }
-
-        let nextLocalGeneration = 0;
-        for (const [key, previous] of nextCache) {
-          if (previous.input.cwd !== input.cwd) continue;
-          const generation = previous.localGeneration + 1;
-          nextCache.set(key, { ...previous, local, localGeneration: generation });
-          if (key === statusKey) nextLocalGeneration = generation;
-        }
-        return [nextLocalGeneration, nextCache] as const;
+        nextCache.set(cwd, {
+          ...previous,
+          local: nextLocal,
+        });
+        return [previous.local?.fingerprint !== nextLocal.fingerprint, nextCache] as const;
       });
 
-      if (options?.publish) {
+      if (options?.publish && shouldPublish) {
         yield* PubSub.publish(changesPubSub, {
-          cwd: input.cwd,
-          statusKey: null,
+          cwd,
           event: {
             _tag: "localUpdated",
             local,
-            localGeneration,
           },
         });
       }
@@ -286,117 +231,92 @@ export const make = Effect.gen(function* () {
   );
 
   const updateCachedRemoteStatus = Effect.fn("VcsStatusBroadcaster.updateCachedRemoteStatus")(
-    function* (
-      input: VcsStatusInput,
-      remote: VcsStatusRemoteResult | null,
-      options?: { publish?: boolean },
-    ) {
-      const statusKey = statusInputKey(input);
-      const update = yield* Ref.modify(cacheRef, (cache) => {
-        const previous = cache.get(statusKey) ?? {
-          input,
-          local: null,
-          remote: null,
-          localGeneration: 0,
-        };
-        const effectiveRemote = preserveStaleChangeRequest(previous.remote?.value, remote);
-        const nextRemote = {
-          fingerprint: fingerprintStatusPart(effectiveRemote),
-          value: effectiveRemote,
-        } satisfies CachedValue<VcsStatusRemoteResult | null>;
+    function* (cwd: string, remote: VcsStatusRemoteResult | null, options?: { publish?: boolean }) {
+      const nextRemote = {
+        fingerprint: fingerprintStatusPart(remote),
+        value: remote,
+      } satisfies CachedValue<VcsStatusRemoteResult | null>;
+      const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
+        const previous = cache.get(cwd) ?? { local: null, remote: null };
         const nextCache = new Map(cache);
-        nextCache.set(statusKey, {
+        nextCache.set(cwd, {
           ...previous,
           remote: nextRemote,
         });
-        return [
-          {
-            shouldPublish: previous.remote?.fingerprint !== nextRemote.fingerprint,
-            remote: effectiveRemote,
-          },
-          nextCache,
-        ] as const;
+        return [previous.remote?.fingerprint !== nextRemote.fingerprint, nextCache] as const;
       });
 
-      if (options?.publish && update.shouldPublish) {
+      if (options?.publish && shouldPublish) {
         yield* PubSub.publish(changesPubSub, {
-          cwd: input.cwd,
-          statusKey,
+          cwd,
           event: {
             _tag: "remoteUpdated",
-            remote: update.remote,
+            remote,
           },
         });
       }
 
-      return update.remote;
+      return remote;
     },
   );
 
   const updateCachedStatus = Effect.fn("VcsStatusBroadcaster.updateCachedStatus")(function* (
-    input: VcsStatusInput,
+    cwd: string,
     local: VcsStatusLocalResult,
     remote: VcsStatusRemoteResult | null,
     options?: { publish?: boolean },
   ) {
-    const statusKey = statusInputKey(input);
-    const update = yield* Ref.modify(cacheRef, (cache) => {
-      const previous = cache.get(statusKey) ?? {
-        input,
-        local: null,
-        remote: null,
-        localGeneration: 0,
-      };
-      const effectiveRemote = preserveStaleChangeRequest(previous.remote?.value, remote);
-      const nextRemote = {
-        fingerprint: fingerprintStatusPart(effectiveRemote),
-        value: effectiveRemote,
-      } satisfies CachedValue<VcsStatusRemoteResult | null>;
-      const nextLocalGeneration = previous.localGeneration + 1;
+    const nextLocal = {
+      fingerprint: fingerprintStatusPart(local),
+      value: local,
+    } satisfies CachedValue<VcsStatusLocalResult>;
+    const nextRemote = {
+      fingerprint: fingerprintStatusPart(remote),
+      value: remote,
+    } satisfies CachedValue<VcsStatusRemoteResult | null>;
+    const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
+      const previous = cache.get(cwd) ?? { local: null, remote: null };
       const nextCache = new Map(cache);
-      nextCache.set(statusKey, {
-        input,
-        local,
+      nextCache.set(cwd, {
+        local: nextLocal,
         remote: nextRemote,
-        localGeneration: nextLocalGeneration,
       });
       return [
-        { localGeneration: nextLocalGeneration, remote: effectiveRemote },
+        previous.local?.fingerprint !== nextLocal.fingerprint ||
+          previous.remote?.fingerprint !== nextRemote.fingerprint,
         nextCache,
       ] as const;
     });
 
-    if (options?.publish) {
+    if (options?.publish && shouldPublish) {
       yield* PubSub.publish(changesPubSub, {
-        cwd: input.cwd,
-        statusKey,
+        cwd,
         event: {
           _tag: "snapshot",
           local,
-          remote: update.remote,
-          localGeneration: update.localGeneration,
+          remote,
         },
       });
     }
 
-    return mergeGitStatusParts(local, update.remote);
+    return mergeGitStatusParts(local, remote);
   });
 
   const loadLocalStatus = Effect.fn("VcsStatusBroadcaster.loadLocalStatus")(function* (
-    input: VcsStatusInput,
+    cwd: string,
   ) {
-    const local = yield* workflow.localStatus({ cwd: input.cwd });
-    return yield* updateCachedLocalStatus(input, local);
+    const local = yield* workflow.localStatus({ cwd });
+    return yield* updateCachedLocalStatus(cwd, local);
   });
 
   const getOrLoadLocalStatus = Effect.fn("VcsStatusBroadcaster.getOrLoadLocalStatus")(function* (
-    input: VcsStatusInput,
+    cwd: string,
   ) {
-    const cached = yield* getCachedStatus(input);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local) {
-      return cached.local;
+      return cached.local.value;
     }
-    return yield* loadLocalStatus(input);
+    return yield* loadLocalStatus(cwd);
   });
 
   const withFileSystem = Effect.provideService(FileSystem.FileSystem, fs);
@@ -405,28 +325,25 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.getStatus",
   )(function* (input) {
     const cwd = yield* withFileSystem(normalizeCwd(input.cwd));
-    const normalizedInput = { ...input, cwd };
-    const cached = yield* getCachedStatus(normalizedInput);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local && cached.remote) {
-      return mergeGitStatusParts(cached.local, cached.remote.value);
+      return mergeGitStatusParts(cached.local.value, cached.remote.value);
     }
     const [local, remote] = yield* Effect.all(
       [
-        cached?.local ? Effect.succeed(cached.local) : workflow.localStatus({ cwd }),
-        cached?.remote
-          ? Effect.succeed(cached.remote.value)
-          : workflow.remoteStatus(normalizedInput),
+        cached?.local ? Effect.succeed(cached.local.value) : workflow.localStatus({ cwd }),
+        cached?.remote ? Effect.succeed(cached.remote.value) : workflow.remoteStatus({ cwd }),
       ],
       { concurrency: "unbounded" },
     );
-    return yield* updateCachedStatus(normalizedInput, local, remote);
+    return yield* updateCachedStatus(cwd, local, remote);
   });
 
   const refreshLocalStatusCore = Effect.fn("VcsStatusBroadcaster.refreshLocalStatusCore")(
     function* (cwd: string) {
       yield* workflow.invalidateLocalStatus(cwd);
       const local = yield* workflow.localStatus({ cwd });
-      return yield* updateCachedLocalStatus({ cwd }, local, { publish: true });
+      return yield* updateCachedLocalStatus(cwd, local, { publish: true });
     },
   );
 
@@ -438,33 +355,32 @@ export const make = Effect.gen(function* () {
   });
 
   const refreshRemoteStatus = Effect.fn("VcsStatusBroadcaster.refreshRemoteStatus")(function* (
-    input: VcsStatusInput,
+    cwd: string,
     options?: { readonly refreshUpstream?: boolean },
   ) {
     if (options?.refreshUpstream !== false) {
-      yield* workflow.invalidateRemoteStatus(input.cwd);
+      yield* workflow.invalidateRemoteStatus(cwd);
     }
-    const remote = yield* workflow.remoteStatus(input, options);
-    return yield* updateCachedRemoteStatus(input, remote, { publish: true });
+    const remote = yield* workflow.remoteStatus({ cwd }, options);
+    return yield* updateCachedRemoteStatus(cwd, remote, { publish: true });
   });
 
   const refreshStatus: VcsStatusBroadcaster["Service"]["refreshStatus"] = Effect.fn(
     "VcsStatusBroadcaster.refreshStatus",
-  )(function* (rawCwd, changeRequest) {
+  )(function* (rawCwd) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-    const input = { cwd, ...(changeRequest ? { changeRequest } : {}) };
     // invalidateStatus (not the two partial invalidations) so an explicit
     // refresh also bypasses GitManager's slow PR-lookup cache.
     yield* workflow.invalidateStatus(cwd);
     const [local, remote] = yield* Effect.all(
-      [workflow.localStatus({ cwd }), workflow.remoteStatus(input)],
+      [workflow.localStatus({ cwd }), workflow.remoteStatus({ cwd })],
       { concurrency: "unbounded" },
     );
-    return yield* updateCachedStatus(input, local, remote, { publish: true });
+    return yield* updateCachedStatus(cwd, local, remote, { publish: true });
   });
 
   const makeRemoteRefreshLoop = (
-    input: VcsStatusInput,
+    cwd: string,
     demandCwdsRef: Ref.Ref<ReadonlyMap<string, number>>,
     automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration, never>,
     refreshImmediately: boolean,
@@ -498,7 +414,7 @@ export const make = Effect.gen(function* () {
           return activeInterval;
         }
 
-        const exit = yield* refreshRemoteStatus(input, {
+        const exit = yield* refreshRemoteStatus(cwd, {
           refreshUpstream: !Duration.isZero(configuredInterval),
         }).pipe(Effect.exit);
         if (Exit.isSuccess(exit)) {
@@ -518,8 +434,7 @@ export const make = Effect.gen(function* () {
         );
         const nextDelay = remoteRefreshFailureDelay(consecutiveFailures, activeInterval);
         yield* Effect.logWarning("VCS remote status refresh failed", {
-          cwdLength: input.cwd.length,
-          hasExplicitChangeRequest: input.changeRequest !== undefined,
+          cwdLength: cwd.length,
           ...remoteRefreshFailureDiagnostics(exit.cause),
           consecutiveFailures,
           nextDelayMs: Duration.toMillis(nextDelay),
@@ -548,14 +463,13 @@ export const make = Effect.gen(function* () {
   };
 
   const retainRemotePoller = Effect.fn("VcsStatusBroadcaster.retainRemotePoller")(function* (
-    input: VcsStatusInput,
+    cwd: string,
     demandCwd: string,
     automaticRemoteRefreshInterval: Effect.Effect<Duration.Duration, never>,
     refreshImmediately: boolean,
   ) {
-    const statusKey = statusInputKey(input);
     yield* SynchronizedRef.modifyEffect(pollersRef, (activePollers) => {
-      const existing = activePollers.get(statusKey);
+      const existing = activePollers.get(cwd);
       if (existing) {
         return Ref.update(existing.demandCwds, (demandCwds) => {
           const next = new Map(demandCwds);
@@ -564,7 +478,7 @@ export const make = Effect.gen(function* () {
         }).pipe(
           Effect.map(() => {
             const nextPollers = new Map(activePollers);
-            nextPollers.set(statusKey, {
+            nextPollers.set(cwd, {
               ...existing,
               subscriberCount: existing.subscriberCount + 1,
             });
@@ -576,7 +490,7 @@ export const make = Effect.gen(function* () {
       return Ref.make<ReadonlyMap<string, number>>(new Map([[demandCwd, 1]])).pipe(
         Effect.flatMap((demandCwds) =>
           makeRemoteRefreshLoop(
-            input,
+            cwd,
             demandCwds,
             automaticRemoteRefreshInterval,
             refreshImmediately,
@@ -584,7 +498,7 @@ export const make = Effect.gen(function* () {
             Effect.forkIn(broadcasterScope),
             Effect.map((fiber) => {
               const nextPollers = new Map(activePollers);
-              nextPollers.set(statusKey, {
+              nextPollers.set(cwd, {
                 fiber,
                 subscriberCount: 1,
                 demandCwds,
@@ -598,12 +512,11 @@ export const make = Effect.gen(function* () {
   });
 
   const releaseRemotePoller = Effect.fn("VcsStatusBroadcaster.releaseRemotePoller")(function* (
-    input: VcsStatusInput,
+    cwd: string,
     demandCwd: string,
   ) {
-    const statusKey = statusInputKey(input);
     const pollerToInterrupt = yield* SynchronizedRef.modifyEffect(pollersRef, (activePollers) => {
-      const existing = activePollers.get(statusKey);
+      const existing = activePollers.get(cwd);
       if (!existing) {
         return Effect.succeed([null, activePollers] as const);
       }
@@ -621,7 +534,7 @@ export const make = Effect.gen(function* () {
         }).pipe(
           Effect.as([
             null,
-            new Map(activePollers).set(statusKey, {
+            new Map(activePollers).set(cwd, {
               ...existing,
               subscriberCount: existing.subscriberCount - 1,
             }),
@@ -629,21 +542,10 @@ export const make = Effect.gen(function* () {
         );
       }
 
-      const nextPollers = new Map(activePollers);
-      nextPollers.delete(statusKey);
-      // Drop the cached status for this subscription key in the same critical section that
-      // removes the poller, so a concurrent retainRemotePoller (which reloads
-      // the cache and installs a fresh poller) cannot have its new entry wiped
-      // by this release. Otherwise the cache grows one entry per cwd for the
-      // broadcaster's lifetime; a future subscriber re-loads and re-seeds it.
-      return Ref.update(cacheRef, (cache) => {
-        if (!cache.has(statusKey)) {
-          return cache;
-        }
-        const nextCache = new Map(cache);
-        nextCache.delete(statusKey);
-        return nextCache;
-      }).pipe(Effect.as([existing.fiber, nextPollers] as const));
+      return Effect.succeed([
+        existing.fiber,
+        new Map([...activePollers].filter(([activeCwd]) => activeCwd !== cwd)),
+      ] as const);
     });
 
     if (pollerToInterrupt) {
@@ -655,37 +557,28 @@ export const make = Effect.gen(function* () {
     Stream.unwrap(
       Effect.gen(function* () {
         const cwd = yield* withFileSystem(normalizeCwd(input.cwd));
-        const normalizedInput = { ...input, cwd };
-        const statusKey = statusInputKey(normalizedInput);
         const subscription = yield* PubSub.subscribe(changesPubSub);
-        const initialLocal = yield* getOrLoadLocalStatus(normalizedInput);
-        const cachedStatus = yield* getCachedStatus(normalizedInput);
+        const initialLocal = yield* getOrLoadLocalStatus(cwd);
+        const cachedStatus = yield* getCachedStatus(cwd);
         const initialRemote = cachedStatus?.remote?.value ?? null;
         yield* retainRemotePoller(
-          normalizedInput,
+          cwd,
           input.cwd,
           options?.automaticRemoteRefreshInterval ??
             Effect.succeed(DEFAULT_VCS_STATUS_REFRESH_INTERVAL),
           cachedStatus?.remote === null || cachedStatus?.remote === undefined,
         );
 
-        const release = releaseRemotePoller(normalizedInput, input.cwd).pipe(
-          Effect.ignore,
-          Effect.asVoid,
-        );
+        const release = releaseRemotePoller(cwd, input.cwd).pipe(Effect.ignore, Effect.asVoid);
 
         return Stream.concat(
           Stream.make({
             _tag: "snapshot" as const,
             local: initialLocal,
             remote: initialRemote,
-            localGeneration: cachedStatus?.localGeneration,
           }),
           Stream.fromSubscription(subscription).pipe(
-            Stream.filter(
-              (event) =>
-                event.cwd === cwd && (event.statusKey === null || event.statusKey === statusKey),
-            ),
+            Stream.filter((event) => event.cwd === cwd),
             Stream.map((event) => event.event),
           ),
         ).pipe(Stream.ensuring(release));

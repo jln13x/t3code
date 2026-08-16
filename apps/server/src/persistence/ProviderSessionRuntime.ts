@@ -58,12 +58,6 @@ export type GetProviderSessionRuntimeInput = typeof GetProviderSessionRuntimeInp
 export const DeleteProviderSessionRuntimeInput = Schema.Struct({ threadId: ThreadId });
 export type DeleteProviderSessionRuntimeInput = typeof DeleteProviderSessionRuntimeInput.Type;
 
-export const TouchLastSeenInput = Schema.Struct({
-  threadId: ThreadId,
-  lastSeenAt: IsoDateTime,
-});
-export type TouchLastSeenInput = typeof TouchLastSeenInput.Type;
-
 /**
  * ProviderSessionRuntimeRepository - Service tag for provider runtime persistence.
  */
@@ -98,18 +92,6 @@ export class ProviderSessionRuntimeRepository extends Context.Service<
       ReadonlyArray<ProviderSessionRuntime>,
       ProviderSessionRuntimeRepositoryError
     >;
-
-    /**
-     * Bump only `last_seen_at` for an existing, non-stopped row.
-     *
-     * A targeted update used to keep a session's inactivity clock fresh from
-     * background runtime activity (e.g. a running dynamic workflow) without
-     * rewriting the full runtime payload. Rows in `stopped` status are left
-     * untouched so a reaped session is never resurrected.
-     */
-    readonly touchLastSeen: (
-      input: TouchLastSeenInput,
-    ) => Effect.Effect<void, ProviderSessionRuntimeRepositoryError>;
 
     /**
      * Delete provider runtime state by canonical thread id.
@@ -253,17 +235,6 @@ export const make = Effect.gen(function* () {
       `,
   });
 
-  const touchLastSeenRow = SqlSchema.void({
-    Request: TouchLastSeenInput,
-    execute: ({ threadId, lastSeenAt }) =>
-      sql`
-        UPDATE provider_session_runtime
-        SET last_seen_at = ${lastSeenAt}
-        WHERE thread_id = ${threadId}
-          AND status != 'stopped'
-      `,
-  });
-
   const upsert: ProviderSessionRuntimeRepository["Service"]["upsert"] = (runtime) =>
     upsertRuntimeRow(runtime).pipe(
       Effect.mapError(
@@ -337,17 +308,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const touchLastSeen: ProviderSessionRuntimeRepository["Service"]["touchLastSeen"] = (input) =>
-    touchLastSeenRow(input).pipe(
-      Effect.mapError(
-        toPersistenceSqlOrDecodeError(
-          "ProviderSessionRuntimeRepository.touchLastSeen:query",
-          "ProviderSessionRuntimeRepository.touchLastSeen:encodeRequest",
-          { threadId: input.threadId },
-        ),
-      ),
-    );
-
   const deleteByThreadId: ProviderSessionRuntimeRepository["Service"]["deleteByThreadId"] = (
     input,
   ) =>
@@ -366,7 +326,6 @@ export const make = Effect.gen(function* () {
     upsert,
     getByThreadId,
     list,
-    touchLastSeen,
     deleteByThreadId,
   } satisfies ProviderSessionRuntimeRepository["Service"];
 });

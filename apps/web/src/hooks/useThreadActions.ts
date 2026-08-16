@@ -1,8 +1,8 @@
 import {
   parseScopedThreadKey,
-  scopedThreadKey,
   scopeProjectRef,
   scopeThreadRef,
+  scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSettle, canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
@@ -15,17 +15,12 @@ import { useCallback, useMemo, useRef } from "react";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
-import { useDiffPanelStore } from "../diffPanelStore";
-import { removePreviewThread } from "../previewStateStore";
-import { useRightPanelStore } from "../rightPanelStore";
-import { useUiStateStore } from "../uiStateStore";
 import { terminalEnvironment } from "../state/terminal";
 import { threadEnvironment } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 import { readLocalApi } from "../localApi";
-import { appAtomRegistry } from "../rpc/atomRegistry";
 import {
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsPinReorder,
@@ -36,16 +31,12 @@ import {
   readThreadShell,
   readThreadShells,
 } from "../state/entities";
-import { environmentShell } from "../state/shell";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
+import { useUiStateStore } from "../uiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
-import {
-  formatWorktreePathForDisplay,
-  getLastThreadWorktreeArchiveConfirmationMessage,
-  getOrphanedWorktreePathForThread,
-} from "../worktreeCleanup";
+import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { useClientSettings, usePrimarySettings } from "./useSettings";
+import { useClientSettings } from "./useSettings";
 import { useAtomCommand } from "../state/use-atom-command";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArchiveBlockedError>()(
@@ -58,23 +49,6 @@ export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArc
   override get message(): string {
     return "Cannot archive a running thread.";
   }
-}
-
-/**
- * Prune per-thread client state that would otherwise accumulate forever.
- *
- * These stores keep a per-thread entry (preview atom, right-panel surfaces,
- * diff-panel selection) that is persisted to localStorage and was never cleaned
- * up on thread deletion/archival — a long-lived tab leaked one entry per thread
- * ever visited. The cleanup functions already existed but had no callers; this
- * wires them into the deletion/archival flow.
- */
-function clearPerThreadClientState(ref: ScopedThreadRef): void {
-  removePreviewThread(ref);
-  useRightPanelStore.getState().removeThread(ref);
-  useDiffPanelStore.getState().removeThread(ref);
-  // uiStateStore is keyed by the scoped thread key (see ChatView.markThreadVisited).
-  useUiStateStore.getState().removeThread(scopedThreadKey(ref));
 }
 
 export class ThreadSettlementUnsupportedError extends Schema.TaggedErrorClass<ThreadSettlementUnsupportedError>()(
@@ -202,9 +176,6 @@ export function useThreadActions() {
   });
   const sidebarThreadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
-  const enableSidebarWorktreeNavigation = usePrimarySettings(
-    (settings) => settings.enableSidebarWorktreeNavigation,
-  );
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
@@ -251,28 +222,6 @@ export function useThreadActions() {
         );
       }
 
-      const threads = readEnvironmentThreadRefs(threadRef.environmentId).flatMap((ref) => {
-        const shell = readThreadShell(ref);
-        return shell === null ? [] : [shell];
-      });
-      const archiveConfirmationMessage = getLastThreadWorktreeArchiveConfirmationMessage(
-        threads,
-        threadRef.threadId,
-        enableSidebarWorktreeNavigation,
-      );
-      const localApi = readLocalApi();
-      if (archiveConfirmationMessage && localApi) {
-        const confirmationResult = await settlePromise(() =>
-          localApi.dialogs.confirm(archiveConfirmationMessage),
-        );
-        if (confirmationResult._tag === "Failure") {
-          return confirmationResult;
-        }
-        if (!confirmationResult.value) {
-          return AsyncResult.success(undefined);
-        }
-      }
-
       const currentRouteThreadRef = getCurrentRouteThreadRef();
       const shouldNavigateToDraft =
         currentRouteThreadRef?.threadId === threadRef.threadId &&
@@ -284,7 +233,6 @@ export function useThreadActions() {
       if (archiveResult._tag === "Failure") {
         return archiveResult;
       }
-      appAtomRegistry.refresh(environmentShell.stateAtom(threadRef.environmentId));
       const wokeAt = threadWokeAt(thread, { now: new Date().toISOString() });
       if (wokeAt !== null) {
         markThreadVisited(scopedThreadKey(threadRef), wokeAt);
@@ -293,14 +241,8 @@ export function useThreadActions() {
       opts.onArchived?.();
 
       if (shouldNavigateToDraft) {
-        if (thread.projectId === null) {
-          await router.navigate({ to: "/" });
-          refreshArchivedThreadsForEnvironment(threadRef.environmentId);
-          return archiveResult;
-        }
-        const projectId = thread.projectId;
         const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, projectId)),
+          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
         );
         if (navigationResult._tag === "Failure") {
           return navigationResult;
@@ -310,14 +252,7 @@ export function useThreadActions() {
 
       return archiveResult;
     },
-    [
-      archiveThreadMutation,
-      enableSidebarWorktreeNavigation,
-      getCurrentRouteThreadRef,
-      markThreadVisited,
-      resolveThreadTarget,
-      router,
-    ],
+    [archiveThreadMutation, getCurrentRouteThreadRef, markThreadVisited, resolveThreadTarget],
   );
 
   const unarchiveThread = useCallback(
@@ -345,9 +280,6 @@ export function useThreadActions() {
         });
         if (result._tag === "Success") {
           refreshArchivedThreadsForEnvironment(target.environmentId);
-          clearComposerDraftForThread(target);
-          clearTerminalUiState(target);
-          clearPerThreadClientState(target);
         }
         return result;
       }
@@ -356,13 +288,10 @@ export function useThreadActions() {
         const shell = readThreadShell(ref);
         return shell === null ? [] : [shell];
       });
-      const threadProject =
-        thread.projectId === null
-          ? null
-          : readProject({
-              environmentId: threadRef.environmentId,
-              projectId: thread.projectId,
-            });
+      const threadProject = readProject({
+        environmentId: threadRef.environmentId,
+        projectId: thread.projectId,
+      });
       const deletedIds =
         opts.deletedThreadKeys && opts.deletedThreadKeys.size > 0
           ? new Set<ThreadId>(
@@ -436,14 +365,11 @@ export function useThreadActions() {
       }
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       clearComposerDraftForThread(threadRef);
-      if (thread.projectId !== null) {
-        clearProjectDraftThreadById(
-          scopeProjectRef(threadRef.environmentId, thread.projectId),
-          threadRef,
-        );
-      }
+      clearProjectDraftThreadById(
+        scopeProjectRef(threadRef.environmentId, thread.projectId),
+        threadRef,
+      );
       clearTerminalUiState(threadRef);
-      clearPerThreadClientState(threadRef);
 
       if (shouldNavigateToFallback) {
         if (fallbackThreadId) {

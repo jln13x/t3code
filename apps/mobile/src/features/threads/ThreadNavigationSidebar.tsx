@@ -340,10 +340,8 @@ function ThreadNavigationSidebarPane(
     () =>
       selectedProjectRefs === null
         ? threads
-        : threads.filter(
-            (thread) =>
-              thread.projectId !== null &&
-              selectedProjectRefs.has(scopedProjectKey(thread.environmentId, thread.projectId)),
+        : threads.filter((thread) =>
+            selectedProjectRefs.has(scopedProjectKey(thread.environmentId, thread.projectId)),
           ),
     [selectedProjectRefs, threads],
   );
@@ -931,10 +929,7 @@ function ThreadNavigationSidebarPane(
         }
         case "v2-thread": {
           const thread = item.item.thread;
-          const scopeKey =
-            thread.projectId === null
-              ? null
-              : scopedProjectKey(thread.environmentId, thread.projectId);
+          const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
           return (
             <ThreadListV2Row
               thread={thread}
@@ -943,8 +938,8 @@ function ThreadNavigationSidebarPane(
               pinned={item.item.pinned}
               snoozePresetMinute={nowMinute}
               snoozeWakeLabelText={item.snoozeWakeLabelText}
-              project={scopeKey === null ? null : (projectByKey.get(scopeKey) ?? null)}
-              projectTitle={scopeKey === null ? undefined : projectTitleByProjectKey.get(scopeKey)}
+              project={projectByKey.get(scopeKey) ?? null}
+              projectTitle={projectTitleByProjectKey.get(scopeKey)}
               providerDriver={
                 serverConfigs
                   .get(thread.environmentId)
@@ -995,7 +990,7 @@ function ThreadNavigationSidebarPane(
               onUnpinThread={unpinThread}
               onMovePinnedThread={movePinnedThread}
               onChangeRequestState={handleChangeRequestState}
-              projectCwd={scopeKey === null ? null : (projectCwdByKey.get(scopeKey) ?? null)}
+              projectCwd={projectCwdByKey.get(scopeKey) ?? null}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
               simultaneousSwipeGesture={sidebarScrollGesture}
@@ -1076,11 +1071,8 @@ function ThreadNavigationSidebarPane(
                 savedConnectionsById[thread.environmentId]?.environmentLabel ?? null
               }
               projectCwd={
-                thread.projectId === null
-                  ? null
-                  : (projectCwdByKey.get(
-                      scopedProjectKey(thread.environmentId, thread.projectId),
-                    ) ?? null)
+                projectCwdByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ??
+                null
               }
               isLast={item.isLast}
               searchMatch={threadSearchMatchByKey.get(

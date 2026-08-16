@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { MessageId, ThreadId, TrimmedNonEmptyString, TurnId } from "./baseSchemas.ts";
+import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProjectFaviconPath } from "./orchestration.ts";
 
 const ASSET_PATH_MAX_LENGTH = 1024;
@@ -8,12 +8,6 @@ const ASSET_PATH_MAX_LENGTH = 1024;
 export const AssetResource = Schema.Union([
   Schema.TaggedStruct("workspace-file", {
     threadId: ThreadId,
-    path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
-  }),
-  Schema.TaggedStruct("thread-artifact", {
-    threadId: ThreadId,
-    turnId: TurnId,
-    messageId: MessageId,
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
   }),
   Schema.TaggedStruct("attachment", {

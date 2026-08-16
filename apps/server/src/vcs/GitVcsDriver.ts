@@ -7,7 +7,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
@@ -27,7 +26,6 @@ import {
   type VcsListRefsInput,
   type VcsListRefsResult,
   type VcsPullResult,
-  type VcsPathsInput,
   type VcsRemoveWorktreeInput,
   type VcsStatusInput,
   type VcsStatusResult,
@@ -77,7 +75,6 @@ export interface GitRemoteStatusDetails {
   isDefaultBranch: boolean;
   branch: string | null;
   upstreamRef: string | null;
-  remoteRefHash?: string | null;
   hasUpstream: boolean;
   aheadCount: number;
   behindCount: number;
@@ -217,20 +214,6 @@ export interface GitResolveRemoteTrackingCommitResult {
   remoteRefName: string;
 }
 
-export class RemoteTrackingRefNotFoundError extends Schema.TaggedErrorClass<RemoteTrackingRefNotFoundError>()(
-  "RemoteTrackingRefNotFoundError",
-  {
-    cwd: Schema.String,
-    remoteRefName: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `Remote tracking ref '${this.remoteRefName}' does not exist (${this.cwd}).`;
-  }
-}
-
-export const isRemoteTrackingRefNotFound = Schema.is(RemoteTrackingRefNotFoundError);
-
 export interface GitSetBranchUpstreamInput {
   cwd: string;
   branch: string;
@@ -286,9 +269,6 @@ export class GitVcsDriver extends Context.Service<
       input: VcsListRefsInput,
     ) => Effect.Effect<VcsListRefsResult, GitCommandError>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
-    readonly stagePaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
-    readonly unstagePaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
-    readonly discardPaths: (input: VcsPathsInput) => Effect.Effect<void, GitCommandError>;
     readonly createWorktree: (
       input: VcsCreateWorktreeInput,
     ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
@@ -312,10 +292,7 @@ export class GitVcsDriver extends Context.Service<
     readonly remoteExists: (input: GitRemoteExistsInput) => Effect.Effect<boolean, GitCommandError>;
     readonly resolveRemoteTrackingCommit: (
       input: GitResolveRemoteTrackingCommitInput,
-    ) => Effect.Effect<
-      GitResolveRemoteTrackingCommitResult,
-      GitCommandError | RemoteTrackingRefNotFoundError
-    >;
+    ) => Effect.Effect<GitResolveRemoteTrackingCommitResult, GitCommandError>;
     readonly fetchRemoteBranch: (
       input: GitFetchRemoteBranchInput,
     ) => Effect.Effect<void, GitCommandError>;

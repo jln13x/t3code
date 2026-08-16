@@ -117,7 +117,6 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
-  getDefaultCloneRemoteUrl,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
@@ -1057,10 +1056,8 @@ function OpenCommandPaletteDialog(props: {
           return (
             <ThreadCommandSubtitle
               environmentId={thread.environmentId}
-              projectCwd={thread.projectId ? (projectCwdById.get(thread.projectId) ?? null) : null}
-              projectFaviconPath={
-                thread.projectId ? (projectFaviconPathById.get(thread.projectId) ?? null) : null
-              }
+              projectCwd={projectCwdById.get(thread.projectId) ?? null}
+              projectFaviconPath={projectFaviconPathById.get(thread.projectId) ?? null}
               projectTitle={projectTitle ?? null}
               branch={thread.branch}
               worktreePath={thread.worktreePath}
@@ -1870,7 +1867,7 @@ function OpenCommandPaletteDialog(props: {
         source: addProjectCloneFlow.source,
         repositoryInput: rawRepository,
         repository,
-        remoteUrl: getDefaultCloneRemoteUrl(repository),
+        remoteUrl: repository.sshUrl,
       });
       setHighlightedItemValue(null);
       setQuery(destinationPath);

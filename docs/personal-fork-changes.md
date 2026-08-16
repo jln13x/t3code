@@ -1,159 +1,64 @@
 # Personal Fork Changes
 
-Turning a flag off preserves upstream behavior.
+The personal fork intentionally maintains only two product differences from `upstream/main`:
+desktop fork identity and completion/attention sounds. Everything else follows upstream directly.
 
-| Feature                            | Flag                                 | Default |
-| ---------------------------------- | ------------------------------------ | ------- |
-| Projectless standalone chats       | `enableStandaloneChats`              | On      |
-| Native macOS sidebar               | `enableNativeMacSidebar`             | On      |
-| macOS completion notifications     | `enableMacosCompletionNotifications` | On      |
-| Sidebar worktree navigation        | `enableSidebarWorktreeNavigation`    | On      |
-| Worktree source control            | `enableWorktreeSourceControl`        | On      |
-| Checkout-aware thread creation     | `enableCheckoutAwareThreadCreation`  | On      |
-| Completion and attention sounds    | `enableCompletionSounds`             | On      |
-| Fork-aware pull requests           | `enableForkPullRequests`             | On      |
-| Durable pull request status        | `enableDurableChangeRequestStatus`   | On      |
-| Project provider skill discovery   | `enableProviderSkillDiscovery`       | On      |
-| Markdown and text file attachments | `enableTextFileAttachments`          | On      |
-| Inline generated-image rendering   | `enableGeneratedImageRendering`      | On      |
+This file is both the current inventory and the retirement record used during upstream syncs.
 
-Upstream PRs integrated into the fork are listed in
-[Upstream Integrations](./upstream-integrations.md).
+## Maintained differences
 
-## Retired customizations
-
-- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
-  working-tree-first diff selection and active-worktree scoping. The redundant feature flag and
-  settings control were removed.
-- Periodic client-side branch-ref revalidation: retired after upstream added generation-aware
-  refresh retries plus server-side ref snapshot invalidation for Git mutations. Checkout-aware
-  thread creation now uses that upstream refresh path instead of polling every 20 seconds.
-- The fork's `@pierre/diffs` beta 9 editor-identity compatibility patch: retired after beta 10
-  exposed the editor file state needed to distinguish local edits from external content changes.
-  File previews now use the upstream beta 10 API and environment/content-aware cache keys.
-- The fork-local project file/content search implementation, `project.searchContents` command, and
-  `enableProjectSearch` rollout flag: retired after upstream shipped the unified project search
-  overlays, file picker, content search, and `projectSearch.toggle` command. Search now follows
-  upstream behavior directly.
-- The fork's `SidebarV2` component split and Beta settings toggle: retired after upstream promoted
-  that sidebar to the default `Sidebar` implementation. The personalized sidebar now lives at the
-  narrower `LegacySidebar` boundary, selected only by the personal native-sidebar flag or the
-  upstream legacy-sidebar preference.
-
-## Desktop fork identity
+### Desktop fork identity
 
 - Packaged desktop builds use the `T3 Code (Fork)` product name and
   `com.t3tools.t3code.fork` application identity.
-- macOS packages use the orange fork icon for both latest and nightly builds, while development
-  builds keep the upstream development identity and icon.
-- The packaged fork uses its own `t3code-fork` Electron user-data directory and can coexist with
-  the upstream macOS application. This build-time identity is intentionally not a runtime feature
-  flag because changing it after packaging would break OS-level app registration and data paths.
+- macOS packages use the orange fork icon for latest and nightly builds. Development builds retain
+  upstream's development identity and artwork.
+- The packaged fork stores Electron data in `t3code-fork`, separate from upstream's `t3code`
+  directory, so both applications can coexist.
+- Identity is a build-time distinction, not a runtime feature flag. A runtime switch would not
+  safely change OS registration, package identity, or storage paths.
 
-## Checkout-aware thread creation
+### Completion and attention sounds
 
-- On mobile, the new-task workspace control opens a searchable checkout picker. Existing checkouts
-  are reused, branches that are not checked out create a worktree, and a pull request URL/number can
-  be resolved into an isolated worktree. Turning off the flag restores the compact upstream
-  workspace menu.
-- With New worktree selected, creating a chat from an existing worktree seeds the draft from that
-  worktree's branch without reusing its path. Creating a chat for a different project still uses that
-  project's main branch.
-- Cmd+N from an active chat preserves that chat's checkout mode, branch, and worktree path. From
-  outside a chat it continues to use the configured project defaults.
-- With sidebar worktree navigation enabled, right-clicking a worktree label opens an actions menu
-  for starting a chat in that checkout or renaming its branch.
+- A `success` cue plays when a thread's latest turn transitions to completed. Its gain is 110% of
+  the sound library's default.
+- A `bloom` cue plays when a thread begins waiting for user input or approval.
+- Existing completed or attention-waiting threads establish a silent baseline during hydration, so
+  loading or reconnecting does not replay old cues.
+- The normal General setting, `enableCompletionSounds`, controls both cues and defaults to on.
+  This is a user preference, not a personal-fork feature flag.
+- The fork patches `cuelume@0.1.0` to accept an optional per-play volume multiplier.
 
-## Worktree source control
+## Retired on 2026-08-16
 
-- With worktree source control enabled, selecting a sidebar worktree opens a checkout-scoped
-  source control surface instead of creating a chat. The surface separates staged and unstaged
-  files, renders the selected diff, and exposes file-level stage, unstage, and confirmed discard
-  actions. Selecting diff lines adds comments to an isolated review draft, so opening the viewer
-  does not retarget an existing chat. Pending comments remain visible in a review tray and merge
-  into the project's reusable draft only after Continue in chat, preserving the selected checkout's
-  branch and worktree path. New chats remain available from the worktree row action and context
-  menu.
-- Disabling the flag restores the previous worktree-label behavior, where selecting the label
-  immediately creates a chat in that checkout.
-- The viewer tolerates mixed-version and intermittently connected remote environments: it keeps
-  rendering the last successful status/diff snapshot, falls back to the legacy combined worktree
-  diff when index-aware sections are unavailable, and exposes stage/discard actions only when the
-  environment advertises `worktreeSourceControl` support. When compatibility mode is active, the
-  viewer shows a persistent warning with the client and environment versions when they differ; a
-  missing capability is still called out when the version strings happen to match.
+The following customizations and their centralized feature flags were removed in favor of current
+upstream behavior. Their migrations, contracts, settings controls, UI branches, native bridges, and
+tests were removed with them.
 
-## Durable pull request status
+| Retired customization                 | Historical fork behavior and retirement decision                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Projectless standalone chats          | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                                                                                                           |
+| Native macOS sidebar                  | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                                                                                             |
+| macOS completion notifications        | Delivered clickable native notifications through a durable event cursor/outbox that survived reloads and retried failed IPC deliveries. Removed; completion sounds remain, but native notifications do not.                                                                                                                                                                                                   |
+| Sidebar worktree navigation           | Exposed worktree actions and preserved empty checkout groups in the sidebar. The fork now uses upstream navigation.                                                                                                                                                                                                                                                                                           |
+| Worktree source control               | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork now uses upstream source-control surfaces.                                                                                                                                                                                                                     |
+| Checkout-aware thread creation        | Preserved the exact active checkout for keyboard-created threads, reused arbitrary existing worktrees, added a searchable mobile checkout picker, resolved pull requests to worktrees, and prevented cross-project drafts from inheriting the active project's checkout. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream creation behavior. |
+| Fork-aware pull-request targeting     | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                                                                                                       |
+| Durable pull-request status           | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                                                                                                      |
+| Project provider skill discovery      | Rediscovered provider skills for the active project and worktree. The fork now uses upstream provider-skill behavior.                                                                                                                                                                                                                                                                                         |
+| Markdown and text attachments         | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                                                                                                        |
+| Generated-image rendering             | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                                                                                             |
+| Fork backports and integration ledger | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                                                                                                    |
 
-- Threads created from a resolved pull request persist its provider, number, URL, refs, and
-  last-known display state. Sidebar status refreshes query that canonical identity instead of
-  rediscovering historical pull requests from a reused branch name.
-- A persisted pull request remains visible when a thread no longer has a branch. It refreshes by
-  canonical identity when repository context is available and otherwise renders the stored state
-  as last-known; inferred pull requests still require an exact checked-out branch match.
-- The sidebar keeps the compact icon-only treatment: open is green, merged is purple, and closed
-  is muted gray. Provider failures retain the latest cached result and mark last-known fallback
-  metadata as stale instead of making the icon disappear.
-- Background change-request polling has a sustained budget of 30 provider requests per minute, a
-  burst limit of 10, and at most four concurrent provider calls. It is shared by canonical
-  provider/URL/number identity across worktrees. Open results refresh at most once per minute,
-  closed and merged results use progressively longer cache windows, and provider failures back off
-  exponentially up to 15 minutes. Throttled or failed inferred lookups preserve the last successful
-  icon as stale instead of clearing it, but only while the inferred branch identity still matches.
-- GitHub durable refreshes use the repository-qualified pull request URL to derive the target
-  repository, so a shared cache entry cannot be populated from an unrelated checkout that happens
-  to contain the same pull request number.
-- Turning the flag off preserves branch-name discovery and does not attach new pull request
-  associations to threads.
+## Earlier retirements
 
-## Projectless standalone chats
-
-- Creating a standalone chat opens a local draft immediately, matching project-thread creation;
-  the server thread is materialized atomically with the first message instead of blocking
-  navigation on an empty-thread request.
-- Standalone drafts remain writable in the shared new-thread composer and use projectless hero
-  copy; missing-project guards continue to apply only to orphaned project drafts.
-- Standalone chats participate in the same desktop completion sounds and macOS notifications as
-  project threads. When agent-activity publishing is enabled, they also publish completion and
-  attention states to connected mobile clients under the generic `Chats` activity group.
-
-## Native macOS sidebar
-
-- Inactive thread titles are regular weight and subdued. The focused thread, multi-selected
-  threads, and newly completed threads use a medium, bold-ish weight and full emphasis. Hovering an
-  inactive thread keeps that hierarchy intact.
-- Project titles use regular weight and remain subdued until one of their threads has an unseen
-  completion. Worktree labels remain quieter than inactive thread titles so conversation names
-  carry more visual weight.
-- Light mode uses dark, regular-weight conversation text with progressively softer project and
-  worktree context. Worktree labels use the same 14px size as thread titles instead of appearing
-  disabled or undersized.
-- Worktrees use compact branch headers with subtly inset conversation rows, keeping each checkout
-  visually distinct without repeating its branch on every thread. Worktree labels omit redundant
-  thread counts. Empty worktrees remain standalone rows so they are still available for new-chat
-  and archive actions.
-- The native layout omits the generic "No threads yet" row. It hides the redundant main-checkout
-  label when no other checkout is shown, but restores a "Main checkout" header when multiple
-  checkout groups need a visible boundary. Actionable worktree rows use a pointer cursor.
-- Turning off the native sidebar flag makes the current upstream Sidebar the default. The upstream
-  legacy-sidebar preference remains honored while the personal flag is off; when the personal flag
-  is on, the personalized `LegacySidebar` is selected directly. Settings uses upstream's current
-  settings navigation in either state.
-- With sidebar worktree navigation enabled, worktree groups remain visible after their last thread
-  is archived. Archiving the last thread requires confirmation and leaves the checkout and its Git
-  registration intact. Worktree rows do not show inline archive buttons; every non-main worktree
-  keeps the explicit worktree-archive action in its context menu, which deletes the checkout and its
-  Git registration.
-
-## macOS completion notifications and sounds
-
-- With macOS completion notifications enabled, the Electron host posts a native, silent macOS
-  notification whenever a project thread or standalone chat transitions to completed. Clicking it
-  reveals the app and opens the exact environment-scoped conversation. Web and non-macOS runtimes
-  retain upstream behavior.
-- Notification detection uses a persisted per-environment orchestration-event cursor instead of
-  inferring completion only from adjacent renderer snapshots. Reconnects and renderer reloads replay
-  any missed running-to-completed transitions, while successful deliveries advance a durable outbox
-  and failed native/IPC deliveries remain pending for retry without duplicating replayed events.
-- The synthesized completion cue plays at 110% of its original gain; attention cues retain their
-  original gain. Disabling completion sounds preserves the upstream silent behavior.
+- Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
+  working-tree-first diff selection and active-worktree scoping.
+- Periodic client-side branch-ref revalidation: retired after upstream added generation-aware
+  refresh retries and server-side ref snapshot invalidation for Git mutations.
+- The fork's `@pierre/diffs` beta 9 editor-identity compatibility patch: retired after beta 10
+  exposed the editor file state required by the upstream implementation.
+- Fork-local project file/content search and `enableProjectSearch`: retired after upstream shipped
+  unified project search overlays, file picking, content search, and `projectSearch.toggle`.
+- The fork's `SidebarV2` split and beta toggle: retired after upstream promoted that sidebar to the
+  default implementation.

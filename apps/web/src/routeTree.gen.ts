@@ -19,7 +19,6 @@ import { Route as SettingsSourceControlRouteImport } from './routes/settings.sou
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
-import { Route as SettingsFeatureFlagsRouteImport } from './routes/settings.feature-flags'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
@@ -29,7 +28,6 @@ import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
-import { Route as ChatWorktreeEnvironmentIdProjectIdRouteImport } from './routes/_chat.worktree.$environmentId.$projectId'
 
 const UsageRoute = UsageRouteImport.update({
   id: '/usage',
@@ -80,11 +78,6 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsFeatureFlagsRoute = SettingsFeatureFlagsRouteImport.update({
-  id: '/feature-flags',
-  path: '/feature-flags',
-  getParentRoute: () => SettingsRoute,
-} as any)
 const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
   id: '/diagnostics',
   path: '/diagnostics',
@@ -131,12 +124,6 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
-const ChatWorktreeEnvironmentIdProjectIdRoute =
-  ChatWorktreeEnvironmentIdProjectIdRouteImport.update({
-    id: '/worktree/$environmentId/$projectId',
-    path: '/worktree/$environmentId/$projectId',
-    getParentRoute: () => ChatRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -151,14 +138,12 @@ export interface FileRoutesByFullPath {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
-  '/settings/feature-flags': typeof SettingsFeatureFlagsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/worktree/$environmentId/$projectId': typeof ChatWorktreeEnvironmentIdProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -172,7 +157,6 @@ export interface FileRoutesByTo {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
-  '/settings/feature-flags': typeof SettingsFeatureFlagsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
@@ -180,7 +164,6 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/worktree/$environmentId/$projectId': typeof ChatWorktreeEnvironmentIdProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,7 +179,6 @@ export interface FileRoutesById {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
-  '/settings/feature-flags': typeof SettingsFeatureFlagsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
@@ -204,7 +186,6 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
-  '/_chat/worktree/$environmentId/$projectId': typeof ChatWorktreeEnvironmentIdProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -221,14 +202,12 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
-    | '/settings/feature-flags'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
     | '/settings/source-control'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
-    | '/worktree/$environmentId/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -242,7 +221,6 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
-    | '/settings/feature-flags'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
@@ -250,7 +228,6 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
-    | '/worktree/$environmentId/$projectId'
   id:
     | '__root__'
     | '/_chat'
@@ -265,7 +242,6 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
-    | '/settings/feature-flags'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
@@ -273,7 +249,6 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
-    | '/_chat/worktree/$environmentId/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -358,13 +333,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/feature-flags': {
-      id: '/settings/feature-flags'
-      path: '/feature-flags'
-      fullPath: '/settings/feature-flags'
-      preLoaderRoute: typeof SettingsFeatureFlagsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
     '/settings/diagnostics': {
       id: '/settings/diagnostics'
       path: '/diagnostics'
@@ -428,13 +396,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/_chat/worktree/$environmentId/$projectId': {
-      id: '/_chat/worktree/$environmentId/$projectId'
-      path: '/worktree/$environmentId/$projectId'
-      fullPath: '/worktree/$environmentId/$projectId'
-      preLoaderRoute: typeof ChatWorktreeEnvironmentIdProjectIdRouteImport
-      parentRoute: typeof ChatRoute
-    }
   }
 }
 
@@ -443,7 +404,6 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
-  ChatWorktreeEnvironmentIdProjectIdRoute: typeof ChatWorktreeEnvironmentIdProjectIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -451,8 +411,6 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
-  ChatWorktreeEnvironmentIdProjectIdRoute:
-    ChatWorktreeEnvironmentIdProjectIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
@@ -462,7 +420,6 @@ interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
-  SettingsFeatureFlagsRoute: typeof SettingsFeatureFlagsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
@@ -474,7 +431,6 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
-  SettingsFeatureFlagsRoute: SettingsFeatureFlagsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,

@@ -605,14 +605,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionThreadRepository.upsert({
             threadId: event.payload.threadId,
             projectId: event.payload.projectId,
-            contextKind: event.payload.context?.kind ?? "project",
             title: event.payload.title,
             modelSelection: event.payload.modelSelection,
             runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
-            changeRequest: event.payload.changeRequest ?? null,
             latestTurnId: null,
             createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
@@ -801,9 +799,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.worktreePath !== undefined
               ? { worktreePath: event.payload.worktreePath }
               : {}),
-            ...(event.payload.changeRequest !== undefined
-              ? { changeRequest: event.payload.changeRequest }
-              : {}),
             updatedAt: event.payload.updatedAt,
           });
           return;
@@ -870,13 +865,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...existingRow.value,
             updatedAt: event.occurredAt,
           });
-          if (
-            event.type !== "thread.message-sent" ||
-            event.payload.role !== "assistant" ||
-            !event.payload.streaming
-          ) {
-            yield* refreshThreadShellSummary(event.payload.threadId);
-          }
+          yield* refreshThreadShellSummary(event.payload.threadId);
           return;
         }
 

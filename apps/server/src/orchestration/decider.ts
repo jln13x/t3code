@@ -1,11 +1,14 @@
-import { EventId, type OrchestrationCommand, type OrchestrationEvent } from "@t3tools/contracts";
+import {
+  EventId,
+  type OrchestrationCommand,
+  type OrchestrationEvent,
+  type OrchestrationReadModel,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import { resolveThreadContext } from "@t3tools/shared/threadContext";
 import type * as PlatformError from "effect/PlatformError";
 
-import type { CommandReadModel } from "./commandReadModel.ts";
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
 import {
   listThreadsByProjectId,
@@ -180,7 +183,7 @@ const decideCommandSequence = Effect.fn("decideCommandSequence")(function* ({
   readModel,
 }: {
   readonly commands: ReadonlyArray<OrchestrationCommand>;
-  readonly readModel: CommandReadModel;
+  readonly readModel: OrchestrationReadModel;
 }): Effect.fn.Return<
   ReadonlyArray<PlannedOrchestrationEvent>,
   OrchestrationCommandInvariantError | PlatformError.PlatformError,
@@ -214,7 +217,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
   readModel,
 }: {
   readonly command: OrchestrationCommand;
-  readonly readModel: CommandReadModel;
+  readonly readModel: OrchestrationReadModel;
 }): Effect.fn.Return<
   DecideOrchestrationCommandResult,
   OrchestrationCommandInvariantError | PlatformError.PlatformError,
@@ -347,25 +350,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.create": {
-      const context = resolveThreadContext(command);
-      if (context.kind === "project") {
-        if (command.projectId !== null && command.projectId !== context.projectId) {
-          return yield* new OrchestrationCommandInvariantError({
-            commandType: command.type,
-            detail: `Thread project '${command.projectId}' does not match context project '${context.projectId}'.`,
-          });
-        }
-        yield* requireProject({
-          readModel,
-          command,
-          projectId: context.projectId,
-        });
-      } else if (command.projectId !== null) {
-        return yield* new OrchestrationCommandInvariantError({
-          commandType: command.type,
-          detail: "Standalone threads cannot reference a project.",
-        });
-      }
+      yield* requireProject({
+        readModel,
+        command,
+        projectId: command.projectId,
+      });
       yield* requireThreadAbsent({
         readModel,
         command,
@@ -381,15 +370,13 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.created",
         payload: {
           threadId: command.threadId,
-          projectId: context.kind === "project" ? context.projectId : null,
-          context,
+          projectId: command.projectId,
           title: command.title,
           modelSelection: command.modelSelection,
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
-          ...(command.changeRequest !== undefined ? { changeRequest: command.changeRequest } : {}),
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -824,18 +811,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const branchUpdateRejected =
+      const branch =
         command.branch !== undefined &&
         command.expectedBranch !== undefined &&
-        thread.branch !== command.expectedBranch;
-      const branch = branchUpdateRejected ? thread.branch : command.branch;
-      const changeRequest = branchUpdateRejected
-        ? undefined
-        : command.changeRequest !== undefined
-          ? command.changeRequest
-          : branch !== undefined && branch !== thread.branch
-            ? null
-            : undefined;
+        thread.branch !== command.expectedBranch
+          ? thread.branch
+          : command.branch;
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -866,7 +847,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(branch !== undefined ? { branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
-          ...(changeRequest !== undefined ? { changeRequest } : {}),
           updatedAt: occurredAt,
         },
       };
@@ -967,18 +947,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           detail: `Proposed plan '${sourceProposedPlan.planId}' does not exist on thread '${sourceProposedPlan.threadId}'.`,
         });
       }
-      const targetContext = resolveThreadContext(targetThread);
-      const sourceContext = sourceThread ? resolveThreadContext(sourceThread) : null;
-      if (
-        sourceContext &&
-        (sourceContext.kind !== targetContext.kind ||
-          (sourceContext.kind === "project" &&
-            targetContext.kind === "project" &&
-            sourceContext.projectId !== targetContext.projectId))
-      ) {
+      if (sourceThread && sourceThread.projectId !== targetThread.projectId) {
         return yield* new OrchestrationCommandInvariantError({
           commandType: command.type,
-          detail: `Proposed plan '${sourceProposedPlan?.planId}' belongs to thread '${sourceThread!.id}' in a different context.`,
+          detail: `Proposed plan '${sourceProposedPlan?.planId}' belongs to thread '${sourceThread.id}' in a different project.`,
         });
       }
       const userMessageEvent: Omit<OrchestrationEvent, "sequence"> = {

@@ -36,45 +36,6 @@ const activityOrder = O.combineAll<OrchestrationThreadActivity>([
 ]);
 
 /**
- * The oldest activity in a set, by chronology (`createdAt`, then `id`) rather
- * than array position.
- *
- * `activities[0]` is not a stable "oldest": {@link activityOrder} sorts
- * unsequenced rows to the end (a missing `sequence` is treated as newest) while
- * the server snapshot lists legacy unsequenced rows first, so the first live
- * append re-sorts the array and shifts index 0. Both the lazy-load *reshape*
- * sentinel ({@link liveWindowOldestActivityId}) and the lazy-load *pagination
- * cursor* derive from this so they agree on which row is oldest regardless of
- * the reducer's placement of unsequenced rows. Returns `null` when empty.
- */
-export function oldestActivityByChronology(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): OrchestrationThreadActivity | null {
-  let oldest: OrchestrationThreadActivity | null = null;
-  for (const activity of activities) {
-    if (
-      oldest === null ||
-      activity.createdAt < oldest.createdAt ||
-      (activity.createdAt === oldest.createdAt && activity.id < oldest.id)
-    ) {
-      oldest = activity;
-    }
-  }
-  return oldest;
-}
-
-/**
- * The id of {@link oldestActivityByChronology}, used as the lazy-load reshape
- * sentinel (a reconnect re-snapshot or checkpoint revert changes it; a plain
- * append does not). Returns `null` when empty.
- */
-export function liveWindowOldestActivityId(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): OrchestrationThreadActivity["id"] | null {
-  return oldestActivityByChronology(activities)?.id ?? null;
-}
-
-/**
  * Matches the validity rule in `deriveLatestContextWindowSnapshot` (and the
  * server's snapshot-side `dropStaleContextWindowActivities`): rows without a
  * finite, non-negative `usedTokens` are skipped during the consumer's backward
@@ -125,9 +86,6 @@ export function applyThreadDetailEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
-          ...(event.payload.changeRequest !== undefined
-            ? { changeRequest: event.payload.changeRequest }
-            : {}),
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -244,12 +202,11 @@ export function applyThreadDetailEvent(
       };
 
     // ── Thread metadata ─────────────────────────────────────────────
-    case "thread.meta-updated": {
-      const { changeRequest: _changeRequest, ...threadWithoutChangeRequest } = thread;
+    case "thread.meta-updated":
       return {
         kind: "updated",
         thread: {
-          ...(event.payload.changeRequest === null ? threadWithoutChangeRequest : thread),
+          ...thread,
           ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
           ...(event.payload.titleRegeneration !== undefined
             ? { titleRegeneration: event.payload.titleRegeneration }
@@ -261,15 +218,9 @@ export function applyThreadDetailEvent(
           ...(event.payload.worktreePath !== undefined
             ? { worktreePath: event.payload.worktreePath }
             : {}),
-          ...(event.payload.changeRequest !== undefined
-            ? event.payload.changeRequest === null
-              ? {}
-              : { changeRequest: event.payload.changeRequest }
-            : {}),
           updatedAt: event.payload.updatedAt,
         },
       };
-    }
 
     case "thread.runtime-mode-set":
       return {

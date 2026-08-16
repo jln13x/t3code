@@ -3,15 +3,13 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
-  type OrchestrationThread,
+  type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as HashMap from "effect/HashMap";
 
 import { decideOrchestrationCommand } from "./decider.ts";
-import { createEmptyCommandReadModel, type CommandReadModel } from "./commandReadModel.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 const PINNED_AT = "1969-12-30T00:00:00.000Z";
@@ -24,36 +22,39 @@ function makeReadModel(input: {
   readonly settledAt?: string | null;
   readonly snoozedUntil?: string | null;
   readonly snoozedAt?: string | null;
-}): CommandReadModel {
-  const thread: OrchestrationThread = {
-    id: ThreadId.make("thread-1"),
-    projectId: ProjectId.make("project-1"),
-    title: "Thread",
-    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-    runtimeMode: "full-access",
-    interactionMode: "default",
-    branch: null,
-    worktreePath: null,
-    latestTurn: null,
-    createdAt: NOW,
-    updatedAt: NOW,
-    archivedAt: input.archivedAt ?? null,
-    settledOverride: input.settledOverride ?? null,
-    settledAt: input.settledAt ?? (input.settledOverride === "settled" ? NOW : null),
-    snoozedUntil: input.snoozedUntil ?? null,
-    snoozedAt: input.snoozedAt ?? (input.snoozedUntil != null ? PINNED_AT : null),
-    pinnedAt: input.pinnedAt ?? null,
-    pinOrderKey: input.pinOrderKey ?? null,
-    deletedAt: null,
-    messages: [],
-    proposedPlans: [],
-    activities: [],
-    checkpoints: [],
-    session: null,
-  };
+}): OrchestrationReadModel {
   return {
-    ...createEmptyCommandReadModel(NOW),
-    threads: HashMap.make([thread.id, thread]),
+    snapshotSequence: 0,
+    projects: [],
+    threads: [
+      {
+        id: ThreadId.make("thread-1"),
+        projectId: ProjectId.make("project-1"),
+        title: "Thread",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        latestTurn: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+        archivedAt: input.archivedAt ?? null,
+        settledOverride: input.settledOverride ?? null,
+        settledAt: input.settledAt ?? (input.settledOverride === "settled" ? NOW : null),
+        snoozedUntil: input.snoozedUntil ?? null,
+        snoozedAt: input.snoozedAt ?? (input.snoozedUntil != null ? PINNED_AT : null),
+        pinnedAt: input.pinnedAt ?? null,
+        pinOrderKey: input.pinOrderKey ?? null,
+        deletedAt: null,
+        messages: [],
+        proposedPlans: [],
+        activities: [],
+        checkpoints: [],
+        session: null,
+      },
+    ],
+    updatedAt: NOW,
   };
 }
 

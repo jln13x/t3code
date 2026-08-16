@@ -5,7 +5,6 @@ import { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { mapAtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import {
   ThreadId,
-  type ChangeRequestAssociation,
   type ModelSelection,
   type ProviderInteractionMode,
   type RuntimeMode,
@@ -33,7 +32,6 @@ export function useCreateProjectThread() {
       readonly envMode: "local" | "worktree";
       readonly branch: string | null;
       readonly worktreePath: string | null;
-      readonly changeRequest?: ChangeRequestAssociation;
       readonly startFromOrigin?: boolean;
       readonly runtimeMode: RuntimeMode;
       readonly interactionMode: ProviderInteractionMode;
@@ -75,7 +73,6 @@ export function useCreateProjectThread() {
           workspaceMode: input.envMode,
           branch: input.branch,
           worktreePath: input.worktreePath,
-          ...(input.changeRequest ? { changeRequest: input.changeRequest } : {}),
           startFromOrigin: input.startFromOrigin ?? false,
           worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
         }),

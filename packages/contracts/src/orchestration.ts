@@ -22,15 +22,12 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { ChangeRequestAssociation } from "./sourceControl.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getTurnDiff: "orchestration.getTurnDiff",
-  getThreadActivities: "orchestration.getThreadActivities",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
-  replayEvents: "orchestration.replayEvents",
   searchThreads: "orchestration.searchThreads",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
@@ -372,30 +369,6 @@ export const OrchestrationLatestTurn = Schema.Struct({
 });
 export type OrchestrationLatestTurn = typeof OrchestrationLatestTurn.Type;
 
-export const ThreadContextKind = Schema.Literals(["project", "standalone"]);
-export type ThreadContextKind = typeof ThreadContextKind.Type;
-
-export const ProjectThreadContext = Schema.Struct({
-  kind: Schema.Literal("project"),
-  projectId: ProjectId,
-});
-export type ProjectThreadContext = typeof ProjectThreadContext.Type;
-
-export const StandaloneThreadContext = Schema.Struct({
-  kind: Schema.Literal("standalone"),
-});
-export type StandaloneThreadContext = typeof StandaloneThreadContext.Type;
-
-/**
- * Resource context attached to a conversation thread.
- *
- * `projectId` remains alongside this field during the additive protocol
- * transition so older clients and persisted events continue to decode. New
- * callers should use `context` as the source of truth.
- */
-export const ThreadContext = Schema.Union([ProjectThreadContext, StandaloneThreadContext]);
-export type ThreadContext = typeof ThreadContext.Type;
-
 export const ThreadTitleRegeneration = Schema.Struct({
   requestId: CommandId,
   startedAt: IsoDateTime,
@@ -404,8 +377,7 @@ export type ThreadTitleRegeneration = typeof ThreadTitleRegeneration.Type;
 
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
-  projectId: Schema.NullOr(ProjectId),
-  context: Schema.optionalKey(ThreadContext),
+  projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -414,7 +386,6 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -446,10 +417,6 @@ export const OrchestrationThread = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
   activities: Schema.Array(OrchestrationThreadActivity),
-  // The detail snapshot windows `activities` to the most recent page; this is
-  // true when older activities exist beyond the window and can be lazy-loaded
-  // via the getThreadActivities RPC. Absent on lightweight (shell) threads.
-  hasMoreActivities: Schema.optional(Schema.Boolean),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
 });
@@ -480,8 +447,7 @@ export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 
 export const OrchestrationThreadShell = Schema.Struct({
   id: ThreadId,
-  projectId: Schema.NullOr(ProjectId),
-  context: Schema.optionalKey(ThreadContext),
+  projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -490,7 +456,6 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -703,8 +668,7 @@ const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal("thread.create"),
   commandId: CommandId,
   threadId: ThreadId,
-  projectId: Schema.NullOr(ProjectId),
-  context: Schema.optionalKey(ThreadContext),
+  projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -713,7 +677,6 @@ const ThreadCreateCommand = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   createdAt: IsoDateTime,
 });
 
@@ -809,7 +772,6 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
-  changeRequest: Schema.optional(Schema.NullOr(ChangeRequestAssociation)),
 }).check(
   Schema.makeFilter(
     (input) =>
@@ -835,15 +797,13 @@ const ThreadInteractionModeSetCommand = Schema.Struct({
 });
 
 const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
-  projectId: Schema.NullOr(ProjectId),
-  context: Schema.optionalKey(ThreadContext),
+  projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   createdAt: IsoDateTime,
 });
 
@@ -1164,8 +1124,7 @@ export const ProjectDeletedPayload = Schema.Struct({
 
 export const ThreadCreatedPayload = Schema.Struct({
   threadId: ThreadId,
-  projectId: Schema.NullOr(ProjectId),
-  context: Schema.optionalKey(ThreadContext),
+  projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
@@ -1174,7 +1133,6 @@ export const ThreadCreatedPayload = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -1257,7 +1215,6 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
-  changeRequest: Schema.optional(Schema.NullOr(ChangeRequestAssociation)),
   updatedAt: IsoDateTime,
 });
 
@@ -1623,37 +1580,6 @@ export type OrchestrationGetTurnDiffInput = typeof OrchestrationGetTurnDiffInput
 export const OrchestrationGetTurnDiffResult = ThreadTurnDiff;
 export type OrchestrationGetTurnDiffResult = typeof OrchestrationGetTurnDiffResult.Type;
 
-/**
- * Cursor-paginated load of a thread's OLDER activities (lazy-load / infinite
- * scroll). Sequenced activity uses `beforeSequence`, the `sequence` of the
- * oldest activity the client currently holds. Legacy unsequenced activity uses
- * the `(beforeCreatedAt, beforeActivityId)` pair from the oldest loaded
- * activity. The server returns the page of activities immediately older than the
- * cursor (chronological ascending) plus whether any remain beyond that.
- */
-export const OrchestrationGetThreadActivitiesInput = Schema.Union([
-  Schema.Struct({
-    threadId: ThreadId,
-    beforeSequence: NonNegativeInt,
-    limit: Schema.optional(NonNegativeInt),
-  }),
-  Schema.Struct({
-    threadId: ThreadId,
-    beforeCreatedAt: IsoDateTime,
-    beforeActivityId: EventId,
-    limit: Schema.optional(NonNegativeInt),
-  }),
-]);
-export type OrchestrationGetThreadActivitiesInput =
-  typeof OrchestrationGetThreadActivitiesInput.Type;
-
-export const OrchestrationGetThreadActivitiesResult = Schema.Struct({
-  activities: Schema.Array(OrchestrationThreadActivity),
-  hasMore: Schema.Boolean,
-});
-export type OrchestrationGetThreadActivitiesResult =
-  typeof OrchestrationGetThreadActivitiesResult.Type;
-
 export const OrchestrationGetFullThreadDiffInput = Schema.Struct({
   threadId: ThreadId,
   toTurnCount: NonNegativeInt,
@@ -1663,14 +1589,6 @@ export type OrchestrationGetFullThreadDiffInput = typeof OrchestrationGetFullThr
 
 export const OrchestrationGetFullThreadDiffResult = ThreadTurnDiff;
 export type OrchestrationGetFullThreadDiffResult = typeof OrchestrationGetFullThreadDiffResult.Type;
-
-export const OrchestrationReplayEventsInput = Schema.Struct({
-  fromSequenceExclusive: NonNegativeInt,
-});
-export type OrchestrationReplayEventsInput = typeof OrchestrationReplayEventsInput.Type;
-
-const OrchestrationReplayEventsResult = Schema.Array(OrchestrationEvent);
-export type OrchestrationReplayEventsResult = typeof OrchestrationReplayEventsResult.Type;
 
 export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant"]);
 export type OrchestrationThreadSearchSource = typeof OrchestrationThreadSearchSource.Type;
@@ -1758,17 +1676,9 @@ export const OrchestrationRpcSchemas = {
     input: OrchestrationGetTurnDiffInput,
     output: OrchestrationGetTurnDiffResult,
   },
-  getThreadActivities: {
-    input: OrchestrationGetThreadActivitiesInput,
-    output: OrchestrationGetThreadActivitiesResult,
-  },
   getFullThreadDiff: {
     input: OrchestrationGetFullThreadDiffInput,
     output: OrchestrationGetFullThreadDiffResult,
-  },
-  replayEvents: {
-    input: OrchestrationReplayEventsInput,
-    output: OrchestrationReplayEventsResult,
   },
   searchThreads: {
     input: OrchestrationSearchThreadsInput,
@@ -1812,24 +1722,8 @@ export class OrchestrationGetTurnDiffError extends Schema.TaggedErrorClass<Orche
   },
 ) {}
 
-export class OrchestrationGetThreadActivitiesError extends Schema.TaggedErrorClass<OrchestrationGetThreadActivitiesError>()(
-  "OrchestrationGetThreadActivitiesError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
 export class OrchestrationGetFullThreadDiffError extends Schema.TaggedErrorClass<OrchestrationGetFullThreadDiffError>()(
   "OrchestrationGetFullThreadDiffError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
-export class OrchestrationReplayEventsError extends Schema.TaggedErrorClass<OrchestrationReplayEventsError>()(
-  "OrchestrationReplayEventsError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect()),

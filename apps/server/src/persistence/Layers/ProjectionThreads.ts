@@ -14,12 +14,11 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ChangeRequestAssociation, ModelSelection } from "@t3tools/contracts";
+import { ModelSelection } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
-    changeRequest: Schema.NullOr(Schema.fromJsonString(ChangeRequestAssociation)),
   }),
 );
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
@@ -34,14 +33,12 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         INSERT INTO projection_threads (
           thread_id,
           project_id,
-          context_kind,
           title,
           model_selection_json,
           runtime_mode,
           interaction_mode,
           branch,
           worktree_path,
-          change_request_json,
           latest_turn_id,
           created_at,
           updated_at,
@@ -63,14 +60,12 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         VALUES (
           ${row.threadId},
           ${row.projectId},
-          ${row.contextKind},
           ${row.title},
           ${JSON.stringify(row.modelSelection)},
           ${row.runtimeMode},
           ${row.interactionMode},
           ${row.branch},
           ${row.worktreePath},
-          ${row.changeRequest == null ? null : JSON.stringify(row.changeRequest)},
           ${row.latestTurnId},
           ${row.createdAt},
           ${row.updatedAt},
@@ -92,14 +87,12 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         ON CONFLICT (thread_id)
         DO UPDATE SET
           project_id = excluded.project_id,
-          context_kind = excluded.context_kind,
           title = excluded.title,
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
           branch = excluded.branch,
           worktree_path = excluded.worktree_path,
-          change_request_json = excluded.change_request_json,
           latest_turn_id = excluded.latest_turn_id,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
@@ -128,14 +121,12 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
-          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          change_request_json AS "changeRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -166,14 +157,12 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           project_id AS "projectId",
-          context_kind AS "contextKind",
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
-          change_request_json AS "changeRequest",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

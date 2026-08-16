@@ -73,7 +73,6 @@ interface BranchToolbarBranchSelectorProps {
   draftId?: DraftId;
   envLocked: boolean;
   effectiveEnvModeOverride?: "local" | "worktree";
-  activeWorktreePathOverride?: string | null;
   activeThreadBranchOverride?: string | null;
   onActiveThreadBranchOverrideChange?: (refName: string | null) => void;
   startFromOrigin: boolean;
@@ -93,7 +92,6 @@ export function BranchToolbarBranchSelector({
   draftId,
   envLocked,
   effectiveEnvModeOverride,
-  activeWorktreePathOverride,
   activeThreadBranchOverride,
   onActiveThreadBranchOverrideChange,
   startFromOrigin,
@@ -127,9 +125,9 @@ export function BranchToolbarBranchSelector({
   const serverSession = serverThread?.session ?? null;
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
 
-  const activeProjectRef = serverThread?.projectId
+  const activeProjectRef = serverThread
     ? scopeProjectRef(serverThread.environmentId, serverThread.projectId)
-    : draftThread?.projectId
+    : draftThread
       ? scopeProjectRef(draftThread.environmentId, draftThread.projectId)
       : null;
   const activeProject = useProject(activeProjectRef);
@@ -139,10 +137,7 @@ export function BranchToolbarBranchSelector({
     activeThreadBranchOverride !== undefined
       ? activeThreadBranchOverride
       : (serverThread?.branch ?? draftThread?.branch ?? null);
-  const activeWorktreePath =
-    activeWorktreePathOverride !== undefined
-      ? activeWorktreePathOverride
-      : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
+  const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const branchCwd = activeWorktreePath ?? activeProjectCwd;
   const hasServerThread = serverThread !== null;

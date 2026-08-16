@@ -587,12 +587,14 @@ export function PullRequestSummaryTab({
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
           <div className="space-y-0.5">
-            {detail.checks.map((check) => {
+            {detail.checks.map((check, index) => {
               const finding = { kind: "check", check } as const;
               const failing = check.status === "failure" || check.status === "cancelled";
               return (
                 <div
-                  key={`${check.name}:${check.url ?? ""}:${check.status}:${check.description ?? ""}`}
+                  // Position too: the host decides how many runs share a name, and a repeated
+                  // key would be a rendering fault on top of whatever the list already says.
+                  key={`${index}:${check.name}:${check.url ?? ""}`}
                   className="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/60"
                 >
                   <button

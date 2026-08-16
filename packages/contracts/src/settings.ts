@@ -26,10 +26,6 @@ export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
-export const SidebarThreadGroupingMode = Schema.Literals(["worktree", "separate"]);
-export type SidebarThreadGroupingMode = typeof SidebarThreadGroupingMode.Type;
-export const DEFAULT_SIDEBAR_THREAD_GROUPING_MODE: SidebarThreadGroupingMode = "worktree";
-
 export const SidebarProjectGroupingMode = Schema.Literals([
   "repository",
   "repository_path",
@@ -201,9 +197,6 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_SORT_ORDER)),
-  ),
-  sidebarThreadGroupingMode: SidebarThreadGroupingMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_GROUPING_MODE)),
   ),
   sidebarThreadPreviewCount: SidebarThreadPreviewCount.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT)),
@@ -557,31 +550,6 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enableStandaloneChats: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enableNativeMacSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enableMacosCompletionNotifications: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableSidebarWorktreeNavigation: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableWorktreeSourceControl: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableCheckoutAwareThreadCreation: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableForkPullRequests: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enableDurableChangeRequestStatus: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableProviderSkillDiscovery: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
-  enableTextFileAttachments: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  enableGeneratedImageRendering: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(true)),
-  ),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -745,17 +713,6 @@ export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
-  enableStandaloneChats: Schema.optionalKey(Schema.Boolean),
-  enableNativeMacSidebar: Schema.optionalKey(Schema.Boolean),
-  enableMacosCompletionNotifications: Schema.optionalKey(Schema.Boolean),
-  enableSidebarWorktreeNavigation: Schema.optionalKey(Schema.Boolean),
-  enableWorktreeSourceControl: Schema.optionalKey(Schema.Boolean),
-  enableCheckoutAwareThreadCreation: Schema.optionalKey(Schema.Boolean),
-  enableForkPullRequests: Schema.optionalKey(Schema.Boolean),
-  enableDurableChangeRequestStatus: Schema.optionalKey(Schema.Boolean),
-  enableProviderSkillDiscovery: Schema.optionalKey(Schema.Boolean),
-  enableTextFileAttachments: Schema.optionalKey(Schema.Boolean),
-  enableGeneratedImageRendering: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),
@@ -850,7 +807,6 @@ export const ClientSettingsPatch = Schema.Struct({
   ),
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
-  sidebarThreadGroupingMode: Schema.optionalKey(SidebarThreadGroupingMode),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   wordWrap: Schema.optionalKey(Schema.Boolean),

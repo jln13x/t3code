@@ -12,7 +12,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { type CommandReadModel, fromWireReadModel } from "./commandReadModel.ts";
 import { decideOrchestrationCommand } from "./decider.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -28,8 +27,8 @@ function makeReadModel(input: {
   readonly archivedAt?: string | null;
   readonly activities?: OrchestrationThread["activities"];
   readonly messages?: OrchestrationThread["messages"];
-}): CommandReadModel {
-  const wireReadModel: OrchestrationReadModel = {
+}): OrchestrationReadModel {
+  return {
     snapshotSequence: 0,
     projects: [],
     threads: [
@@ -60,7 +59,6 @@ function makeReadModel(input: {
     ],
     updatedAt: NOW,
   };
-  return fromWireReadModel(wireReadModel);
 }
 
 it.layer(NodeServices.layer)("snoozed thread decider", (it) => {

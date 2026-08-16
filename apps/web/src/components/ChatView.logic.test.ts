@@ -26,8 +26,6 @@ import {
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
-  requiresDraftProjectSelection,
-  resolveEffectiveServerThreadWorktreePath,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   scheduleEnvironmentReconnectWarning,
@@ -126,28 +124,6 @@ const readySession = {
   lastError: null,
   updatedAt: "2026-03-29T00:00:10.000Z",
 };
-
-describe("requiresDraftProjectSelection", () => {
-  it("keeps standalone local drafts available without a project", () => {
-    expect(
-      requiresDraftProjectSelection({
-        isLocalDraftThread: true,
-        projectId: null,
-        hasActiveProject: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("requires a project when a local project draft becomes orphaned", () => {
-    expect(
-      requiresDraftProjectSelection({
-        isLocalDraftThread: true,
-        projectId,
-        hasActiveProject: false,
-      }),
-    ).toBe(true);
-  });
-});
 
 describe("buildLoadingThreadFromShell", () => {
   it("preserves shell metadata and supplies empty detail collections", () => {
@@ -406,28 +382,6 @@ describe("resolveSendEnvMode", () => {
   });
 });
 
-describe("resolveEffectiveServerThreadWorktreePath", () => {
-  it("uses a pending existing-worktree selection before metadata round-trips", () => {
-    expect(
-      resolveEffectiveServerThreadWorktreePath({
-        canOverride: true,
-        persistedWorktreePath: null,
-        pendingWorktreePath: "/repo/worktrees/selected",
-      }),
-    ).toBe("/repo/worktrees/selected");
-  });
-
-  it("uses persisted metadata once overrides are locked", () => {
-    expect(
-      resolveEffectiveServerThreadWorktreePath({
-        canOverride: false,
-        persistedWorktreePath: "/repo/worktrees/persisted",
-        pendingWorktreePath: "/repo/worktrees/stale",
-      }),
-    ).toBe("/repo/worktrees/persisted");
-  });
-});
-
 describe("branchMismatchKey", () => {
   it("builds a key from thread id and both branches", () => {
     expect(branchMismatchKey("thread-1", { threadBranch: "feat/a", currentBranch: "feat/b" })).toBe(
@@ -620,8 +574,8 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         localDispatch,
         phase: "ready",
         latestTurn: completedTurn,
+        latestUserMessageId: localDispatch.latestUserMessageId,
         session: readySession,
-        projectedMessages: [],
         hasPendingApproval: false,
         hasPendingUserInput: false,
         threadError: null,
@@ -646,8 +600,8 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         localDispatch,
         phase: "ready",
         latestTurn: newerTurn,
+        latestUserMessageId: localDispatch.latestUserMessageId,
         session: { ...readySession, updatedAt: newerTurn.completedAt },
-        projectedMessages: [],
         hasPendingApproval: false,
         hasPendingUserInput: false,
         threadError: null,
@@ -673,12 +627,12 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         localDispatch,
         phase: "running",
         latestTurn: runningTurn,
+        latestUserMessageId: localDispatch.latestUserMessageId,
         session: {
           ...readySession,
           status: "running",
           activeTurnId: TurnId.make("turn-other"),
         },
-        projectedMessages: [],
         hasPendingApproval: false,
         hasPendingUserInput: false,
         threadError: null,
@@ -689,12 +643,55 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         localDispatch,
         phase: "running",
         latestTurn: runningTurn,
+        latestUserMessageId: localDispatch.latestUserMessageId,
         session: {
           ...readySession,
           status: "running",
           activeTurnId: runningTurn.turnId,
         },
-        projectedMessages: [],
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("acknowledges a steering message projected onto the current running turn", () => {
+    const runningTurn = {
+      ...completedTurn,
+      state: "running" as const,
+      completedAt: null,
+    };
+    const runningSession = {
+      ...readySession,
+      status: "running" as const,
+      activeTurnId: runningTurn.turnId,
+    };
+    const localDispatch = createLocalDispatchSnapshot(
+      makeThread({
+        latestTurn: runningTurn,
+        session: runningSession,
+        messages: [
+          {
+            id: MessageId.make("message-before-steer"),
+            role: "user",
+            text: "Initial prompt",
+            turnId: runningTurn.turnId,
+            createdAt: runningTurn.requestedAt,
+            updatedAt: runningTurn.requestedAt,
+            streaming: false,
+          },
+        ],
+      }),
+    );
+
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "running",
+        latestTurn: runningTurn,
+        latestUserMessageId: MessageId.make("message-steer"),
+        session: runningSession,
         hasPendingApproval: false,
         hasPendingUserInput: false,
         threadError: null,
@@ -708,8 +705,8 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
       localDispatch,
       phase: "ready" as const,
       latestTurn: null,
+      latestUserMessageId: localDispatch.latestUserMessageId,
       session: null,
-      projectedMessages: [],
       hasPendingApproval: false,
       hasPendingUserInput: false,
       threadError: null,
@@ -718,165 +715,5 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingApproval: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingUserInput: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, threadError: "failed" })).toBe(true);
-  });
-
-  it("acknowledges a steer when its user message is projected onto the running thread", () => {
-    const initialMessageId = MessageId.make("message-initial");
-    const steerMessageId = MessageId.make("message-steer");
-    const runningTurn = {
-      ...completedTurn,
-      state: "running" as const,
-      completedAt: null,
-    };
-    const runningSession = {
-      ...readySession,
-      status: "running" as const,
-      activeTurnId: runningTurn.turnId,
-    };
-    const localDispatch = createLocalDispatchSnapshot(
-      makeThread({
-        messages: [
-          {
-            id: initialMessageId,
-            role: "user",
-            text: "start",
-            turnId: runningTurn.turnId,
-            streaming: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-        latestTurn: runningTurn,
-        session: runningSession,
-      }),
-      { expectedUserMessageId: steerMessageId },
-    );
-
-    expect(
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: "running",
-        latestTurn: runningTurn,
-        session: runningSession,
-        projectedMessages: [
-          {
-            id: initialMessageId,
-            role: "user",
-          },
-        ],
-        hasPendingApproval: false,
-        hasPendingUserInput: false,
-        threadError: null,
-      }),
-    ).toBe(false);
-
-    expect(
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: "running",
-        latestTurn: runningTurn,
-        session: runningSession,
-        projectedMessages: [
-          {
-            id: steerMessageId,
-            role: "user",
-          },
-        ],
-        hasPendingApproval: false,
-        hasPendingUserInput: false,
-        threadError: null,
-      }),
-    ).toBe(true);
-
-    expect(
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: "running",
-        latestTurn: runningTurn,
-        session: runningSession,
-        projectedMessages: [
-          {
-            id: steerMessageId,
-            role: "user",
-          },
-          {
-            id: MessageId.make("message-other-client"),
-            role: "user",
-          },
-        ],
-        hasPendingApproval: false,
-        hasPendingUserInput: false,
-        threadError: null,
-      }),
-    ).toBe(true);
-  });
-
-  it("requires the next steer id after the previous steer was projected", () => {
-    const previousSteerMessageId = MessageId.make("message-steer");
-    const nextSteerMessageId = MessageId.make("message-next-steer");
-    const runningTurn = {
-      ...completedTurn,
-      state: "running" as const,
-      completedAt: null,
-    };
-    const runningSession = {
-      ...readySession,
-      status: "running" as const,
-      activeTurnId: runningTurn.turnId,
-    };
-    const localDispatch = createLocalDispatchSnapshot(
-      makeThread({
-        messages: [
-          {
-            id: previousSteerMessageId,
-            role: "user",
-            text: "steer",
-            turnId: runningTurn.turnId,
-            streaming: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-        latestTurn: runningTurn,
-        session: runningSession,
-      }),
-      { expectedUserMessageId: nextSteerMessageId },
-    );
-
-    expect(
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: "running",
-        latestTurn: runningTurn,
-        session: runningSession,
-        projectedMessages: [
-          {
-            id: previousSteerMessageId,
-            role: "user",
-          },
-        ],
-        hasPendingApproval: false,
-        hasPendingUserInput: false,
-        threadError: null,
-      }),
-    ).toBe(false);
-
-    expect(
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: "running",
-        latestTurn: runningTurn,
-        session: runningSession,
-        projectedMessages: [
-          {
-            id: nextSteerMessageId,
-            role: "user",
-          },
-        ],
-        hasPendingApproval: false,
-        hasPendingUserInput: false,
-        threadError: null,
-      }),
-    ).toBe(true);
   });
 });

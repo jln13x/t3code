@@ -11,7 +11,6 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
-  FlagIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -53,7 +52,6 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
-  "/settings/feature-flags": FlagIcon,
 };
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{

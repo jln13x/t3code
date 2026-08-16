@@ -1,4 +1,4 @@
-import type { ChangeRequestAssociation, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -33,11 +33,7 @@ interface PullRequestThreadDialogProps {
   cwd: string | null;
   initialReference: string | null;
   onOpenChange: (open: boolean) => void;
-  onPrepared: (input: {
-    branch: string;
-    worktreePath: string | null;
-    changeRequest: ChangeRequestAssociation;
-  }) => Promise<void> | void;
+  onPrepared: (input: { branch: string; worktreePath: string | null }) => Promise<void> | void;
 }
 
 export function PullRequestThreadDialog({
@@ -158,7 +154,6 @@ export function PullRequestThreadDialog({
       await onPrepared({
         branch: result.value.branch,
         worktreePath: result.value.worktreePath,
-        changeRequest: result.value.changeRequest,
       });
       onOpenChange(false);
     },

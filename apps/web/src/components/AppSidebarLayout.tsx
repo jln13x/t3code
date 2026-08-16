@@ -14,16 +14,11 @@ import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalSt
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import {
-  useEnvironmentIdentificationMode,
-  usePrimarySettings,
-  useLegacySidebarEnabled,
-} from "../hooks/useSettings";
+import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { resolveThreadSidebarPresentation } from "./AppSidebarLayout.logic";
 import {
   resolveSidebarStageFocusRingOffsetClass,
   useSidebarStageBackdropVariant,
@@ -33,6 +28,8 @@ import {
   resolveInitialThreadSidebarWidth,
   resolveThreadSidebarMaximumWidth,
   THREAD_MAIN_CONTENT_MIN_WIDTH,
+  THREAD_SIDEBAR_MIN_WIDTH,
+  THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
 import {
   Sidebar,
@@ -55,23 +52,15 @@ function readViewportWidth(): number {
   return window.innerWidth;
 }
 
-function readInitialThreadSidebarWidth(input: {
-  readonly defaultWidth: string;
-  readonly minWidth: number;
-  readonly storageKey: string;
-}): number {
+function readInitialThreadSidebarWidth(): number {
   try {
     return resolveInitialThreadSidebarWidth(
-      getLocalStorageItem(input.storageKey, Schema.Finite),
+      getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite),
       window.innerWidth,
-      { defaultWidth: Number.parseFloat(input.defaultWidth) * 16, minimumWidth: input.minWidth },
     );
   } catch (error) {
     console.error("Could not read persisted thread sidebar width.", error);
-    return resolveInitialThreadSidebarWidth(null, window.innerWidth, {
-      defaultWidth: Number.parseFloat(input.defaultWidth) * 16,
-      minimumWidth: input.minWidth,
-    });
+    return resolveInitialThreadSidebarWidth(null, window.innerWidth);
   }
 }
 
@@ -149,35 +138,25 @@ function ProjectProjectionRetention() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const enableNativeMacSidebar = usePrimarySettings((settings) => settings.enableNativeMacSidebar);
   const legacySidebarEnabled = useLegacySidebarEnabled();
+  // Settings routes show the settings nav in place of whichever thread
+  // sidebar is active.
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const sidebarPresentation = resolveThreadSidebarPresentation(enableNativeMacSidebar);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
-  const [sidebarWidth, setSidebarWidth] = useState(() =>
-    readInitialThreadSidebarWidth(sidebarPresentation),
-  );
+  const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
   // and a clamped drag ends with an unchanged width, which skips the re-render
   // that would otherwise refresh a render-time snapshot.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
-  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(
-    viewportWidth,
-    sidebarPresentation.minWidth,
-  );
+  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth);
   const resetSidebarWidth = () => {
     try {
-      removeLocalStorageItem(sidebarPresentation.storageKey);
+      removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
     } catch (error) {
       console.error("Could not clear persisted thread sidebar width.", error);
     }
-    setSidebarWidth(
-      resolveInitialThreadSidebarWidth(null, viewportWidth, {
-        defaultWidth: Number.parseFloat(sidebarPresentation.defaultWidth) * 16,
-        minimumWidth: sidebarPresentation.minWidth,
-      }),
-    );
+    setSidebarWidth(resolveInitialThreadSidebarWidth(null, viewportWidth));
   };
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
@@ -236,19 +215,14 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         side="left"
         collapsible="offcanvas"
         data-app-sidebar=""
-        data-sidebar-version={enableNativeMacSidebar ? "v1" : "v2"}
-        className={
-          enableNativeMacSidebar
-            ? sidebarPresentation.className
-            : "app-sidebar border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-        }
+        className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
         resizable={{
           maxWidth: sidebarMaximumWidth,
-          minWidth: sidebarPresentation.minWidth,
+          minWidth: THREAD_SIDEBAR_MIN_WIDTH,
           shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
             nextWidth <= currentWidth ||
             wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: sidebarPresentation.storageKey,
+          storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
           onResize: setSidebarWidth,
         }}
       >
@@ -257,7 +231,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <SidebarChromeHeader isElectron={isElectron} />
             <SettingsSidebarNav pathname={pathname} />
           </>
-        ) : enableNativeMacSidebar || legacySidebarEnabled ? (
+        ) : legacySidebarEnabled ? (
           <LegacyThreadSidebar />
         ) : (
           <ThreadSidebar />

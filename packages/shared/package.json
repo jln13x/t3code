@@ -203,10 +203,6 @@
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
     },
-    "./threadContext": {
-      "types": "./src/threadContext.ts",
-      "import": "./src/threadContext.ts"
-    },
     "./hostProcess": {
       "types": "./src/hostProcess.ts",
       "import": "./src/hostProcess.ts"
@@ -214,10 +210,6 @@
     "./httpReadiness": {
       "types": "./src/httpReadiness.ts",
       "import": "./src/httpReadiness.ts"
-    },
-    "./providerError": {
-      "types": "./src/providerError.ts",
-      "import": "./src/providerError.ts"
     },
     "./devHome": {
       "types": "./src/devHome.ts",

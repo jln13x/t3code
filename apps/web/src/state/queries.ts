@@ -9,20 +9,17 @@ import {
   type EnvironmentThreadSearchMatch,
 } from "@t3tools/client-runtime/state/thread-search";
 import { type VcsRefTarget } from "@t3tools/client-runtime/state/vcs";
-import {
-  type EnvironmentId,
-  type OrchestrationThread,
-  type ProjectContentMatch,
-  type ProjectEntryKind,
-  type ProviderInstanceId,
-  ServerProviderSkillsUnsupportedError,
-  type ThreadId,
-  type VcsListRefsResult,
-  type VcsRef,
+import type {
+  EnvironmentId,
+  OrchestrationThread,
+  ProjectContentMatch,
+  ProjectEntryKind,
+  ThreadId,
+  VcsListRefsResult,
+  VcsRef,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -43,7 +40,6 @@ const VCS_REF_LIST_LIMIT = 100;
 const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
 const EMPTY_CONTENT_MATCHES: ReadonlyArray<ProjectContentMatch> = [];
 const INITIAL_BRANCH_CURSORS = [undefined] as const;
-const isProviderSkillsUnsupportedError = Schema.is(ServerProviderSkillsUnsupportedError);
 const EMPTY_THREAD_SEARCH_MATCHES: ReadonlyArray<EnvironmentThreadSearchMatch> = Object.freeze([]);
 const EMPTY_THREAD_SEARCH_ATOM = Atom.make({
   matches: EMPTY_THREAD_SEARCH_MATCHES,
@@ -239,25 +235,6 @@ export function usePaginatedBranches(target: VcsRefTarget) {
   };
 }
 
-export function useAllBranches(target: VcsRefTarget) {
-  const state = usePaginatedBranches(target);
-  const nextCursor = state.data?.nextCursor;
-
-  useEffect(() => {
-    if (
-      state.isPending ||
-      state.error !== null ||
-      nextCursor === null ||
-      nextCursor === undefined
-    ) {
-      return;
-    }
-    state.loadNext();
-  }, [nextCursor, state.error, state.isPending, state.loadNext]);
-
-  return state;
-}
-
 type ProjectPathSearchTarget = ComposerPathSearchTarget & {
   readonly kind?: ProjectEntryKind | undefined;
   readonly imageOnly?: boolean | undefined;
@@ -323,29 +300,6 @@ export function useProjectPathSearch(
 
 export function useComposerPathSearch(target: ComposerPathSearchTarget) {
   return useProjectPathSearch(target, COMPOSER_PATH_SEARCH_LIMIT);
-}
-
-export function useProviderSkills(target: {
-  readonly environmentId: EnvironmentId | null;
-  readonly instanceId: ProviderInstanceId | null;
-  readonly cwd: string | null;
-  readonly enabled: boolean;
-}) {
-  const result = useEnvironmentQuery(
-    target.enabled &&
-      target.environmentId !== null &&
-      target.instanceId !== null &&
-      target.cwd !== null
-      ? projectEnvironment.listProviderSkills({
-          environmentId: target.environmentId,
-          input: { instanceId: target.instanceId, cwd: target.cwd },
-        })
-      : null,
-  );
-  return {
-    ...result,
-    isUnsupported: result.failure !== null && isProviderSkillsUnsupportedError(result.failure),
-  };
 }
 
 interface ProjectContentSearchTarget {

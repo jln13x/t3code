@@ -49,7 +49,7 @@ import {
   formatFileCommentRange,
   nextFileCommentId,
   normalizeFileCommentRange,
-  reconcileFileCommentAnnotations,
+  remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
@@ -446,8 +446,6 @@ function EditableFileSurface({
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
   const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
-  const lineAnnotationsRef = useRef(lineAnnotations);
-  lineAnnotationsRef.current = lineAnnotations;
   const [selectionOverride, setSelectionOverride] = useState<FileSelectionOverride | null>(null);
   const selectedRange =
     selectionOverride?.revealRequestId === revealRequestId ? selectionOverride.range : null;
@@ -474,14 +472,10 @@ function EditableFileSurface({
           setProjectFileQueryData(environmentId, cwd, relativePath, file.contents);
           saveCoordinator.change(file.contents);
           if (nextLineAnnotations) {
-            const remapped = reconcileFileCommentAnnotations(
-              lineAnnotationsRef.current,
+            const remapped = remapFileCommentAnnotations(
               nextLineAnnotations as FileCommentLineAnnotation[],
             );
-            if (remapped !== lineAnnotationsRef.current) {
-              lineAnnotationsRef.current = remapped;
-              setLineAnnotations(remapped);
-            }
+            setLineAnnotations(remapped);
             for (const annotation of remapped) {
               for (const entry of annotation.metadata.entries) {
                 if (entry.kind !== "comment") continue;

@@ -26,8 +26,6 @@ import {
   GitCommandError,
   VcsCreateRefInput,
   VcsCreateRefResult,
-  VcsRenameBranchInput,
-  VcsRenameBranchResult,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
   VcsInitInput,
@@ -43,7 +41,6 @@ import {
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
   VcsStatusInput,
-  VcsPathsInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "./git.ts";
@@ -62,14 +59,10 @@ import {
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetSnapshotError,
-  OrchestrationGetThreadActivitiesError,
-  OrchestrationGetThreadActivitiesInput,
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
   OrchestrationGetTurnDiffError,
   OrchestrationGetTurnDiffInput,
-  OrchestrationReplayEventsError,
-  OrchestrationReplayEventsInput,
   OrchestrationRpcSchemas,
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
@@ -165,10 +158,6 @@ import {
   ServerRemoveKeybindingInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
-  ServerProviderSkillsError,
-  ServerProviderSkillsUnsupportedError,
-  ServerProviderSkillsInput,
-  ServerProviderSkillsResult,
   ServerSelfUpdateError,
   ServerSelfUpdateInput,
   ServerSelfUpdateProgressEvent,
@@ -213,9 +202,6 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
-  // Provider metadata methods
-  serverListProviderSkills: "server.listProviderSkills",
-
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -226,14 +212,10 @@ export const WS_METHODS = {
   // VCS methods
   vcsPull: "vcs.pull",
   vcsRefreshStatus: "vcs.refreshStatus",
-  vcsStagePaths: "vcs.stagePaths",
-  vcsUnstagePaths: "vcs.unstagePaths",
-  vcsDiscardPaths: "vcs.discardPaths",
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
   vcsCreateRef: "vcs.createRef",
-  vcsRenameBranch: "vcs.renameBranch",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
 
@@ -366,16 +348,6 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   }),
   success: ServerProviderUpdatedPayload,
   error: EnvironmentAuthorizationError,
-});
-
-export const WsServerListProviderSkillsRpc = Rpc.make(WS_METHODS.serverListProviderSkills, {
-  payload: ServerProviderSkillsInput,
-  success: ServerProviderSkillsResult,
-  error: Schema.Union([
-    ServerProviderSkillsError,
-    ServerProviderSkillsUnsupportedError,
-    EnvironmentAuthorizationError,
-  ]),
 });
 
 export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
@@ -703,21 +675,6 @@ export const WsVcsRefreshStatusRpc = Rpc.make(WS_METHODS.vcsRefreshStatus, {
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
-export const WsVcsStagePathsRpc = Rpc.make(WS_METHODS.vcsStagePaths, {
-  payload: VcsPathsInput,
-  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
-export const WsVcsUnstagePathsRpc = Rpc.make(WS_METHODS.vcsUnstagePaths, {
-  payload: VcsPathsInput,
-  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
-export const WsVcsDiscardPathsRpc = Rpc.make(WS_METHODS.vcsDiscardPaths, {
-  payload: VcsPathsInput,
-  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
 export const WsGitRunStackedActionRpc = Rpc.make(WS_METHODS.gitRunStackedAction, {
   payload: GitRunStackedActionInput,
   success: GitActionProgressEvent,
@@ -758,12 +715,6 @@ export const WsVcsCreateRefRpc = Rpc.make(WS_METHODS.vcsCreateRef, {
   payload: VcsCreateRefInput,
   success: VcsCreateRefResult,
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
-export const WsVcsRenameBranchRpc = Rpc.make(WS_METHODS.vcsRenameBranch, {
-  payload: VcsRenameBranchInput,
-  success: VcsRenameBranchResult,
-  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
 export const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
@@ -932,15 +883,6 @@ export const WsOrchestrationGetTurnDiffRpc = Rpc.make(ORCHESTRATION_WS_METHODS.g
   error: Schema.Union([OrchestrationGetTurnDiffError, EnvironmentAuthorizationError]),
 });
 
-export const WsOrchestrationGetThreadActivitiesRpc = Rpc.make(
-  ORCHESTRATION_WS_METHODS.getThreadActivities,
-  {
-    payload: OrchestrationGetThreadActivitiesInput,
-    success: OrchestrationRpcSchemas.getThreadActivities.output,
-    error: Schema.Union([OrchestrationGetThreadActivitiesError, EnvironmentAuthorizationError]),
-  },
-);
-
 export const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.getFullThreadDiff,
   {
@@ -949,12 +891,6 @@ export const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(
     error: Schema.Union([OrchestrationGetFullThreadDiffError, EnvironmentAuthorizationError]),
   },
 );
-
-export const WsOrchestrationReplayEventsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.replayEvents, {
-  payload: OrchestrationReplayEventsInput,
-  success: OrchestrationRpcSchemas.replayEvents.output,
-  error: Schema.Union([OrchestrationReplayEventsError, EnvironmentAuthorizationError]),
-});
 
 export const WsOrchestrationSearchThreadsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.searchThreads, {
   payload: OrchestrationSearchThreadsInput,
@@ -1040,7 +976,6 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
-  WsServerListProviderSkillsRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsServerUpdateServerRpc,
@@ -1092,9 +1027,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
-  WsVcsStagePathsRpc,
-  WsVcsUnstagePathsRpc,
-  WsVcsDiscardPathsRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
@@ -1102,7 +1034,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
-  WsVcsRenameBranchRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
@@ -1136,9 +1067,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
-  WsOrchestrationGetThreadActivitiesRpc,
   WsOrchestrationGetFullThreadDiffRpc,
-  WsOrchestrationReplayEventsRpc,
   WsOrchestrationSearchThreadsRpc,
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,

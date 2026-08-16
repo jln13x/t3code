@@ -7,8 +7,6 @@ import {
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as HashMap from "effect/HashMap";
-import * as Option from "effect/Option";
 
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
 
@@ -35,9 +33,6 @@ function makeEvent(input: {
 it.effect("projects settled lifecycle events", () =>
   Effect.gen(function* () {
     const now = "2026-01-01T00:00:00.000Z";
-    const threadId = ThreadId.make("thread-1");
-    const getThread = (threads: ReturnType<typeof createEmptyReadModel>["threads"]) =>
-      Option.getOrUndefined(HashMap.get(threads, threadId));
     const created = yield* projectEvent(
       createEmptyReadModel(now),
       makeEvent({
@@ -65,8 +60,8 @@ it.effect("projects settled lifecycle events", () =>
         payload: { threadId: ThreadId.make("thread-1"), settledAt: now, updatedAt: now },
       }),
     );
-    expect(getThread(settled.threads)?.settledOverride).toBe("settled");
-    expect(getThread(settled.threads)?.settledAt).toBe(now);
+    expect(settled.threads[0]?.settledOverride).toBe("settled");
+    expect(settled.threads[0]?.settledAt).toBe(now);
 
     const userUnsettled = yield* projectEvent(
       settled,
@@ -76,8 +71,8 @@ it.effect("projects settled lifecycle events", () =>
         payload: { threadId: ThreadId.make("thread-1"), reason: "user", updatedAt: now },
       }),
     );
-    expect(getThread(userUnsettled.threads)?.settledOverride).toBe("active");
-    expect(getThread(userUnsettled.threads)?.settledAt).toBeNull();
+    expect(userUnsettled.threads[0]?.settledOverride).toBe("active");
+    expect(userUnsettled.threads[0]?.settledAt).toBeNull();
 
     const activityUnsettled = yield* projectEvent(
       userUnsettled,
@@ -87,7 +82,7 @@ it.effect("projects settled lifecycle events", () =>
         payload: { threadId: ThreadId.make("thread-1"), reason: "activity", updatedAt: now },
       }),
     );
-    expect(getThread(activityUnsettled.threads)?.settledOverride).toBeNull();
-    expect(getThread(activityUnsettled.threads)?.settledAt).toBeNull();
+    expect(activityUnsettled.threads[0]?.settledOverride).toBeNull();
+    expect(activityUnsettled.threads[0]?.settledAt).toBeNull();
   }),
 );

@@ -160,7 +160,7 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
     yield* driver.listRefs({ cwd });
 
     assert.deepStrictEqual(commands, [
-      { args: ["status", "--porcelain=2", "--branch", "--untracked-files=all"], lcAll: "C" },
+      { args: ["status", "--porcelain=2", "--branch"], lcAll: "C" },
       { args: ["rev-parse", "--abbrev-ref", "HEAD"], lcAll: "C" },
       { args: ["rev-parse", "--git-common-dir"], lcAll: "C" },
     ]);

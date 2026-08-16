@@ -1,8 +1,6 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
-  ChangeRequestAssociation,
-  type ChangeRequestAssociation as ChangeRequestAssociationType,
   defaultInstanceIdForDriver,
   type EnvironmentId,
   ModelSelection,
@@ -58,7 +56,6 @@ import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewC
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
-const isChangeRequestAssociation = Schema.is(ChangeRequestAssociation);
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
 const COMPOSER_DRAFT_STORAGE_VERSION = 8;
@@ -211,14 +208,13 @@ type LegacyPersistedComposerDraftStoreState = PersistedComposerDraftStoreState &
 const PersistedDraftThreadState = Schema.Struct({
   threadId: ThreadId,
   environmentId: Schema.String,
-  projectId: Schema.NullOr(ProjectId),
+  projectId: ProjectId,
   logicalProjectKey: Schema.optionalKey(Schema.String),
   createdAt: Schema.String,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
-  changeRequest: Schema.optionalKey(ChangeRequestAssociation),
   envMode: DraftThreadEnvModeSchema,
   startFromOrigin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   promotedTo: Schema.optionalKey(
@@ -316,14 +312,13 @@ export function composerDraftHasUserContent(
 export interface DraftSessionState {
   threadId: ThreadId;
   environmentId: EnvironmentId;
-  projectId: ProjectId | null;
+  projectId: ProjectId;
   logicalProjectKey: string;
   createdAt: string;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
   branch: string | null;
   worktreePath: string | null;
-  changeRequest?: ChangeRequestAssociationType;
   envMode: DraftThreadEnvMode;
   startFromOrigin: boolean;
   promotedTo?: ScopedThreadRef | null;
@@ -334,9 +329,8 @@ export type DraftThreadState = DraftSessionState;
 /**
  * Draft session metadata paired with its stable draft-session identity.
  */
-interface ProjectDraftSession extends Omit<DraftSessionState, "projectId"> {
+interface ProjectDraftSession extends DraftSessionState {
   draftId: DraftId;
-  projectId: ProjectId;
 }
 
 /**
@@ -386,7 +380,6 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
-      changeRequest?: ChangeRequestAssociationType | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
@@ -402,21 +395,9 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
-      changeRequest?: ChangeRequestAssociationType | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
-      runtimeMode?: RuntimeMode;
-      interactionMode?: ProviderInteractionMode;
-    },
-  ) => void;
-  /** Creates a standalone draft session that is promoted on first send. */
-  setStandaloneDraftThreadId: (
-    environmentId: EnvironmentId,
-    draftId: DraftId,
-    options?: {
-      threadId?: ThreadId;
-      createdAt?: string;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
     },
@@ -427,7 +408,6 @@ interface ComposerDraftStoreState {
     options: {
       branch?: string | null;
       worktreePath?: string | null;
-      changeRequest?: ChangeRequestAssociationType | null;
       projectRef?: ScopedProjectRef;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
@@ -1372,14 +1352,10 @@ function isComposerThreadKeyInUse(mappings: Record<string, string>, threadKey: s
 function toProjectDraftSession(
   draftId: DraftId,
   draftSession: DraftSessionState,
-): ProjectDraftSession | null {
-  if (draftSession.projectId === null) {
-    return null;
-  }
+): ProjectDraftSession {
   return {
     draftId,
     ...draftSession,
-    projectId: draftSession.projectId,
   };
 }
 
@@ -1392,7 +1368,6 @@ function createDraftThreadState(
     threadId?: ThreadId;
     branch?: string | null;
     worktreePath?: string | null;
-    changeRequest?: ChangeRequestAssociationType | null;
     createdAt?: string;
     envMode?: DraftThreadEnvMode;
     startFromOrigin?: boolean;
@@ -1420,14 +1395,6 @@ function createDraftThreadState(
         ? null
         : (existingThread?.branch ?? null)
       : (options.branch ?? null);
-  const nextChangeRequest =
-    options?.changeRequest === undefined
-      ? projectChanged ||
-        options?.startFromOrigin === true ||
-        (options?.branch !== undefined && nextBranch !== existingThread?.branch)
-        ? undefined
-        : existingThread?.changeRequest
-      : (options.changeRequest ?? undefined);
   const nextStartFromOrigin =
     options?.startFromOrigin === undefined
       ? (existingThread?.startFromOrigin ?? false)
@@ -1443,7 +1410,6 @@ function createDraftThreadState(
       options?.interactionMode ?? existingThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
-    ...(nextChangeRequest ? { changeRequest: nextChangeRequest } : {}),
     envMode:
       options?.envMode ?? (nextWorktreePath ? "worktree" : (existingThread?.envMode ?? "local")),
     startFromOrigin: nextStartFromOrigin,
@@ -1477,7 +1443,6 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.interactionMode === right.interactionMode &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
-    Equal.equals(left.changeRequest, right.changeRequest) &&
     left.envMode === right.envMode &&
     left.startFromOrigin === right.startFromOrigin &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
@@ -1592,30 +1557,21 @@ function normalizePersistedDraftThreads(
               promotedToRecord.threadId as ThreadId,
             )
           : null;
-      if (
-        (projectId !== null && (typeof projectId !== "string" || projectId.length === 0)) ||
-        environmentId === undefined
-      ) {
+      if (typeof projectId !== "string" || projectId.length === 0 || environmentId === undefined) {
         continue;
       }
       const normalizedEnvironmentId = environmentId as EnvironmentId;
-      const normalizedProjectId = projectId === null ? null : (projectId as ProjectId);
-      const changeRequest = isChangeRequestAssociation(candidateDraftThread.changeRequest)
-        ? candidateDraftThread.changeRequest
-        : undefined;
       draftThreadsByThreadKey[threadKey] = {
         threadId,
         environmentId: normalizedEnvironmentId,
-        projectId: normalizedProjectId,
+        projectId: projectId as ProjectId,
         logicalProjectKey:
           typeof candidateDraftThread.logicalProjectKey === "string" &&
           candidateDraftThread.logicalProjectKey.length > 0
             ? candidateDraftThread.logicalProjectKey
-            : normalizedProjectId === null
-              ? `standalone:${normalizedEnvironmentId}:${threadKey}`
-              : parsedThreadRef
-                ? projectDraftKey(scopeProjectRef(normalizedEnvironmentId, normalizedProjectId))
-                : threadKeyOrId,
+            : parsedThreadRef
+              ? projectDraftKey(scopeProjectRef(normalizedEnvironmentId, projectId as ProjectId))
+              : threadKeyOrId,
         createdAt:
           typeof createdAt === "string" && createdAt.length > 0
             ? createdAt
@@ -1630,7 +1586,6 @@ function normalizePersistedDraftThreads(
             : DEFAULT_INTERACTION_MODE,
         branch: typeof branch === "string" ? branch : null,
         worktreePath: normalizedWorktreePath,
-        ...(changeRequest ? { changeRequest } : {}),
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         startFromOrigin,
         promotedTo,
@@ -2269,22 +2224,17 @@ function toHydratedDraftThreadState(
     projectId: persistedDraftThread.projectId,
     logicalProjectKey:
       persistedDraftThread.logicalProjectKey ??
-      (persistedDraftThread.projectId === null
-        ? `standalone:${persistedDraftThread.environmentId}:${persistedDraftThread.threadId}`
-        : projectDraftKey(
-            scopeProjectRef(
-              persistedDraftThread.environmentId as EnvironmentId,
-              persistedDraftThread.projectId,
-            ),
-          )),
+      projectDraftKey(
+        scopeProjectRef(
+          persistedDraftThread.environmentId as EnvironmentId,
+          persistedDraftThread.projectId,
+        ),
+      ),
     createdAt: persistedDraftThread.createdAt,
     runtimeMode: persistedDraftThread.runtimeMode,
     interactionMode: persistedDraftThread.interactionMode,
     branch: persistedDraftThread.branch,
     worktreePath: persistedDraftThread.worktreePath,
-    ...(persistedDraftThread.changeRequest
-      ? { changeRequest: persistedDraftThread.changeRequest }
-      : {}),
     envMode: persistedDraftThread.envMode,
     startFromOrigin: persistedDraftThread.startFromOrigin,
     promotedTo: persistedDraftThread.promotedTo
@@ -2463,38 +2413,6 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             options,
           );
         },
-        setStandaloneDraftThreadId: (environmentId, draftId, options) => {
-          if (environmentId.length === 0 || draftId.length === 0) {
-            return;
-          }
-          set((state) => {
-            const existing = state.draftThreadsByThreadKey[draftId];
-            const nextDraftThread: DraftThreadState = {
-              threadId: options?.threadId ?? existing?.threadId ?? ThreadId.make(draftId),
-              environmentId,
-              projectId: null,
-              logicalProjectKey: `standalone:${environmentId}:${draftId}`,
-              createdAt: options?.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
-              runtimeMode: options?.runtimeMode ?? existing?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-              interactionMode:
-                options?.interactionMode ?? existing?.interactionMode ?? DEFAULT_INTERACTION_MODE,
-              branch: null,
-              worktreePath: null,
-              envMode: "local",
-              startFromOrigin: false,
-              promotedTo: null,
-            };
-            if (draftThreadsEqual(existing, nextDraftThread)) {
-              return state;
-            }
-            return {
-              draftThreadsByThreadKey: {
-                ...state.draftThreadsByThreadKey,
-                [draftId]: nextDraftThread,
-              },
-            };
-          });
-        },
         setDraftThreadContext: (threadRef, options) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) {
@@ -2505,11 +2423,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             if (!existing) {
               return state;
             }
-            const nextEnvironmentId = options.projectRef?.environmentId ?? existing.environmentId;
-            const nextProjectId = options.projectRef?.projectId ?? existing.projectId;
+            const nextProjectRef = options.projectRef ?? {
+              environmentId: existing.environmentId,
+              projectId: existing.projectId,
+            };
             if (
-              (nextProjectId !== null && nextProjectId.length === 0) ||
-              nextEnvironmentId.length === 0
+              nextProjectRef.projectId.length === 0 ||
+              nextProjectRef.environmentId.length === 0
             ) {
               return state;
             }
@@ -2517,7 +2437,8 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             // drops machine-specific context (branch, worktree path) but
             // keeps the user's env mode and start-from-origin intent.
             const projectChanged =
-              nextEnvironmentId !== existing.environmentId || nextProjectId !== existing.projectId;
+              nextProjectRef.environmentId !== existing.environmentId ||
+              nextProjectRef.projectId !== existing.projectId;
             const nextWorktreePath =
               options.worktreePath === undefined
                 ? projectChanged
@@ -2530,22 +2451,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                   ? null
                   : existing.branch
                 : (options.branch ?? null);
-            const nextChangeRequest =
-              options.changeRequest === undefined
-                ? projectChanged ||
-                  options.startFromOrigin === true ||
-                  (options.branch !== undefined && nextBranch !== existing.branch)
-                  ? undefined
-                  : existing.changeRequest
-                : (options.changeRequest ?? undefined);
             const nextStartFromOrigin =
               options.startFromOrigin === undefined
                 ? existing.startFromOrigin
                 : options.startFromOrigin;
             const nextDraftThread: DraftThreadState = {
               threadId: existing.threadId,
-              environmentId: nextEnvironmentId,
-              projectId: nextProjectId,
+              environmentId: nextProjectRef.environmentId,
+              projectId: nextProjectRef.projectId,
               logicalProjectKey: existing.logicalProjectKey,
               createdAt:
                 options.createdAt === undefined
@@ -2555,7 +2468,6 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               interactionMode: options.interactionMode ?? existing.interactionMode,
               branch: nextBranch,
               worktreePath: nextWorktreePath,
-              ...(nextChangeRequest ? { changeRequest: nextChangeRequest } : {}),
               envMode:
                 options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local")),
               startFromOrigin: nextStartFromOrigin,
@@ -2570,7 +2482,6 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.interactionMode === existing.interactionMode &&
               nextDraftThread.branch === existing.branch &&
               nextDraftThread.worktreePath === existing.worktreePath &&
-              Equal.equals(nextDraftThread.changeRequest, existing.changeRequest) &&
               nextDraftThread.envMode === existing.envMode &&
               nextDraftThread.startFromOrigin === existing.startFromOrigin &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);

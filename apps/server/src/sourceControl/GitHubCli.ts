@@ -1,18 +1,12 @@
 import * as Context from "effect/Context";
-import * as Cache from "effect/Cache";
-import type * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import {
   TrimmedNonEmptyString,
-  type ChangeRequestState,
   type SourceControlRepositoryVisibility,
   type VcsError,
 } from "@t3tools/contracts";
@@ -24,54 +18,6 @@ import {
 } from "./gitHubPullRequests.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const BASE_REPOSITORY_CACHE_CAPACITY = 2_048;
-const BASE_REPOSITORY_CACHE_TTL = Duration.seconds(5);
-
-interface PullRequestRepositoryContext {
-  readonly baseRepository: string;
-  readonly headRepository: string;
-}
-
-interface GitHubRepositoryCoordinate {
-  readonly host: string;
-  readonly owner: string;
-  readonly name: string;
-}
-
-function parseGitHubRepositoryCoordinate(
-  repository: string,
-): GitHubRepositoryCoordinate | undefined {
-  const parts = repository.split("/").filter((part) => part.length > 0);
-  if (parts.length !== 3) return undefined;
-  const [host, owner, name] = parts;
-  return host && owner && name ? { host, owner, name } : undefined;
-}
-
-function ownerLoginFromRepository(repository: string): string | undefined {
-  const parts = repository.split("/").filter((part) => part.length > 0);
-  if (parts.length >= 3) {
-    return parts[parts.length - 2];
-  }
-  if (parts.length === 2) {
-    return parts[0];
-  }
-  return undefined;
-}
-
-function qualifyPullRequestHead(
-  context: PullRequestRepositoryContext,
-  headSelector: string,
-): string {
-  if (
-    context.baseRepository.toLowerCase() === context.headRepository.toLowerCase() ||
-    /^[^:\s]+:.+$/u.test(headSelector)
-  ) {
-    return headSelector;
-  }
-
-  const owner = ownerLoginFromRepository(context.headRepository);
-  return owner ? `${owner}:${headSelector}` : headSelector;
-}
 
 const gitHubCliFailureFields = {
   command: Schema.Literal("gh"),
@@ -144,22 +90,6 @@ export class GitHubCliCommandError extends Schema.TaggedErrorClass<GitHubCliComm
   }
 }
 
-export class GitHubRepositoryContextDecodeError extends Schema.TaggedErrorClass<GitHubRepositoryContextDecodeError>()(
-  "GitHubRepositoryContextDecodeError",
-  {
-    command: Schema.Literal("gh"),
-    cwd: Schema.String,
-  },
-) {
-  get detail(): string {
-    return "GitHub CLI returned invalid pull request repository context.";
-  }
-
-  override get message(): string {
-    return `GitHub CLI failed in resolvePullRequestRepositoryContext: ${this.detail}`;
-  }
-}
-
 const gitHubCliDecodeFields = {
   command: Schema.Literal("gh"),
   cwd: Schema.String,
@@ -175,7 +105,7 @@ export class GitHubPullRequestListDecodeError extends Schema.TaggedErrorClass<Gi
   }
 
   override get message(): string {
-    return `GitHub CLI failed in listPullRequests: ${this.detail}`;
+    return `GitHub CLI failed in listOpenPullRequests: ${this.detail}`;
   }
 }
 
@@ -224,7 +154,6 @@ export const GitHubCliError = Schema.Union([
   GitHubCliRateLimitError,
   GitHubPullRequestNotFoundError,
   GitHubCliCommandError,
-  GitHubRepositoryContextDecodeError,
   GitHubPullRequestListDecodeError,
   GitHubChangeRequestListDecodeError,
   GitHubPullRequestDecodeError,
@@ -273,7 +202,6 @@ export interface GitHubPullRequestSummary {
   readonly baseRefName: string;
   readonly headRefName: string;
   readonly state?: "open" | "closed" | "merged";
-  readonly updatedAt?: Option.Option<DateTime.Utc>;
   readonly isCrossRepository?: boolean;
   readonly headRepositoryNameWithOwner?: string | null;
   readonly headRepositoryOwnerLogin?: string | null;
@@ -297,27 +225,20 @@ export class GitHubCli extends Context.Service<
       readonly maxOutputBytes?: number;
     }) => Effect.Effect<VcsProcess.VcsProcessOutput, GitHubCliError>;
 
-    readonly listPullRequests: (input: {
+    readonly listOpenPullRequests: (input: {
       readonly cwd: string;
       readonly headSelector: string;
-      readonly state: ChangeRequestState | "all";
       readonly limit?: number;
-      readonly repository?: string;
     }) => Effect.Effect<ReadonlyArray<GitHubPullRequestSummary>, GitHubCliError>;
 
     readonly getPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
-      readonly repository?: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
       readonly repository: string;
-    }) => Effect.Effect<GitHubRepositoryCloneUrls, GitHubCliError>;
-
-    readonly getPullRequestBaseRepositoryCloneUrls: (input: {
-      readonly cwd: string;
     }) => Effect.Effect<GitHubRepositoryCloneUrls, GitHubCliError>;
 
     readonly createRepository: (input: {
@@ -332,19 +253,16 @@ export class GitHubCli extends Context.Service<
       readonly headSelector: string;
       readonly title: string;
       readonly bodyFile: string;
-      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
 
     readonly getDefaultBranch: (input: {
       readonly cwd: string;
-      readonly repository?: string;
     }) => Effect.Effect<string | null, GitHubCliError>;
 
     readonly checkoutPullRequest: (input: {
       readonly cwd: string;
       readonly reference: string;
       readonly force?: boolean;
-      readonly repository?: string;
     }) => Effect.Effect<void, GitHubCliError>;
   }
 >()("t3/sourceControl/GitHubCli") {}
@@ -421,89 +339,24 @@ export const make = Effect.gen(function* () {
       })
       .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error)));
 
-  const pullRequestRepositoryContextCache = yield* Cache.makeWith(
-    (cwd: string) =>
-      execute({
-        cwd,
-        args: [
-          "repo",
-          "view",
-          "--json",
-          "nameWithOwner,parent,url",
-          "--jq",
-          '. as $repo | (.url | capture("^https?://(?<host>[^/]+)").host) as $host | [if $repo.parent then "\\($host)/\\($repo.parent.owner.login)/\\($repo.parent.name)" else "\\($host)/\\($repo.nameWithOwner)" end, "\\($host)/\\($repo.nameWithOwner)"] | @tsv',
-        ],
-      }).pipe(
-        Effect.flatMap((result) => {
-          const [baseRepository, headRepository] = result.stdout.trim().split("\t");
-          if (baseRepository && headRepository) {
-            return Effect.succeed({ baseRepository, headRepository });
-          }
-          return Effect.fail(
-            new GitHubRepositoryContextDecodeError({
-              command: "gh",
-              cwd,
-            }),
-          );
-        }),
-      ),
-    {
-      capacity: BASE_REPOSITORY_CACHE_CAPACITY,
-      timeToLive: (exit) => (Exit.isSuccess(exit) ? BASE_REPOSITORY_CACHE_TTL : Duration.zero),
-    },
-  );
-
-  const resolvePullRequestRepositoryContext = (cwd: string) =>
-    Cache.get(pullRequestRepositoryContextCache, cwd);
-  const resolveInputPullRequestRepositoryContext = (cwd: string, repository: string | undefined) =>
-    repository
-      ? Effect.succeed({ baseRepository: repository, headRepository: repository })
-      : resolvePullRequestRepositoryContext(cwd);
-
-  const getRepositoryCloneUrls: GitHubCli["Service"]["getRepositoryCloneUrls"] = (input) =>
-    execute({
-      cwd: input.cwd,
-      args: ["repo", "view", input.repository, "--json", "nameWithOwner,url,sshUrl"],
-    }).pipe(
-      Effect.map((result) => result.stdout.trim()),
-      Effect.flatMap((raw) =>
-        decodeRawGitHubRepositoryCloneUrls(raw).pipe(
-          Effect.mapError(
-            (cause) =>
-              new GitHubRepositoryDecodeError({
-                command: "gh",
-                cwd: input.cwd,
-                cause,
-              }),
-          ),
-        ),
-      ),
-      Effect.map(normalizeRepositoryCloneUrls),
-    );
-
   return GitHubCli.of({
     execute,
-    listPullRequests: (input) =>
-      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
-        Effect.flatMap((context) =>
-          execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "list",
-              "--head",
-              input.headSelector,
-              "--state",
-              input.state,
-              "--limit",
-              String(input.limit ?? (input.state === "open" ? 1 : 20)),
-              "--repo",
-              context.baseRepository,
-              "--json",
-              "number,title,url,baseRefName,headRefName,state,mergedAt,updatedAt,isCrossRepository,headRepository,headRepositoryOwner",
-            ],
-          }),
-        ),
+    listOpenPullRequests: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "pr",
+          "list",
+          "--head",
+          input.headSelector,
+          "--state",
+          "open",
+          "--limit",
+          String(input.limit ?? 1),
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ],
+      }).pipe(
         Effect.map((result) => result.stdout.trim()),
         Effect.flatMap((raw) =>
           raw.length === 0
@@ -520,27 +373,24 @@ export const make = Effect.gen(function* () {
                     );
                   }
 
-                  return Effect.succeed(decoded.success);
+                  return Effect.succeed(
+                    decoded.success.map(({ updatedAt: _updatedAt, ...summary }) => summary),
+                  );
                 }),
               ),
         ),
       ),
     getPullRequest: (input) =>
-      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
-        Effect.flatMap((context) =>
-          execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "view",
-              input.reference,
-              "--repo",
-              context.baseRepository,
-              "--json",
-              "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
-            ],
-          }),
-        ),
+      execute({
+        cwd: input.cwd,
+        args: [
+          "pr",
+          "view",
+          input.reference,
+          "--json",
+          "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+        ],
+      }).pipe(
         Effect.map((result) => result.stdout.trim()),
         Effect.flatMap((raw) =>
           Effect.sync(() => decodeGitHubPullRequestJson(raw)).pipe(
@@ -562,12 +412,25 @@ export const make = Effect.gen(function* () {
           ),
         ),
       ),
-    getRepositoryCloneUrls,
-    getPullRequestBaseRepositoryCloneUrls: (input) =>
-      resolvePullRequestRepositoryContext(input.cwd).pipe(
-        Effect.flatMap((context) =>
-          getRepositoryCloneUrls({ cwd: input.cwd, repository: context.baseRepository }),
+    getRepositoryCloneUrls: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: ["repo", "view", input.repository, "--json", "nameWithOwner,url,sshUrl"],
+      }).pipe(
+        Effect.map((result) => result.stdout.trim()),
+        Effect.flatMap((raw) =>
+          decodeRawGitHubRepositoryCloneUrls(raw).pipe(
+            Effect.mapError(
+              (cause) =>
+                new GitHubRepositoryDecodeError({
+                  command: "gh",
+                  cwd: input.cwd,
+                  cause,
+                }),
+            ),
+          ),
         ),
+        Effect.map(normalizeRepositoryCloneUrls),
       ),
     createRepository: (input) =>
       execute({
@@ -579,101 +442,36 @@ export const make = Effect.gen(function* () {
         ),
       ),
     createPullRequest: (input) =>
-      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
-        Effect.flatMap((context) => {
-          const base = parseGitHubRepositoryCoordinate(context.baseRepository);
-          const head = parseGitHubRepositoryCoordinate(context.headRepository);
-          if (
-            base &&
-            head &&
-            context.baseRepository.toLowerCase() !== context.headRepository.toLowerCase()
-          ) {
-            const qualifiedHead = qualifyPullRequestHead(context, input.headSelector);
-            const separatorIndex = qualifiedHead.indexOf(":");
-            const headBranch =
-              separatorIndex >= 0 ? qualifiedHead.slice(separatorIndex + 1) : qualifiedHead;
-            return execute({
-              cwd: input.cwd,
-              args: [
-                "api",
-                "--hostname",
-                base.host,
-                `repos/${base.owner}/${base.name}/pulls`,
-                "--method",
-                "POST",
-                "-f",
-                `title=${input.title}`,
-                "-f",
-                `head=${head.owner}:${headBranch}`,
-                "-f",
-                `head_repo=${head.name}`,
-                "-f",
-                `base=${input.baseBranch}`,
-                "-F",
-                `body=@${input.bodyFile}`,
-                "--silent",
-              ],
-            });
-          }
-
-          return execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "create",
-              "--base",
-              input.baseBranch,
-              "--head",
-              qualifyPullRequestHead(context, input.headSelector),
-              "--title",
-              input.title,
-              "--body-file",
-              input.bodyFile,
-              "--repo",
-              context.baseRepository,
-            ],
-          });
-        }),
-        Effect.asVoid,
-      ),
+      execute({
+        cwd: input.cwd,
+        args: [
+          "pr",
+          "create",
+          "--base",
+          input.baseBranch,
+          "--head",
+          input.headSelector,
+          "--title",
+          input.title,
+          "--body-file",
+          input.bodyFile,
+        ],
+      }).pipe(Effect.asVoid),
     getDefaultBranch: (input) =>
-      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
-        Effect.flatMap((context) =>
-          execute({
-            cwd: input.cwd,
-            args: [
-              "repo",
-              "view",
-              context.baseRepository,
-              "--json",
-              "defaultBranchRef",
-              "--jq",
-              ".defaultBranchRef.name",
-            ],
-          }),
-        ),
+      execute({
+        cwd: input.cwd,
+        args: ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"],
+      }).pipe(
         Effect.map((value) => {
           const trimmed = value.stdout.trim();
           return trimmed.length > 0 ? trimmed : null;
         }),
       ),
     checkoutPullRequest: (input) =>
-      resolveInputPullRequestRepositoryContext(input.cwd, input.repository).pipe(
-        Effect.flatMap((context) =>
-          execute({
-            cwd: input.cwd,
-            args: [
-              "pr",
-              "checkout",
-              input.reference,
-              ...(input.force ? ["--force"] : []),
-              "--repo",
-              context.baseRepository,
-            ],
-          }),
-        ),
-        Effect.asVoid,
-      ),
+      execute({
+        cwd: input.cwd,
+        args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
+      }).pipe(Effect.asVoid),
   });
 });
 

@@ -78,7 +78,6 @@ interface AnnotatableCodeViewProps {
     filePath: string;
     fileKey: string;
     collapsed: boolean;
-    canRender: boolean;
   }>;
   sectionId: string;
   sectionTitle: string;
@@ -90,7 +89,6 @@ interface AnnotatableCodeViewProps {
     fileDiff: FileDiffMetadata,
     fileKey: string,
     collapsed: boolean,
-    canRender: boolean,
   ) => ReactNode;
 }
 
@@ -255,12 +253,7 @@ export function AnnotatableCodeView({
       }}
       renderHeaderPrefix={(item) =>
         item.type === "diff"
-          ? renderHeaderPrefix(
-              item.fileDiff,
-              item.id,
-              item.collapsed === true,
-              filesByKey.get(item.id)?.canRender !== false,
-            )
+          ? renderHeaderPrefix(item.fileDiff, item.id, item.collapsed === true)
           : null
       }
       renderAnnotation={(annotation) => {

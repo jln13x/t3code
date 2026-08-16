@@ -71,9 +71,8 @@ function selectRemoteUrl(
   switch (protocol ?? "auto") {
     case "https":
       return urls.url;
-    case "auto":
-      return urls.url;
     case "ssh":
+    case "auto":
       return urls.sshUrl;
   }
 }

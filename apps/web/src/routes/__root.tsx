@@ -1,4 +1,4 @@
-import { type EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -7,7 +7,6 @@ import {
   type ErrorComponentProps,
   useLocation,
   useNavigate,
-  useRouter,
 } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { play } from "cuelume";
@@ -32,11 +31,7 @@ import {
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
-import {
-  useClientSettings,
-  useClientSettingsHydrated,
-  usePrimarySettings,
-} from "../hooks/useSettings";
+import { useClientSettings, useClientSettingsHydrated } from "../hooks/useSettings";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKeyFromPath,
@@ -47,7 +42,7 @@ import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
-import { environmentShell, environmentSnapshotAtom, shellEnvironment } from "../state/shell";
+import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
@@ -69,16 +64,6 @@ import {
   deriveThreadFeedbackEvents,
   type ThreadSoundStateByKey,
 } from "../interactionSounds";
-import {
-  clearPendingThreadCompletionNotifications,
-  deliverPendingThreadCompletionNotifications,
-  initializeThreadCompletionNotificationState,
-  readThreadCompletionNotificationState,
-  reduceThreadCompletionNotificationEvents,
-  writeThreadCompletionNotificationState,
-  type ThreadCompletionNotificationState,
-} from "../threadCompletionNotifications";
-import { orchestrationEnvironment } from "../state/orchestration";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -168,7 +153,7 @@ function RootRouteView() {
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
-        <ThreadCompletionFeedbackCoordinator />
+        {primaryEnvironmentAuthenticated ? <ThreadCompletionSoundCoordinator /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
         {appShell}
         {/* Above the router: a theme draft is judged by walking the app, so the
@@ -179,31 +164,11 @@ function RootRouteView() {
   );
 }
 
-function ThreadCompletionFeedbackCoordinator() {
+function ThreadCompletionSoundCoordinator() {
   const threads = useThreadShells();
-  const navigate = useNavigate();
-  const { environments } = useEnvironments();
-  const completionSoundEnabled = useClientSettings((settings) => settings.enableCompletionSounds);
-  const completionNotificationsEnabled = usePrimarySettings(
-    (settings) => settings.enableMacosCompletionNotifications,
-  );
+  const enabled = useClientSettings((settings) => settings.enableCompletionSounds);
   const settingsHydrated = useClientSettingsHydrated();
   const previousStateRef = useRef<ThreadSoundStateByKey | null>(null);
-
-  useEffect(() => {
-    const subscribe = window.desktopBridge?.onThreadCompletionNotificationClick;
-    if (typeof subscribe !== "function") return;
-
-    return subscribe((threadRef) => {
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: {
-          environmentId: threadRef.environmentId,
-          threadId: threadRef.threadId,
-        },
-      });
-    });
-  }, [navigate]);
 
   useEffect(() => {
     if (!settingsHydrated) {
@@ -215,170 +180,14 @@ function ThreadCompletionFeedbackCoordinator() {
     }
 
     const previous = previousStateRef.current;
-    if (previous !== null) {
+    if (previous !== null && enabled) {
       for (const event of deriveThreadFeedbackEvents(previous, threads)) {
-        if (completionSoundEnabled) {
-          play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
-        }
+        play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
       }
     }
     previousStateRef.current = captureThreadSoundState(threads);
-  }, [completionSoundEnabled, settingsHydrated, threads]);
+  }, [enabled, settingsHydrated, threads]);
 
-  if (typeof window.desktopBridge?.showThreadCompletionNotification !== "function") {
-    return null;
-  }
-
-  return environments.map((environment) => (
-    <EnvironmentThreadCompletionNotificationCoordinator
-      key={environment.environmentId}
-      environmentId={environment.environmentId}
-      enabled={completionNotificationsEnabled}
-      settingsHydrated={settingsHydrated}
-    />
-  ));
-}
-
-function EnvironmentThreadCompletionNotificationCoordinator({
-  environmentId,
-  enabled,
-  settingsHydrated,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly enabled: boolean;
-  readonly settingsHydrated: boolean;
-}) {
-  const snapshot = useAtomValue(environmentSnapshotAtom(environmentId));
-  const shellState = useAtomValue(environmentShell.stateValueAtom(environmentId));
-  const replayEvents = useAtomCommand(orchestrationEnvironment.replayEvents, {
-    label: "thread-completion-notifications:replay-events",
-    reportFailure: false,
-    reportDefect: false,
-  });
-  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
-  const memoryStateRef = useRef<ThreadCompletionNotificationState | null>(null);
-  const retryAttemptRef = useRef(0);
-  const retryTimerRef = useRef<number | null>(null);
-  const [retryGeneration, setRetryGeneration] = useState(0);
-
-  useEffect(
-    () => () => {
-      if (retryTimerRef.current !== null) {
-        window.clearTimeout(retryTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const show = window.desktopBridge?.showThreadCompletionNotification;
-    if (
-      !settingsHydrated ||
-      snapshot === null ||
-      shellState.status !== "live" ||
-      typeof show !== "function"
-    ) {
-      return;
-    }
-
-    const synchronize = async () => {
-      const readState = (): ThreadCompletionNotificationState | null => {
-        try {
-          return readThreadCompletionNotificationState(window.localStorage, environmentId);
-        } catch (cause) {
-          console.warn("Could not read the thread completion notification cursor.", {
-            environmentId,
-            cause,
-          });
-          return memoryStateRef.current;
-        }
-      };
-      const persistState = (state: ThreadCompletionNotificationState) => {
-        memoryStateRef.current = state;
-        try {
-          writeThreadCompletionNotificationState(window.localStorage, environmentId, state);
-        } catch (cause) {
-          console.warn("Could not persist the thread completion notification cursor.", {
-            environmentId,
-            cause,
-          });
-        }
-      };
-
-      let state = readState();
-      if (state === null || snapshot.snapshotSequence < state.cursor) {
-        state = initializeThreadCompletionNotificationState(snapshot);
-        persistState(state);
-        return;
-      }
-
-      if (!enabled) {
-        state = clearPendingThreadCompletionNotifications(state);
-        retryAttemptRef.current = 0;
-      }
-
-      const replayResult = await replayEvents({
-        environmentId,
-        input: { fromSequenceExclusive: state.cursor },
-      });
-      if (replayResult._tag === "Failure") {
-        console.warn("Could not replay events for thread completion notifications.", {
-          environmentId,
-          cause: squashAtomCommandFailure(replayResult),
-        });
-        persistState(state);
-        return;
-      }
-
-      state = reduceThreadCompletionNotificationEvents({
-        state,
-        events: replayResult.value,
-        snapshot,
-        notificationsEnabled: enabled,
-      });
-      persistState(state);
-
-      if (!enabled || state.pending.length === 0) return;
-      const delivery = await deliverPendingThreadCompletionNotifications({
-        state,
-        environmentId,
-        show,
-        onProgress: persistState,
-      });
-      memoryStateRef.current = delivery.state;
-      if (delivery.failed) {
-        console.warn("Could not show a thread completion notification; it remains pending.", {
-          environmentId,
-          ...(delivery.cause === undefined ? {} : { cause: delivery.cause }),
-        });
-        const retryDelaysMs = [1_000, 5_000, 15_000] as const;
-        const retryDelayMs = retryDelaysMs[retryAttemptRef.current];
-        if (retryDelayMs !== undefined && retryTimerRef.current === null) {
-          retryAttemptRef.current += 1;
-          retryTimerRef.current = window.setTimeout(() => {
-            retryTimerRef.current = null;
-            setRetryGeneration((generation) => generation + 1);
-          }, retryDelayMs);
-        }
-      } else {
-        retryAttemptRef.current = 0;
-        if (retryTimerRef.current !== null) {
-          window.clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = null;
-        }
-      }
-    };
-
-    syncChainRef.current = syncChainRef.current.then(synchronize, synchronize);
-  }, [
-    enabled,
-    environmentId,
-    replayEvents,
-    retryGeneration,
-    settingsHydrated,
-    shellState.status,
-    snapshot,
-  ]);
   return null;
 }
 
@@ -472,32 +281,6 @@ function HostedStaticEnvironmentBootstrap() {
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
   const message = errorMessage(error);
   const details = errorDetails(error);
-  const router = useRouter();
-  const retryingRef = useRef(false);
-
-  // A failed root beforeLoad probe leaves this boundary mounted even after the
-  // backend recovers. Retry only on recovery signals while this view is active.
-  useEffect(() => {
-    const retry = () => {
-      if (retryingRef.current) return;
-      retryingRef.current = true;
-      void router.invalidate().finally(() => {
-        retryingRef.current = false;
-      });
-    };
-    const retryIfVisible = () => {
-      if (document.visibilityState === "visible") retry();
-    };
-
-    document.addEventListener("visibilitychange", retryIfVisible);
-    window.addEventListener("focus", retry);
-    window.addEventListener("online", retry);
-    return () => {
-      document.removeEventListener("visibilitychange", retryIfVisible);
-      window.removeEventListener("focus", retry);
-      window.removeEventListener("online", retry);
-    };
-  }, [router]);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">

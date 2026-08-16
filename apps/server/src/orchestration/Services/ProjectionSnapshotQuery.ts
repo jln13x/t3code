@@ -9,8 +9,6 @@
 import type {
   CheckpointRef,
   OrchestrationCheckpointSummary,
-  OrchestrationGetThreadActivitiesInput,
-  OrchestrationGetThreadActivitiesResult,
   OrchestrationProject,
   OrchestrationProjectShell,
   OrchestrationReadModel,
@@ -188,16 +186,6 @@ export interface ProjectionSnapshotQueryShape {
     threadId: ThreadId,
     window?: OrchestrationThreadDetailWindow,
   ) => Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>, ProjectionRepositoryError>;
-
-  /**
-   * Cursor-paginated load of a thread's older activities (lazy-load / infinite
-   * scroll). Returns the page of activities immediately older than the provided
-   * sequence or unsequenced activity cursor, ascending, plus whether older ones
-   * remain.
-   */
-  readonly getThreadActivitiesPage: (
-    input: OrchestrationGetThreadActivitiesInput,
-  ) => Effect.Effect<OrchestrationGetThreadActivitiesResult, ProjectionRepositoryError>;
 }
 
 /**

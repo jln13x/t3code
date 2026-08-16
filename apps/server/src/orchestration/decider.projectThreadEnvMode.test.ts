@@ -1,9 +1,7 @@
 import { CommandId, EventId, ProjectId, type OrchestrationEvent } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as HashMap from "effect/HashMap";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Option from "effect/Option";
 
 import { decideOrchestrationCommand } from "./decider.ts";
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
@@ -37,10 +35,7 @@ it.layer(NodeServices.layer)("decider project defaultThreadEnvMode", (it) => {
   it.effect("propagates defaultThreadEnvMode through meta.update into the read model", () =>
     Effect.gen(function* () {
       const readModel = yield* projectEvent(createEmptyReadModel(now), seedProjectCreated(1));
-      expect(
-        HashMap.get(readModel.projects, projectId).pipe(Option.getOrUndefined)
-          ?.defaultThreadEnvMode,
-      ).toBeNull();
+      expect(readModel.projects[0]?.defaultThreadEnvMode).toBeNull();
 
       const result = yield* decideOrchestrationCommand({
         command: {
@@ -59,9 +54,7 @@ it.layer(NodeServices.layer)("decider project defaultThreadEnvMode", (it) => {
       );
 
       const updated = yield* projectEvent(readModel, { ...event, sequence: 2 });
-      expect(
-        HashMap.get(updated.projects, projectId).pipe(Option.getOrUndefined)?.defaultThreadEnvMode,
-      ).toBe("worktree");
+      expect(updated.projects[0]?.defaultThreadEnvMode).toBe("worktree");
     }),
   );
 
@@ -104,10 +97,7 @@ it.layer(NodeServices.layer)("decider project defaultThreadEnvMode", (it) => {
       });
       const clearEvent = Array.isArray(clear) ? clear[0] : clear;
       const afterClear = yield* projectEvent(afterSet, { ...clearEvent, sequence: 3 });
-      expect(
-        HashMap.get(afterClear.projects, projectId).pipe(Option.getOrUndefined)
-          ?.defaultThreadEnvMode,
-      ).toBeNull();
+      expect(afterClear.projects[0]?.defaultThreadEnvMode).toBeNull();
     }),
   );
 });

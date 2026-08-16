@@ -300,24 +300,6 @@ export function createVcsEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
-    stagePaths: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:stage-paths",
-      tag: WS_METHODS.vcsStagePaths,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
-    }),
-    unstagePaths: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:unstage-paths",
-      tag: WS_METHODS.vcsUnstagePaths,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
-    }),
-    discardPaths: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:discard-paths",
-      tag: WS_METHODS.vcsDiscardPaths,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
-    }),
     createWorktree: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:create-worktree",
       tag: WS_METHODS.vcsCreateWorktree,
@@ -338,12 +320,6 @@ export function createVcsEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
-    }),
-    renameBranch: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:rename-branch",
-      tag: WS_METHODS.vcsRenameBranch,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
     }),
     switchRef: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:switch-ref",

@@ -167,7 +167,7 @@ const resolveCanonicalWorkspaceFileForRequest = (input: {
   );
 
 export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (input: {
-  readonly resource: Exclude<AssetResource, { readonly _tag: "thread-artifact" }>;
+  readonly resource: AssetResource;
   readonly workspaceRoot?: string;
   readonly projectFaviconPath?: string;
 }) {

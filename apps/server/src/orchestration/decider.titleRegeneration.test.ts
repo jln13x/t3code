@@ -3,46 +3,46 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
-  type OrchestrationThread,
+  type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as HashMap from "effect/HashMap";
 
 import { decideOrchestrationCommand } from "./decider.ts";
-import { createEmptyCommandReadModel, type CommandReadModel } from "./commandReadModel.ts";
 
 const UPDATED_AT = "2026-01-01T00:00:00.000Z";
 
-const thread: OrchestrationThread = {
-  id: ThreadId.make("thread-1"),
-  projectId: ProjectId.make("project-1"),
-  title: "Manual title",
-  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-  runtimeMode: "full-access",
-  interactionMode: "default",
-  branch: null,
-  worktreePath: null,
-  latestTurn: null,
-  createdAt: UPDATED_AT,
+const readModel: OrchestrationReadModel = {
+  snapshotSequence: 0,
+  projects: [],
+  threads: [
+    {
+      id: ThreadId.make("thread-1"),
+      projectId: ProjectId.make("project-1"),
+      title: "Manual title",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: null,
+      createdAt: UPDATED_AT,
+      updatedAt: UPDATED_AT,
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      snoozedUntil: null,
+      snoozedAt: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+      session: null,
+    },
+  ],
   updatedAt: UPDATED_AT,
-  archivedAt: null,
-  settledOverride: null,
-  settledAt: null,
-  snoozedUntil: null,
-  snoozedAt: null,
-  deletedAt: null,
-  messages: [],
-  proposedPlans: [],
-  activities: [],
-  checkpoints: [],
-  session: null,
-};
-
-const readModel: CommandReadModel = {
-  ...createEmptyCommandReadModel(UPDATED_AT),
-  threads: HashMap.make([thread.id, thread]),
 };
 
 it.layer(NodeServices.layer)("title regeneration decider", (it) => {
