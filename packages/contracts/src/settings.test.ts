@@ -33,21 +33,6 @@ describe("ClientSettings word wrap", () => {
   });
 });
 
-describe("ClientSettings completion sounds", () => {
-  it("defaults completion and attention sounds on", () => {
-    expect(decodeClientSettings({}).enableCompletionSounds).toBe(true);
-  });
-
-  it("allows completion and attention sounds to be disabled", () => {
-    expect(decodeClientSettings({ enableCompletionSounds: false }).enableCompletionSounds).toBe(
-      false,
-    );
-    expect(
-      decodeClientSettingsPatch({ enableCompletionSounds: false }).enableCompletionSounds,
-    ).toBe(false);
-  });
-});
-
 describe("ClientSettings glass opacity", () => {
   it("defaults to a readable translucent surface", () => {
     expect(decodeClientSettings({}).glassOpacity).toBe(80);

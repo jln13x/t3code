@@ -6,7 +6,8 @@ When asked to sync or rebuild the personal fork, run this checklist end-to-end.
 
 - `origin/main` mirrors `upstream/main`; `personal` is the long-lived fork branch.
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before resolving conflicts.
-  Preserve only the maintained desktop identity and completion/attention sound differences.
+  Preserve only the maintained desktop identity, completion/attention sounds, and native macOS
+  completion notifications.
 - If upstream replaces or makes a customization obsolete, update the inventory instead of silently
   dropping it.
 - Do not restore retired customizations or fork feature flags during conflict resolution.
@@ -29,7 +30,7 @@ git push origin personal
 ```
 
 Resolve merge conflicts at the narrow boundaries documented in the inventory, then rerun the
-checks. Verify that completion sounds work with the preference both enabled and disabled.
+checks. Verify completion sounds and macOS notifications from a live completion transition.
 
 ## Rebuild the macOS app
 

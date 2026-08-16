@@ -3,7 +3,6 @@ import { TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   captureThreadSoundState,
-  captureThreadSoundStateWhileSettingsHydrating,
   COMPLETION_SOUND_VOLUME,
   deriveInteractionSoundCues,
   deriveThreadFeedbackEvents,
@@ -116,41 +115,5 @@ describe("interaction sounds", () => {
     });
 
     expect(deriveInteractionSoundCues(new Map(), [thread])).toEqual([]);
-  });
-
-  it("preserves pre-hydration thread state so cues can play after settings hydrate", () => {
-    const running = makeThread({
-      latestTurn: {
-        turnId: TurnId.make("turn-1"),
-        state: "running",
-        requestedAt: "2026-07-11T12:00:00.000Z",
-        startedAt: "2026-07-11T12:00:01.000Z",
-        completedAt: null,
-        assistantMessageId: null,
-      },
-    });
-    const completed = makeThread({
-      latestTurn: {
-        ...running.latestTurn!,
-        state: "completed",
-        completedAt: "2026-07-11T12:00:05.000Z",
-      },
-    });
-
-    const seeded = captureThreadSoundStateWhileSettingsHydrating(null, [running]);
-    const frozen = captureThreadSoundStateWhileSettingsHydrating(seeded, [completed]);
-
-    expect(deriveInteractionSoundCues(frozen, [completed])).toEqual(["success"]);
-  });
-
-  it("admits newly seen threads while settings are hydrating", () => {
-    const seeded = captureThreadSoundStateWhileSettingsHydrating(null, []);
-    const withThread = captureThreadSoundStateWhileSettingsHydrating(seeded, [
-      makeThread({ hasPendingUserInput: true }),
-    ]);
-
-    expect(
-      deriveInteractionSoundCues(withThread, [makeThread({ hasPendingUserInput: true })]),
-    ).toEqual([]);
   });
 });

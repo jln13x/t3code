@@ -31,7 +31,7 @@ import {
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
-import { useClientSettings, useClientSettingsHydrated } from "../hooks/useSettings";
+import { useClientSettings } from "../hooks/useSettings";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKeyFromPath,
@@ -59,7 +59,6 @@ import {
 } from "../state/entities";
 import {
   captureThreadSoundState,
-  captureThreadSoundStateWhileSettingsHydrating,
   COMPLETION_SOUND_VOLUME,
   deriveThreadFeedbackEvents,
   type ThreadSoundStateByKey,
@@ -153,7 +152,7 @@ function RootRouteView() {
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
-        {primaryEnvironmentAuthenticated ? <ThreadCompletionSoundCoordinator /> : null}
+        {primaryEnvironmentAuthenticated ? <ThreadCompletionFeedbackCoordinator /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
         {appShell}
         {/* Above the router: a theme draft is judged by walking the app, so the
@@ -164,29 +163,47 @@ function RootRouteView() {
   );
 }
 
-function ThreadCompletionSoundCoordinator() {
+function ThreadCompletionFeedbackCoordinator() {
   const threads = useThreadShells();
-  const enabled = useClientSettings((settings) => settings.enableCompletionSounds);
-  const settingsHydrated = useClientSettingsHydrated();
+  const navigate = useNavigate();
   const previousStateRef = useRef<ThreadSoundStateByKey | null>(null);
 
   useEffect(() => {
-    if (!settingsHydrated) {
-      previousStateRef.current = captureThreadSoundStateWhileSettingsHydrating(
-        previousStateRef.current,
-        threads,
-      );
-      return;
-    }
+    const subscribe = window.desktopBridge?.onThreadCompletionNotificationClick;
+    if (typeof subscribe !== "function") return;
 
+    return subscribe((threadRef) => {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: threadRef.environmentId,
+          threadId: threadRef.threadId,
+        },
+      });
+    });
+  }, [navigate]);
+
+  useEffect(() => {
     const previous = previousStateRef.current;
-    if (previous !== null && enabled) {
+    if (previous !== null) {
       for (const event of deriveThreadFeedbackEvents(previous, threads)) {
         play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
+        if (event.cue === "success") {
+          const showNotification = window.desktopBridge?.showThreadCompletionNotification;
+          if (typeof showNotification === "function") {
+            void showNotification({
+              threadRef: {
+                environmentId: event.thread.environmentId,
+                threadId: event.thread.id,
+              },
+              threadTitle: event.thread.title,
+            }).catch(() => undefined);
+          }
+        }
       }
     }
     previousStateRef.current = captureThreadSoundState(threads);
-  }, [enabled, settingsHydrated, threads]);
+  }, [threads]);
 
   return null;
 }

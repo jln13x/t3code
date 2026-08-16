@@ -500,9 +500,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
-      ...(settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds
-        ? ["Completion and attention sounds"]
-        : []),
       ...(settings.enableLegacyTokenStreaming !==
       DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming
         ? ["Stream token by token"]
@@ -543,7 +540,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
-      settings.enableCompletionSounds,
       settings.environmentIdentificationMode,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
@@ -634,7 +630,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
-      enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
@@ -1974,32 +1969,6 @@ export function GeneralSettingsPanel() {
                 updateSettings({ diffIgnoreWhitespace: Boolean(checked) })
               }
               aria-label="Hide whitespace changes by default"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("completion-sounds")}
-          description="Play a sound when a turn completes or needs attention."
-          resetAction={
-            settings.enableCompletionSounds !== DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds ? (
-              <SettingResetButton
-                label="completion and attention sounds"
-                onClick={() =>
-                  updateSettings({
-                    enableCompletionSounds: DEFAULT_UNIFIED_SETTINGS.enableCompletionSounds,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.enableCompletionSounds}
-              onCheckedChange={(checked) =>
-                updateSettings({ enableCompletionSounds: Boolean(checked) })
-              }
-              aria-label="Completion and attention sounds"
             />
           }
         />

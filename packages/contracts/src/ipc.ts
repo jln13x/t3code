@@ -90,7 +90,7 @@ import type {
 import { EnvironmentId } from "./baseSchemas.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
-import { ExecutionEnvironmentDescriptor } from "./environment.ts";
+import { ExecutionEnvironmentDescriptor, ScopedThreadRef } from "./environment.ts";
 import type { ClientSettings } from "./settings.ts";
 import type { EditorId } from "./editor.ts";
 import type {
@@ -1019,6 +1019,13 @@ export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
   input: PreviewAutomationWaitForInput,
 });
 
+export const DesktopThreadCompletionNotificationInput = Schema.Struct({
+  threadRef: ScopedThreadRef,
+  threadTitle: Schema.String,
+});
+export type DesktopThreadCompletionNotificationInput =
+  typeof DesktopThreadCompletionNotificationInput.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   /**
@@ -1087,6 +1094,12 @@ export interface DesktopBridge {
    */
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   onMenuAction: (listener: (action: string) => void) => () => void;
+  showThreadCompletionNotification?: (
+    input: DesktopThreadCompletionNotificationInput,
+  ) => Promise<boolean>;
+  onThreadCompletionNotificationClick?: (
+    listener: (threadRef: ScopedThreadRef) => void,
+  ) => () => void;
   /**
    * Hold-to-quit hint pushes: "down" when the quit shortcut is first pressed,
    * "up" when it is released before the hold completes. Optional: older
