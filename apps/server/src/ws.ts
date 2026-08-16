@@ -5,7 +5,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -29,10 +28,8 @@ import {
   type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
-  OrchestrationGetThreadActivitiesError,
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
-  OrchestrationReplayEventsError,
   ORCHESTRATION_WS_METHODS,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -43,16 +40,12 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
-  ServerProviderSkillsError,
-  ServerProviderSkillsUnsupportedError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   type ServerSelfUpdateError,
   type ServerSelfUpdateProgressEvent,
   type FilesystemBrowseFailure,
   FilesystemBrowseError,
-  AssetWorkspaceAssetInspectionError,
-  AssetWorkspaceAssetNotFoundError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
   RpcClientId,
@@ -95,7 +88,6 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
-import { findThreadArtifactPath } from "./assets/ThreadArtifactResolver.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -107,6 +99,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
+import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { requiredScopeForRpcMethod } from "./auth/RpcAuthorization.ts";
@@ -364,12 +357,12 @@ const makeWsRpcLayer = (
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const crypto = yield* Crypto.Crypto;
-      const path = yield* Path.Path;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
+      const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
@@ -908,68 +901,45 @@ const makeWsRpcLayer = (
                 commandId: yield* serverCommandId("bootstrap-thread-create"),
                 threadId: command.threadId,
                 projectId: bootstrap.createThread.projectId,
-                ...(bootstrap.createThread.context !== undefined
-                  ? { context: bootstrap.createThread.context }
-                  : {}),
                 title: bootstrap.createThread.title,
                 modelSelection: bootstrap.createThread.modelSelection,
                 runtimeMode: bootstrap.createThread.runtimeMode,
                 interactionMode: bootstrap.createThread.interactionMode,
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
-                ...(bootstrap.createThread.changeRequest !== undefined
-                  ? { changeRequest: bootstrap.createThread.changeRequest }
-                  : {}),
                 createdAt: bootstrap.createThread.createdAt,
               });
               createdThread = true;
             }
 
             if (bootstrap?.prepareWorktree) {
-              const prepareWorktree = bootstrap.prepareWorktree;
-              let worktreeBaseRef = prepareWorktree.baseBranch;
+              let worktreeBaseRef = bootstrap.prepareWorktree.baseBranch;
               // "Start from origin" is a stored default; repos without an
               // origin remote fall back to the local base branch instead of
               // failing the whole bootstrap on `git fetch origin`.
               const startFromOrigin =
-                prepareWorktree.startFromOrigin === true &&
+                bootstrap.prepareWorktree.startFromOrigin === true &&
                 (yield* gitWorkflow.remoteExists({
-                  cwd: prepareWorktree.projectCwd,
+                  cwd: bootstrap.prepareWorktree.projectCwd,
                   remoteName: "origin",
                 }));
               if (startFromOrigin) {
                 yield* gitWorkflow.fetchRemote({
-                  cwd: prepareWorktree.projectCwd,
+                  cwd: bootstrap.prepareWorktree.projectCwd,
                   remoteName: "origin",
                 });
-                const resolvedRemoteBase = yield* gitWorkflow
-                  .resolveRemoteTrackingCommit({
-                    cwd: prepareWorktree.projectCwd,
-                    refName: prepareWorktree.baseBranch,
-                    fallbackRemoteName: "origin",
-                  })
-                  .pipe(
-                    Effect.catchTags({
-                      RemoteTrackingRefNotFoundError: (error) =>
-                        Effect.logWarning(
-                          "Remote tracking branch was unavailable; using the local worktree base",
-                          {
-                            cwd: prepareWorktree.projectCwd,
-                            baseBranch: prepareWorktree.baseBranch,
-                            detail: error.message,
-                          },
-                        ).pipe(Effect.as(null)),
-                    }),
-                  );
-                if (resolvedRemoteBase) {
-                  worktreeBaseRef = resolvedRemoteBase.commitSha;
-                }
+                const resolvedRemoteBase = yield* gitWorkflow.resolveRemoteTrackingCommit({
+                  cwd: bootstrap.prepareWorktree.projectCwd,
+                  refName: bootstrap.prepareWorktree.baseBranch,
+                  fallbackRemoteName: "origin",
+                });
+                worktreeBaseRef = resolvedRemoteBase.commitSha;
               }
               const worktree = yield* gitWorkflow.createWorktree({
-                cwd: prepareWorktree.projectCwd,
+                cwd: bootstrap.prepareWorktree.projectCwd,
                 refName: worktreeBaseRef,
-                newRefName: prepareWorktree.branch,
-                baseRefName: prepareWorktree.baseBranch,
+                newRefName: bootstrap.prepareWorktree.branch,
+                baseRefName: bootstrap.prepareWorktree.baseBranch,
                 path: null,
               });
               targetWorktreePath = worktree.worktree.path;
@@ -1041,6 +1011,11 @@ const makeWsRpcLayer = (
           providers,
           availableEditors: yield* resolveAvailableEditorsForConfig(
             externalLauncher.resolveAvailableEditors(),
+          ),
+          // Same discovery-with-timeout treatment as editors: a slow probe
+          // must not stall server.getConfig, so it degrades to no targets.
+          remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
+            remoteOpenTargets.resolveTargets(),
           ),
           observability: {
             logsDirectoryPath: config.logsDir,
@@ -1181,20 +1156,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "orchestration" },
           ),
-        [ORCHESTRATION_WS_METHODS.getThreadActivities]: (input) =>
-          observeRpcEffect(
-            ORCHESTRATION_WS_METHODS.getThreadActivities,
-            projectionSnapshotQuery.getThreadActivitiesPage(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationGetThreadActivitiesError({
-                    message: "Failed to load thread activities page",
-                    cause,
-                  }),
-              ),
-            ),
-            { "rpc.aggregate": "orchestration" },
-          ),
         [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getFullThreadDiff,
@@ -1203,21 +1164,6 @@ const makeWsRpcLayer = (
                 (cause) =>
                   new OrchestrationGetFullThreadDiffError({
                     message: "Failed to load full thread diff",
-                    cause,
-                  }),
-              ),
-            ),
-            { "rpc.aggregate": "orchestration" },
-          ),
-        [ORCHESTRATION_WS_METHODS.replayEvents]: (input) =>
-          observeRpcEffect(
-            ORCHESTRATION_WS_METHODS.replayEvents,
-            Stream.runCollect(orchestrationEngine.readEvents(input.fromSequenceExclusive)).pipe(
-              Effect.map((events) => Array.from(events, projectActivityEvent)),
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationReplayEventsError({
-                    message: "Failed to replay orchestration events",
                     cause,
                   }),
               ),
@@ -1507,31 +1453,6 @@ const makeWsRpcLayer = (
               : providerRegistry.refresh()
             ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.serverListProviderSkills]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.serverListProviderSkills,
-            Effect.gen(function* () {
-              const skills = yield* providerRegistry.listSkills(input);
-              if (!skills) {
-                return yield* new ServerProviderSkillsUnsupportedError({
-                  instanceId: input.instanceId,
-                  cwd: input.cwd,
-                });
-              }
-              return { skills };
-            }).pipe(
-              Effect.mapError((cause) =>
-                cause._tag === "ServerProviderSkillsUnsupportedError"
-                  ? cause
-                  : new ServerProviderSkillsError({
-                      instanceId: input.instanceId,
-                      cwd: input.cwd,
-                      cause,
-                    }),
-              ),
-            ),
-            { "rpc.aggregate": "provider" },
           ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
@@ -1929,43 +1850,6 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.assetsCreateUrl,
             Effect.gen(function* () {
-              if (input.resource._tag === "thread-artifact") {
-                const thread = yield* projectionSnapshotQuery
-                  .getThreadDetailById(input.resource.threadId)
-                  .pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new AssetWorkspaceAssetInspectionError({
-                          resource: input.resource,
-                          cause,
-                        }),
-                    ),
-                  );
-                if (Option.isNone(thread)) {
-                  return yield* new AssetWorkspaceAssetNotFoundError({
-                    resource: input.resource,
-                  });
-                }
-                const artifactPath = findThreadArtifactPath(
-                  thread.value,
-                  input.resource.turnId,
-                  input.resource.messageId,
-                  input.resource.path,
-                );
-                if (!artifactPath) {
-                  return yield* new AssetWorkspaceAssetNotFoundError({
-                    resource: input.resource,
-                  });
-                }
-                return yield* issueAssetUrl({
-                  resource: {
-                    _tag: "workspace-file",
-                    threadId: input.resource.threadId,
-                    path: path.basename(artifactPath),
-                  },
-                  workspaceRoot: path.dirname(artifactPath),
-                });
-              }
               if (input.resource._tag === "attachment") {
                 return yield* issueAssetUrl({ resource: input.resource });
               }
@@ -2009,11 +1893,6 @@ const makeWsRpcLayer = (
                   resource: input.resource,
                 });
               }
-              if (thread.value.projectId === null) {
-                return yield* new AssetWorkspaceContextNotFoundError({
-                  resource: input.resource,
-                });
-              }
               const project = yield* projectionSnapshotQuery
                 .getProjectShellById(thread.value.projectId)
                 .pipe(
@@ -2050,7 +1929,7 @@ const makeWsRpcLayer = (
         [WS_METHODS.vcsRefreshStatus]: (input) =>
           observeRpcEffect(
             WS_METHODS.vcsRefreshStatus,
-            vcsStatusBroadcaster.refreshStatus(input.cwd, input.changeRequest),
+            vcsStatusBroadcaster.refreshStatus(input.cwd),
             {
               "rpc.aggregate": "vcs",
             },
@@ -2066,24 +1945,6 @@ const makeWsRpcLayer = (
               }),
             ),
             { "rpc.aggregate": "git" },
-          ),
-        [WS_METHODS.vcsStagePaths]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.vcsStagePaths,
-            gitWorkflow.stagePaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-            { "rpc.aggregate": "vcs" },
-          ),
-        [WS_METHODS.vcsUnstagePaths]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.vcsUnstagePaths,
-            gitWorkflow.unstagePaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-            { "rpc.aggregate": "vcs" },
-          ),
-        [WS_METHODS.vcsDiscardPaths]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.vcsDiscardPaths,
-            gitWorkflow.discardPaths(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-            { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.gitRunStackedAction]: (input) =>
           observeRpcStream(
@@ -2144,12 +2005,6 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.vcsCreateRef,
             gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-            { "rpc.aggregate": "vcs" },
-          ),
-        [WS_METHODS.vcsRenameBranch]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.vcsRenameBranch,
-            gitWorkflow.renameBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsSwitchRef]: (input) =>
@@ -2283,20 +2138,31 @@ const makeWsRpcLayer = (
           observeRpcStream(WS_METHODS.subscribePreviewEvents, previewManager.events, {
             "rpc.aggregate": "preview",
           }),
-        [WS_METHODS.subscribeDiscoveredLocalServers]: (_input) =>
+        [WS_METHODS.subscribeDiscoveredLocalServers]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeDiscoveredLocalServers,
             Stream.callback<DiscoveredLocalServerList>((queue) =>
               Effect.gen(function* () {
-                // Retention performs one immediate scan when discovery was
-                // idle. Subscribe replays that snapshot to every connection,
-                // including connections that join an already-retained scanner.
+                const configuredUrls = input.configuredUrls ?? [];
                 yield* portDiscovery.retain;
-                yield* portDiscovery.subscribe((servers) =>
-                  Effect.gen(function* () {
-                    const scannedAt = DateTime.formatIso(yield* DateTime.now);
-                    yield* Queue.offer(queue, { servers, scannedAt });
-                  }),
+                const initial = yield* portDiscovery.scan(configuredUrls);
+                const initialScannedAt = DateTime.formatIso(yield* DateTime.now);
+                yield* Queue.offer(queue, {
+                  servers: initial,
+                  scannedAt: initialScannedAt,
+                  configuredUrlProbing: true,
+                });
+                yield* portDiscovery.subscribe(
+                  { configuredUrls, initialSnapshot: initial },
+                  (servers) =>
+                    Effect.gen(function* () {
+                      const scannedAt = DateTime.formatIso(yield* DateTime.now);
+                      yield* Queue.offer(queue, {
+                        servers,
+                        scannedAt,
+                        configuredUrlProbing: true,
+                      });
+                    }),
                 );
               }),
             ),

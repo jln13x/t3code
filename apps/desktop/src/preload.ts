@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     }
     return result as ReturnType<DesktopBridge["getAppBranding"]>;
   },
+  getSystemLocale: () => {
+    const result = ipcRenderer.sendSync(IpcChannels.GET_SYSTEM_LOCALE_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
   getLocalEnvironmentBootstraps: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     if (!Array.isArray(result)) {
@@ -105,6 +109,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ...(position === undefined ? {} : { position }),
     }),
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
+  probeRemoteEditors: () => ipcRenderer.invoke(IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL, undefined),
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;
@@ -116,20 +121,15 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.removeListener(IpcChannels.MENU_ACTION_CHANNEL, wrappedListener);
     };
   },
-  showThreadCompletionNotification: (input) =>
-    ipcRenderer.invoke(IpcChannels.SHOW_THREAD_COMPLETION_NOTIFICATION_CHANNEL, input),
-  onThreadCompletionNotificationClick: (listener) => {
-    const wrappedListener = (_event: Electron.IpcRendererEvent, threadRef: unknown) => {
-      if (typeof threadRef !== "object" || threadRef === null) return;
-      listener(threadRef as Parameters<typeof listener>[0]);
+  onQuitShortcut: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+      if (state !== "down" && state !== "up") return;
+      listener(state);
     };
 
-    ipcRenderer.on(IpcChannels.THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL, wrappedListener);
+    ipcRenderer.on(IpcChannels.QUIT_SHORTCUT_CHANNEL, wrappedListener);
     return () => {
-      ipcRenderer.removeListener(
-        IpcChannels.THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL,
-        wrappedListener,
-      );
+      ipcRenderer.removeListener(IpcChannels.QUIT_SHORTCUT_CHANNEL, wrappedListener);
     };
   },
   getWindowFullscreenState: () =>

@@ -31,7 +31,6 @@ import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelS
 import { useTheme } from "../hooks/useTheme";
 import {
   buildFileDiffRenderKey,
-  canRenderFileDiff,
   getDiffCollapseIconClassName,
   getDiffLineStat,
   getRenderablePatch,
@@ -135,6 +134,9 @@ export default function DiffPanel({
       : null,
   );
   const activeCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
+  const activeRepositoryRoot = activeThread?.worktreePath
+    ? undefined
+    : activeProject?.repositoryIdentity?.rootPath;
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(activeThread?.environmentId ?? null),
   );
@@ -199,11 +201,6 @@ export default function DiffPanel({
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
   const latestTurn = orderedTurnDiffSummaries[0];
-  const diffPreviewCacheKey = JSON.stringify({
-    latestTurnId: latestTurn?.turnId ?? null,
-    localGeneration: gitStatusQuery.data?.localGeneration ?? null,
-    remoteRefHash: gitStatusQuery.data?.remoteRefHash ?? null,
-  });
   const selectedScopeLabel =
     selectedTurnId === null
       ? selectedGitScope === "unstaged"
@@ -251,7 +248,6 @@ export default function DiffPanel({
     selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: activeCwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
@@ -269,7 +265,6 @@ export default function DiffPanel({
     shouldRetryBranchDiffAtEnvironmentCwd && activeThread && serverConfig
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
-          cacheKey: diffPreviewCacheKey,
           input: {
             cwd: serverConfig.cwd,
             ...(selectedBaseRef ? { baseRef: selectedBaseRef } : {}),
@@ -406,52 +401,36 @@ export default function DiffPanel({
     if (!renderablePatch || renderablePatch.kind !== "files") {
       return [];
     }
-    return renderablePatch.files
-      .map((fileDiff) => ({
-        canRender: canRenderFileDiff(fileDiff),
-        fileDiff,
-        filePath: resolveFileDiffPath(fileDiff),
-      }))
-      .toSorted((left, right) => {
-        const renderOrder = Number(!left.canRender) - Number(!right.canRender);
-        return (
-          renderOrder ||
-          left.filePath.localeCompare(right.filePath, undefined, {
-            numeric: true,
-            sensitivity: "base",
-          })
-        );
-      });
+    return renderablePatch.files.toSorted((left, right) =>
+      resolveFileDiffPath(left).localeCompare(resolveFileDiffPath(right), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
   }, [renderablePatch]);
   const renderableFileEntries = useMemo(
     () =>
-      renderableFiles.map(({ canRender, fileDiff, filePath }) => ({
-        canRender,
+      renderableFiles.map((fileDiff) => ({
         fileDiff,
-        filePath,
         fileKey: buildFileDiffRenderKey(fileDiff),
       })),
     [renderableFiles],
   );
   const codeViewFiles = useMemo(
     () =>
-      renderableFileEntries.map(({ canRender, fileDiff, fileKey, filePath }) => {
+      renderableFileEntries.map(({ fileDiff, fileKey }) => {
         return {
-          canRender,
           fileDiff,
-          filePath,
+          filePath: resolveFileDiffPath(fileDiff),
           fileKey,
-          collapsed: !canRender || collapsedDiffFileKeys.has(fileKey),
+          collapsed: collapsedDiffFileKeys.has(fileKey),
         };
       }),
     [collapsedDiffFileKeys, renderableFileEntries],
   );
   const diffFileKeys = useMemo(() => codeViewFiles.map((file) => file.fileKey), [codeViewFiles]);
   const allDiffFilesCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedDiffFileKeys);
-  const diffLineStat = useMemo(
-    () => getDiffLineStat(renderableFiles.map(({ fileDiff }) => fileDiff)),
-    [renderableFiles],
-  );
+  const diffLineStat = useMemo(() => getDiffLineStat(renderableFiles), [renderableFiles]);
   const selectedDiffFileKey = selectedFilePath
     ? (codeViewFiles.find((candidate) => candidate.filePath === selectedFilePath)?.fileKey ?? null)
     : null;
@@ -467,6 +446,7 @@ export default function DiffPanel({
         threadRef: routeThreadRef,
         filePath,
         activeCwd,
+        repositoryRoot: activeRepositoryRoot,
         openInEditor: (targetPath) => {
           void (async () => {
             const result = await openInPreferredEditor(targetPath);
@@ -486,7 +466,7 @@ export default function DiffPanel({
         },
       });
     },
-    [activeCwd, openInPreferredEditor, routeThreadRef],
+    [activeCwd, activeRepositoryRoot, openInPreferredEditor, routeThreadRef],
   );
   const toggleDiffFileCollapsed = useCallback(
     (fileKey: string) => {
@@ -613,12 +593,7 @@ export default function DiffPanel({
               filteredItems={filteredBaseRefItems}
               value={selectedBaseRef ?? AUTOMATIC_BASE_REF}
               onOpenChange={(open) => {
-                if (!open) {
-                  setBaseRefQuery("");
-                  return;
-                }
-                localBranchRefs.refresh();
-                remoteBranchRefs.refresh();
+                if (!open) setBaseRefQuery("");
               }}
               onValueChange={(value) => {
                 if (!value) return;
@@ -854,7 +829,7 @@ export default function DiffPanel({
         </div>
       ) : (
         <>
-          <div className="diff-panel-viewport flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
             {isSelectedPatchTruncated && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
                 This diff was truncated because it exceeded the preview limit. The changes shown are
@@ -930,27 +905,23 @@ export default function DiffPanel({
                   sectionId={reviewSectionId}
                   sectionTitle={reviewSectionTitle}
                   composerDraftTarget={composerDraftTarget}
-                  renderHeaderPrefix={(fileDiff, fileKey, collapsed, canRender) => {
+                  renderHeaderPrefix={(fileDiff, fileKey, collapsed) => {
                     const filePath = resolveFileDiffPath(fileDiff);
                     return (
                       <Tooltip>
                         <TooltipTrigger
                           render={
-                            <button
-                              type="button"
+                            <Button
+                              size="icon-micro"
+                              variant="ghost"
                               className={cn(
-                                "-ms-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 transition-colors focus-visible:outline-hidden",
-                                canRender
-                                  ? "cursor-pointer hover:bg-foreground/10"
-                                  : "cursor-not-allowed opacity-60",
+                                "-ms-0.5 [--control-icon-color:currentColor] bg-transparent hover:bg-foreground/10",
                                 getDiffCollapseIconClassName(fileDiff),
                               )}
                               aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
                               aria-expanded={!collapsed}
-                              disabled={!canRender}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                if (!canRender) return;
                                 toggleDiffFileCollapsed(fileKey);
                               }}
                             />
@@ -963,11 +934,7 @@ export default function DiffPanel({
                           )}
                         </TooltipTrigger>
                         <TooltipPopup side="top">
-                          {!canRender
-                            ? "This file is too large to display. Open it in your editor instead."
-                            : collapsed
-                              ? "Expand diff"
-                              : "Collapse diff"}
+                          {collapsed ? "Expand diff" : "Collapse diff"}
                         </TooltipPopup>
                       </Tooltip>
                     );
