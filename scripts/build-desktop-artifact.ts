@@ -2067,6 +2067,12 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
+      // Electron's executable ships with a linker signature that becomes
+      // invalid after electron-builder renames and repackages the bundle.
+      // Ad-hoc signing keeps local unsigned builds launchable without requiring
+      // Apple Developer credentials. Release builds still use the configured
+      // Developer ID identity and notarization flow.
+      ...(signed ? {} : { identity: "-" }),
       protocols: [
         {
           name: "T3 Code",
