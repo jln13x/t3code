@@ -36,6 +36,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
+  ArchiveIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
@@ -422,7 +423,7 @@ function SnoozePopoverButton(props: {
             />
           }
         >
-          <ClockIcon className="size-3" />
+          <ClockIcon className="size-3 shrink-0" />
         </TooltipTrigger>
         <TooltipPopup>Snooze thread</TooltipPopup>
       </Tooltip>
@@ -1517,7 +1518,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                               type="button"
                               aria-label="Settle thread"
                               onClick={handleSettleClick}
-                              className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                              className="-mr-1 inline-flex h-full cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                             />
                           }
                         >
@@ -1733,6 +1734,7 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
   onCancelRename: () => void;
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
+  onArchive: (threadRef: ScopedThreadRef, title: string) => void;
 }) {
   const { thread } = props;
   const threadRef = useMemo(
@@ -1744,12 +1746,9 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
+  const isJustFinished = isUnread && status === "ready";
   const shouldRecede =
-    (status === "ready" || status === "working" || status === "monitoring") &&
-    !isUnread &&
-    !props.isWoke &&
-    !props.isActive &&
-    !isSelected;
+    status === "ready" && !isUnread && !props.isWoke && !props.isActive && !isSelected;
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const showInstanceBadge =
@@ -1798,6 +1797,16 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
       props.onStartRename(threadRef, thread.title);
     },
     [props.isRenaming, props.onStartRename, thread.title, threadRef],
+  );
+  const isRunning = thread.session?.status === "running" && thread.session.activeTurnId != null;
+  const handleArchiveClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (isRunning) return;
+      props.onArchive(threadRef, thread.title);
+    },
+    [isRunning, props.onArchive, thread.title, threadRef],
   );
   const renameCommittedRef = useRef(false);
   useEffect(() => {
@@ -1856,12 +1865,6 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         aria-label="Woke from snooze"
         className="size-3 shrink-0 text-amber-700 dark:text-amber-300"
       />
-    ) : isUnread ? (
-      <span
-        role="status"
-        aria-label="Done, unread"
-        className="size-1.5 rounded-full bg-emerald-500"
-      />
     ) : null;
   const title = props.isRenaming ? (
     <input
@@ -1880,11 +1883,13 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
     <span
       className={cn(
         "min-w-0 flex-1 truncate text-sm",
-        isUnread || props.isWoke || props.isActive
-          ? "font-medium text-foreground"
-          : shouldRecede
-            ? "font-normal text-muted-foreground/80 group-hover/worktree-thread:text-foreground"
-            : "font-medium text-foreground/90",
+        isJustFinished
+          ? "font-semibold text-foreground"
+          : isUnread || props.isWoke || props.isActive
+            ? "font-medium text-foreground"
+            : shouldRecede
+              ? "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground"
+              : "font-medium text-foreground/90",
       )}
     >
       {thread.title}
@@ -1904,7 +1909,7 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
               isSelected
                 ? "bg-sidebar-row-selected"
                 : props.isActive
-                  ? "bg-sidebar-row-hover"
+                  ? "bg-sidebar-row-active"
                   : "hover:bg-sidebar-row-hover",
             )}
             onClick={handleClick}
@@ -1920,6 +1925,25 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         ) : null}
         {statusGlyph}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={`Archive thread: ${thread.title}`}
+                disabled={isRunning}
+                onClick={handleArchiveClick}
+                onDoubleClick={(event) => event.stopPropagation()}
+                className="pointer-events-none invisible -mr-0.5 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-sidebar-control-surface hover:text-foreground focus-visible:pointer-events-auto focus-visible:visible focus-visible:ring-2 focus-visible:ring-ring group-hover/worktree-thread:pointer-events-auto group-hover/worktree-thread:visible group-focus-within/worktree-thread:pointer-events-auto group-focus-within/worktree-thread:visible disabled:cursor-not-allowed disabled:opacity-35"
+              />
+            }
+          >
+            <ArchiveIcon aria-hidden className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            {isRunning ? "Cannot archive a running thread" : "Archive thread"}
+          </TooltipPopup>
+        </Tooltip>
       </TooltipTrigger>
       <SidebarThreadTooltip
         thread={thread}
@@ -1965,6 +1989,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   onCommitRename: (threadRef: ScopedThreadRef, title: string, originalTitle: string) => void;
   onCancelRename: () => void;
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
+  onArchive: (threadRef: ScopedThreadRef, title: string) => void;
   onSettle: () => void;
   onSnooze: (preset: SnoozePreset) => void;
 }) {
@@ -1987,6 +2012,8 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   const activeIndex =
     props.activeThreadKey === null ? -1 : allMemberKeys.indexOf(props.activeThreadKey);
   const activeMember = activeIndex === -1 ? null : allThreads[activeIndex]!;
+  const activeMemberIsVisible =
+    props.activeThreadKey !== null && memberKeys.includes(props.activeThreadKey);
   const environmentId = newest.environmentId;
   const canonicalThreadRef = useWorktreeCanonicalThreadRef(newestRef);
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -2206,11 +2233,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         data-worktree-key={group.key}
         className={cn(
           "group/worktree-card relative w-full cursor-pointer overflow-hidden rounded-md px-2.5 py-2 text-left outline-none select-none",
-          activeMember !== null
-            ? "bg-sidebar-row-active text-sidebar-foreground"
-            : anySelected
-              ? "bg-sidebar-row-selected text-sidebar-foreground"
-              : "hover:bg-sidebar-row-hover",
+          activeMember !== null &&
+            !activeMemberIsVisible &&
+            "bg-sidebar-row-active text-sidebar-foreground",
           shouldRecede && "text-sidebar-muted-foreground/75",
           isInFlight && activeMember === null && !anySelected && "opacity-70 hover:opacity-100",
         )}
@@ -2287,7 +2312,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             {canSettleGroup || canSnoozeGroup ? (
               <span
                 className={cn(
-                  "absolute right-0 flex items-stretch opacity-0 focus-within:opacity-100 group-hover/worktree-card:opacity-100",
+                  "absolute inset-y-0 right-0 flex items-center opacity-0 focus-within:opacity-100 group-hover/worktree-card:opacity-100",
                   snoozeOpen && "opacity-100",
                 )}
               >
@@ -2308,9 +2333,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                       event.stopPropagation();
                       props.onSettle();
                     }}
-                    className="inline-flex items-center gap-1 px-1.5 text-muted-foreground hover:text-foreground"
+                    className="inline-flex h-full cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <CheckIcon className="size-3" />
+                    <CheckIcon className="size-3 shrink-0" />
                     Settle
                   </button>
                 ) : null}
@@ -2369,6 +2394,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                 onCommitRename={props.onCommitRename}
                 onCancelRename={props.onCancelRename}
                 onContextMenu={props.onContextMenu}
+                onArchive={props.onArchive}
               />
             );
           })}
@@ -2401,6 +2427,7 @@ export default function Sidebar() {
     unpinThread,
     reorderPinnedThread,
     archiveThread,
+    unarchiveThread,
     deleteThread,
   } = useThreadActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -3357,6 +3384,98 @@ export default function Sidebar() {
     },
     [unpinThread],
   );
+  const archivingThreadKeysRef = useRef(new Set<string>());
+  const attemptArchive = useCallback(
+    (threadRef: ScopedThreadRef, title: string) => {
+      void (async () => {
+        const threadKey = scopedThreadKey(threadRef);
+        if (archivingThreadKeysRef.current.has(threadKey)) return;
+        archivingThreadKeysRef.current.add(threadKey);
+        try {
+          if (confirmThreadArchive) {
+            const api = readLocalApi();
+            if (!api) return;
+            const confirmed = await settlePromise(() =>
+              api.dialogs.confirm(`Archive thread "${title}"?`),
+            );
+            if (confirmed._tag === "Failure" || !confirmed.value) return;
+          }
+          let didArchive = false;
+          const result = await archiveThread(threadRef, {
+            onArchived: () => {
+              didArchive = true;
+            },
+          });
+          const showArchivedToast = (navigationError?: unknown) => {
+            const archivedToastId = `thread-archived:${threadKey}`;
+            let undoStarted = false;
+            toastManager.add({
+              ...stackedThreadToast({
+                type: navigationError === undefined ? "success" : "warning",
+                title:
+                  navigationError === undefined
+                    ? "Thread archived"
+                    : "Thread archived, but navigation failed",
+                description:
+                  navigationError === undefined
+                    ? title
+                    : navigationError instanceof Error
+                      ? navigationError.message
+                      : "An error occurred.",
+                timeout: 3_000,
+                actionVariant: "outline",
+                actionProps: {
+                  children: "Undo",
+                  onClick: (event) => {
+                    if (undoStarted) return;
+                    undoStarted = true;
+                    event.currentTarget.disabled = true;
+                    toastManager.close(archivedToastId);
+                    void unarchiveThread(threadRef).then((undoResult) => {
+                      if (undoResult._tag === "Failure") {
+                        if (!isAtomCommandInterrupted(undoResult)) {
+                          const error = squashAtomCommandFailure(undoResult);
+                          toastManager.add(
+                            stackedThreadToast({
+                              type: "error",
+                              title: "Failed to restore thread",
+                              description:
+                                error instanceof Error ? error.message : "An error occurred.",
+                            }),
+                          );
+                        }
+                        return;
+                      }
+                    });
+                  },
+                },
+              }),
+              id: archivedToastId,
+            });
+          };
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            if (didArchive) {
+              showArchivedToast(error);
+            } else {
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to archive thread",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          if (result._tag === "Success") showArchivedToast();
+        } finally {
+          archivingThreadKeysRef.current.delete(threadKey);
+        }
+      })();
+    },
+    [archiveThread, confirmThreadArchive, unarchiveThread],
+  );
 
   const handlePinnedDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -4010,31 +4129,7 @@ export default function Sidebar() {
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
             return;
           case "archive": {
-            if (confirmThreadArchive) {
-              const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(`Archive thread "${thread.title}"?`),
-              );
-              if (confirmed._tag === "Failure" || !confirmed.value) return;
-            }
-            let didArchive = false;
-            const result = await archiveThread(threadRef, {
-              onArchived: () => {
-                didArchive = true;
-              },
-            });
-            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: didArchive
-                    ? "Thread archived, but navigation failed"
-                    : "Failed to archive thread",
-                  description: error instanceof Error ? error.message : "An error occurred.",
-                }),
-              );
-              return;
-            }
+            attemptArchive(threadRef, thread.title);
             return;
           }
           case "delete": {
@@ -4070,7 +4165,7 @@ export default function Sidebar() {
       })();
     },
     [
-      archiveThread,
+      attemptArchive,
       attemptPin,
       attemptSettle,
       attemptSettleGroup,
@@ -4081,7 +4176,6 @@ export default function Sidebar() {
       attemptUnsettleGroup,
       attemptUnsnooze,
       attemptUnsnoozeGroup,
-      confirmThreadArchive,
       confirmThreadDelete,
       copyBranchToClipboard,
       copyPathToClipboard,
@@ -4692,6 +4786,7 @@ export default function Sidebar() {
                         onCommitRename={commitThreadRename}
                         onCancelRename={cancelThreadRename}
                         onContextMenu={handleThreadContextMenu}
+                        onArchive={attemptArchive}
                         onSettle={() => attemptSettleGroup(group)}
                         onSnooze={(preset) => attemptSnoozeGroup(group, preset)}
                       />,
