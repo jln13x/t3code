@@ -39,7 +39,6 @@ export const QueuedMessageTray = memo(function QueuedMessageTray({
         <h2 className="font-medium text-xs">
           Queue <span className="tabular-nums text-foreground/70">{messages.length}</span>
         </h2>
-        <span className="ml-auto text-[11px]">Runs after the current turn</span>
       </div>
       <ol className="max-h-40 divide-y divide-border/50 overflow-y-auto overscroll-contain">
         {messages.map((message) => {
