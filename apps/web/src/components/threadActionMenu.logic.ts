@@ -8,6 +8,8 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  */
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
+  | "continue-branch-on"
+  | `continue-branch-on:${number}`
   | "pin"
   | "unpin"
   | "settle"
@@ -26,6 +28,7 @@ export type ThreadActionMenuId =
 
 export interface ThreadActionMenuState {
   readonly branch: string | null;
+  readonly continueBranchTargetLabels: ReadonlyArray<string>;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly isSnoozed: boolean;
@@ -57,6 +60,18 @@ export function buildThreadActionMenuItems(
             id: "new-thread-on-branch" as const,
             label: `New thread on ${state.branch}`,
           },
+          ...(state.continueBranchTargetLabels.length > 0
+            ? [
+                {
+                  id: "continue-branch-on" as const,
+                  label: "Continue branch on…",
+                  children: state.continueBranchTargetLabels.map((label, index) => ({
+                    id: `continue-branch-on:${index}` as const,
+                    label,
+                  })),
+                },
+              ]
+            : []),
         ]
       : []),
     ...(state.supports.pinning
