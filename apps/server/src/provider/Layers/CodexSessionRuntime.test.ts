@@ -778,6 +778,49 @@ describe("buildTurnSteerParams", () => {
       });
     }),
   );
+
+  it.effect("attaches explicit $skill tokens when steering an active turn", () =>
+    Effect.gen(function* () {
+      const params = yield* buildTurnSteerParams({
+        threadId: "provider-thread-1",
+        expectedTurnId: TurnId.make("turn-active"),
+        prompt: "$grill-with-docs also check the changelog",
+        availableSkills: [
+          {
+            name: "grill-with-docs",
+            path: "/Users/me/.agents/skills/grill-with-docs/SKILL.md",
+            enabled: true,
+          },
+        ],
+      });
+
+      NodeAssert.deepStrictEqual(params.input, [
+        {
+          type: "text",
+          text: "$grill-with-docs also check the changelog",
+        },
+        {
+          type: "skill",
+          name: "grill-with-docs",
+          path: "/Users/me/.agents/skills/grill-with-docs/SKILL.md",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("rejects an unknown $skill before steering", () =>
+    Effect.gen(function* () {
+      const error = yield* buildTurnSteerParams({
+        threadId: "provider-thread-1",
+        expectedTurnId: TurnId.make("turn-active"),
+        prompt: "$missing-skill also check the changelog",
+        availableSkills: [],
+      }).pipe(Effect.flip);
+
+      NodeAssert.ok(isCodexSessionRuntimeUnknownSkillError(error));
+      NodeAssert.deepStrictEqual(error.names, ["missing-skill"]);
+    }),
+  );
 });
 const PROVIDER_THREAD_ID = "provider-thread-1";
 const ACTIVE_TURN_ID = TurnId.make("turn-active");

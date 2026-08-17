@@ -12,6 +12,7 @@ import type {
   ServerProvider,
   ServerProviderSkill,
   ThreadId,
+  ThreadTurnDeliveryMode,
 } from "@t3tools/contracts";
 import {
   isProviderSendTurnSupportedImageMimeType,
@@ -418,6 +419,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   showSendWhileRunning?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
+  onSteer: () => void;
   onImplementPlanInNewThread: () => void;
 }) {
   return (
@@ -447,6 +449,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         showSendWhileRunning={props.showSendWhileRunning ?? false}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
+        onSteer={props.onSteer}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
       />
     </>
@@ -580,7 +583,7 @@ export interface ChatComposerProps {
   composerRef: React.RefObject<ChatComposerHandle | null>;
 
   // Callbacks
-  onSend: (e?: { preventDefault: () => void }) => void;
+  onSend: (e?: { preventDefault: () => void }, deliveryMode?: ThreadTurnDeliveryMode) => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
   onRespondToApproval: (
@@ -1271,7 +1274,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
   const collapsedComposerPrimaryActionDisabled =
-    phase === "running" ||
     isSendBusy ||
     isSendDisabled ||
     isConnecting ||
@@ -1279,7 +1281,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired ||
     environmentUnavailable !== null ||
     !composerSendState.hasSendableContent;
-  const collapsedComposerPrimaryActionLabel = "Send message";
+  const collapsedComposerPrimaryActionLabel =
+    phase === "running" ? "Queue message" : "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -1867,7 +1870,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const submitComposer = useCallback(
-    (event?: { preventDefault: () => void }) => {
+    (event?: { preventDefault: () => void }, deliveryMode?: ThreadTurnDeliveryMode) => {
       if (noProviderAvailable || isSendDisabled) {
         event?.preventDefault();
         return;
@@ -1893,7 +1896,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           // ChatView reports its final composed-input preflight through the
           // composer handle before its first asynchronous send step.
           providerInputRejectedRef.current = false;
-          onSend(sendEvent);
+          onSend(sendEvent, deliveryMode);
           return !providerInputRejectedRef.current;
         },
       });
@@ -2521,6 +2524,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
+  const handleSteerPrimaryAction = useCallback(() => {
+    submitComposer(undefined, "immediate");
+  }, [submitComposer]);
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
@@ -2852,6 +2858,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       preserveComposerFocusOnPointerDown
                       onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                       onInterrupt={handleInterruptPrimaryAction}
+                      onSteer={handleSteerPrimaryAction}
                       onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
                     />
                   ) : null}
@@ -2880,6 +2887,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   : prompt.trim() ||
                     (noProviderAvailable ? "Enable a provider in Settings" : "Ask anything...")}
               </button>
+              {phase === "running" && composerSendState.hasSendableContent ? (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-30"
+                  disabled={collapsedComposerPrimaryActionDisabled}
+                  aria-label="Steer active turn"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleSteerPrimaryAction();
+                  }}
+                >
+                  Steer
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-30"
@@ -3135,6 +3157,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     preserveComposerFocusOnPointerDown
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
+                    onSteer={handleSteerPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
                   />
                 </div>
@@ -3261,9 +3284,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isPreparingWorktree={isPreparingWorktree}
                   hasSendableContent={composerSendState.hasSendableContent}
                   preserveComposerFocusOnPointerDown={isMobileViewport}
-                  showSendWhileRunning={isMobileViewport}
+                  showSendWhileRunning
                   onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                   onInterrupt={handleInterruptPrimaryAction}
+                  onSteer={handleSteerPrimaryAction}
                   onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
                 />
               </div>

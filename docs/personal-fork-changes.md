@@ -1,8 +1,9 @@
 # Personal Fork Changes
 
-The personal fork intentionally maintains four product differences from `upstream/main`: desktop
-fork identity, completion/attention sounds, native macOS completion notifications, and
-worktree-grouped web/desktop threads. Everything else follows upstream directly.
+The personal fork intentionally maintains six product differences from `upstream/main`: desktop
+fork identity, completion/attention sounds, native macOS completion notifications,
+worktree-grouped web/desktop threads, Codex skill handling, and queue-first active-turn delivery.
+Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
@@ -66,6 +67,39 @@ This file is both the current inventory and the retirement record used during up
   extended rather than replaced. Future merges must preserve upstream search, drafts, pinning and
   reorder, lifecycle/context-menu actions, provider badges, shelf persistence, and PR snapshots.
 
+### Codex project skills and explicit invocation
+
+- Codex skill discovery follows the active project or worktree instead of only the server process
+  directory, so the composer shows workspace-local skills alongside personal skills.
+- Explicit `$skill-name` tokens are sent to Codex as structured skill inputs while the original
+  prompt text remains intact. This applies to both new turns and messages that steer an active turn.
+- Unknown explicit skill names fail visibly instead of silently becoming plain prompt text.
+  Path-like shell variables such as `$HOME/.config` remain ordinary text.
+- Source candidates: upstream [#5335](https://github.com/pingdotgg/t3code/pull/5335) for
+  workspace-aware discovery and [#7196](https://github.com/pingdotgg/t3code/pull/7196) for
+  structured invocation and token matching.
+- Sync boundary: preserve the project-scoped `providerSkills` RPC path through contracts, server
+  registry, client runtime, and composer queries. In `CodexSessionRuntime`, skill binding must stay
+  shared by `turn/start` and `turn/steer`; future upstream changes to either path need both cases
+  rechecked.
+
+### Queue-first active-turn delivery and explicit Codex steering
+
+- Sending while a turn is active queues the message durably on the server by default. Queued
+  messages are projected into the thread, survive client disconnects, run in order, and can be
+  cancelled before provider handoff.
+- **Steer** is a separate per-message action on web, desktop, and mobile. It sends immediately to
+  the active Codex turn without creating a phantom turn. There is intentionally no global
+  Queue/Steer preference.
+- Source candidates: upstream [#7240](https://github.com/pingdotgg/t3code/pull/7240) for the durable
+  server queue and [#5795](https://github.com/pingdotgg/t3code/pull/5795) for correct Codex
+  `turn/steer` handling.
+- Sync boundary: `ThreadTurnDeliveryMode` and queued-turn projections form the cross-client wire
+  contract. Web and mobile must continue to send `after-current` for the primary action during
+  active work and `immediate` only for explicit Steer. Codex's active-turn state and serialized
+  submission path in `CodexSessionRuntime` must remain aligned with orchestration receipts so a
+  steer never projects a second turn or retries an ambiguously delivered message.
+
 ## Retired on 2026-08-16
 
 The following customizations and their centralized feature flags were removed in favor of current
@@ -82,7 +116,6 @@ tests were removed with them.
 | Checkout-aware thread creation         | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. Grouping now carries only the explicit web/desktop `chat.newInWorktree` sibling-thread command described above. |
 | Fork-aware pull-request targeting      | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                           |
 | Durable pull-request status            | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                          |
-| Project provider skill discovery       | Rediscovered provider skills for the active project and worktree. The fork now uses upstream provider-skill behavior.                                                                                                                                                                                                             |
 | Markdown and text attachments          | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                            |
 | Generated-image rendering              | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                 |
 | Fork backports and integration ledger  | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                        |
