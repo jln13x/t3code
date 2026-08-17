@@ -10,6 +10,7 @@ import {
   resolveWorktreeGroupLiveStatus,
   sidebarThreadKey,
   type SidebarThreadClassification,
+  visibleWorktreeGroupMemberIndexes,
 } from "./SidebarV2.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -204,6 +205,32 @@ describe("pickWorktreeGroupRepresentative", () => {
       classifyAll([wakesLater, wakesSooner], "snoozed"),
     );
     expect(pickWorktreeGroupRepresentative(snoozedGroups[0]!, null).id).toBe(wakesSooner.id);
+  });
+});
+
+describe("visibleWorktreeGroupMemberIndexes", () => {
+  it("hides settled siblings from an active checkout card", () => {
+    const settled = makeShell({ id: ThreadId.make("thread-settled"), worktreePath: "/wt/x" });
+    const active = makeShell({ id: ThreadId.make("thread-active"), worktreePath: "/wt/x" });
+    const snoozed = makeShell({ id: ThreadId.make("thread-snoozed"), worktreePath: "/wt/x" });
+    const { activeGroups } = buildSidebarWorktreeGroups([
+      { thread: settled, classification: "settled" },
+      { thread: active, classification: "active" },
+      { thread: snoozed, classification: "snoozed" },
+    ]);
+
+    const group = activeGroups[0]!;
+    expect(
+      visibleWorktreeGroupMemberIndexes(group).map((index) => group.threads[index]!.id),
+    ).toEqual([active.id, snoozed.id]);
+  });
+
+  it("keeps every member in collapsed shelf groups", () => {
+    const first = makeShell({ id: ThreadId.make("thread-a"), worktreePath: "/wt/x" });
+    const second = makeShell({ id: ThreadId.make("thread-b"), worktreePath: "/wt/x" });
+    const { settledGroups } = buildSidebarWorktreeGroups(classifyAll([first, second], "settled"));
+
+    expect(visibleWorktreeGroupMemberIndexes(settledGroups[0]!)).toEqual([0, 1]);
   });
 });
 

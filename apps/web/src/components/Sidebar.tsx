@@ -155,6 +155,7 @@ import {
   sidebarThreadKey,
   type SidebarThreadClassification,
   type SidebarWorktreeGroup,
+  visibleWorktreeGroupMemberIndexes,
 } from "./SidebarV2.logic";
 import {
   ThreadWorktreeIndicator,
@@ -1899,7 +1900,7 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
             tabIndex={0}
             data-testid="sidebar-worktree-thread"
             className={cn(
-              "group/worktree-thread relative -mx-1 flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1 text-left outline-none select-none",
+              "group/worktree-thread relative -mx-1 flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1 text-left outline-none select-none",
               isSelected
                 ? "bg-sidebar-row-selected"
                 : props.isActive
@@ -1982,15 +1983,24 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   onSnooze: (preset: SnoozePreset) => void;
 }) {
   const { group } = props;
-  const { memberKeys, threads } = group;
+  const { memberKeys: allMemberKeys, threads: allThreads } = group;
+  const visibleMemberIndexes = useMemo(() => visibleWorktreeGroupMemberIndexes(group), [group]);
+  const threads = useMemo(
+    () => visibleMemberIndexes.map((index) => allThreads[index]!),
+    [allThreads, visibleMemberIndexes],
+  );
+  const memberKeys = useMemo(
+    () => visibleMemberIndexes.map((index) => allMemberKeys[index]!),
+    [allMemberKeys, visibleMemberIndexes],
+  );
   const newest = threads[threads.length - 1]!;
   const newestRef = useMemo(
     () => scopeThreadRef(newest.environmentId, newest.id),
     [newest.environmentId, newest.id],
   );
   const activeIndex =
-    props.activeThreadKey === null ? -1 : memberKeys.indexOf(props.activeThreadKey);
-  const activeMember = activeIndex === -1 ? null : threads[activeIndex]!;
+    props.activeThreadKey === null ? -1 : allMemberKeys.indexOf(props.activeThreadKey);
+  const activeMember = activeIndex === -1 ? null : allThreads[activeIndex]!;
   const environmentId = newest.environmentId;
   const canonicalThreadRef = useWorktreeCanonicalThreadRef(newestRef);
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -2029,7 +2039,8 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     [activeMember, discoveredPorts, newest, openPreview, props.onThreadActivate],
   );
 
-  const worktreePath = threads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
+  const worktreePath =
+    allThreads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
   const gitCwd = worktreePath ?? props.projectCwd;
   const gitStatus = useEnvironmentQuery(
     gitCwd === null ? null : vcsEnvironment.status({ environmentId, input: { cwd: gitCwd } }),
@@ -2038,10 +2049,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     worktreePath === null ? (gitStatus.data?.refName ?? newest.branch) : newest.branch;
   const snapshot = useMemo(
     () =>
-      memberKeys
+      allMemberKeys
         .map((key) => props.changeRequestSnapshotByKey.get(key))
         .find((candidate) => candidate?.branch === checkoutBranch) ?? null,
-    [checkoutBranch, memberKeys, props.changeRequestSnapshotByKey],
+    [allMemberKeys, checkoutBranch, props.changeRequestSnapshotByKey],
   );
   const retainTerminalOnBranchMismatch = worktreePath === null;
   const pr = resolveDisplayedThreadPr({
@@ -2066,10 +2077,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
       retainTerminalOnBranchMismatch,
     });
     if (nextSnapshot === undefined) return;
-    for (const memberKey of memberKeys) {
+    for (const memberKey of allMemberKeys) {
       setThreadChangeRequestSnapshot(memberKey, nextSnapshot);
     }
-  }, [checkoutBranch, gitStatus.data, memberKeys, retainTerminalOnBranchMismatch, snapshot]);
+  }, [allMemberKeys, checkoutBranch, gitStatus.data, retainTerminalOnBranchMismatch, snapshot]);
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: worktreePath === null ? "local" : "worktree",
     activeWorktreePath: worktreePath,
@@ -2200,7 +2211,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     <li
       data-thread-item
       className="list-none py-0.5 [content-visibility:auto]"
-      style={{ containIntrinsicSize: `auto ${96 + (threads.length - 1) * 24}px` }}
+      style={{ containIntrinsicSize: `auto ${96 + (threads.length - 1) * 32}px` }}
     >
       <div
         role="button"
@@ -2321,7 +2332,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             ) : null}
           </span>
         </div>
-        <div className="mt-1 flex flex-col gap-px">
+        <div className="mt-1.5 flex flex-col gap-1">
           {threads.map((thread, index) => {
             const memberKey = memberKeys[index]!;
             return (
@@ -2352,9 +2363,12 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             );
           })}
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/75">
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/55">
           {checkoutBranch ? (
-            <span className="min-w-0 flex-1 truncate whitespace-nowrap">{checkoutBranch}</span>
+            <span className="flex min-w-0 flex-1 items-center gap-1">
+              <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+              <span className="truncate whitespace-nowrap">{checkoutBranch}</span>
+            </span>
           ) : (
             <span className="flex-1" />
           )}
@@ -2913,7 +2927,9 @@ export default function Sidebar() {
   const orderedThreads = useMemo(
     () => [
       ...pinnedThreads,
-      ...activeGroups.flatMap((group) => group.threads),
+      ...activeGroups.flatMap((group) =>
+        visibleWorktreeGroupMemberIndexes(group).map((index) => group.threads[index]!),
+      ),
       ...snoozedRepresentativeThreads,
       ...settledRepresentativeThreads,
     ],
