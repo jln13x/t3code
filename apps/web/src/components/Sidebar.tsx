@@ -1,5 +1,5 @@
 import { autoAnimate } from "@formkit/auto-animate";
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   DndContext,
@@ -60,6 +60,7 @@ import {
 import {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -72,6 +73,7 @@ import { useParams, useRouter } from "@tanstack/react-router";
 
 import {
   isAtomCommandInterrupted,
+  runAtomCommand,
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -88,7 +90,7 @@ import { useShortcutModifierState } from "../shortcutModifierState";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { isMacPlatform } from "~/lib/utils";
+import { isMacPlatform, randomUUID } from "~/lib/utils";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
@@ -112,7 +114,7 @@ import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { useWorktreeCanonicalThreadRef } from "../worktreeScope";
 import { previewEnvironment } from "../state/preview";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { vcsEnvironment } from "../state/vcs";
+import { vcsActionManager, vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -2379,6 +2381,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
 });
 
 export default function Sidebar() {
+  const atomRegistry = useContext(RegistryContext);
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
@@ -3891,9 +3894,57 @@ export default function Sidebar() {
         if (continueTargetIndex !== null && thread.branch) {
           const target = continueBranchTargets[continueTargetIndex];
           if (!target) return;
+          if (!threadWorkspacePath) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Could not continue branch",
+                description: "The source checkout is unavailable.",
+              }),
+            );
+            return;
+          }
+          const progressToastId = toastManager.add({
+            type: "loading",
+            title: "Pushing branch to origin...",
+            description: thread.branch,
+            timeout: 0,
+          });
+          const pushResult = await runAtomCommand(
+            atomRegistry,
+            vcsActionManager.runStackedAction({
+              environmentId: thread.environmentId,
+              cwd: threadWorkspacePath,
+            }),
+            { actionId: randomUUID(), action: "push", pushRemoteName: "origin" },
+            { reportFailure: false },
+          );
+          if (pushResult._tag === "Failure") {
+            if (isAtomCommandInterrupted(pushResult)) {
+              toastManager.close(progressToastId);
+              return;
+            }
+            const error = squashAtomCommandFailure(pushResult);
+            toastManager.update(
+              progressToastId,
+              stackedThreadToast({
+                type: "error",
+                title: "Could not push branch",
+                description: error instanceof Error ? error.message : "An error occurred.",
+              }),
+            );
+            return;
+          }
+          const pushedBranch = pushResult.value.push.branch ?? thread.branch;
+          toastManager.update(progressToastId, {
+            type: "loading",
+            title: "Opening branch on destination...",
+            description: pushedBranch,
+            timeout: 0,
+          });
           const result = await settlePromise(() =>
             handleNewThreadRef.current(target.projectRef, {
-              branch: thread.branch,
+              branch: pushedBranch,
               worktreePath: null,
               envMode: "worktree",
               startFromOrigin: true,
@@ -3902,13 +3953,16 @@ export default function Sidebar() {
           );
           if (result._tag === "Failure") {
             const error = squashAtomCommandFailure(result);
-            toastManager.add(
+            toastManager.update(
+              progressToastId,
               stackedThreadToast({
                 type: "error",
                 title: "Could not continue branch",
                 description: error instanceof Error ? error.message : "An error occurred.",
               }),
             );
+          } else {
+            toastManager.close(progressToastId);
           }
           return;
         }
@@ -4071,6 +4125,7 @@ export default function Sidebar() {
     },
     [
       archiveThread,
+      atomRegistry,
       attemptPin,
       attemptSettle,
       attemptSettleGroup,

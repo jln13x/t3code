@@ -79,10 +79,12 @@ describe("GitRunStackedActionInput", () => {
       actionId: "action-1",
       cwd: "/repo",
       action: "create_pr",
+      pushRemoteName: "origin",
     });
 
     expect(parsed.actionId).toBe("action-1");
     expect(parsed.action).toBe("create_pr");
+    expect(parsed.pushRemoteName).toBe("origin");
   });
 });
 

@@ -89,8 +89,11 @@ This file is both the current inventory and the retirement record used during up
 
 - A web/desktop thread can start a new draft for the same logical project on another connected
   environment while carrying only its Git branch, not its conversation.
-- The destination fetches `origin` and checks out that exact branch on first send. An existing
-  checkout of the branch is reused, including the project's primary checkout.
+- The source branch is pushed to `origin` before the destination draft opens, so the handoff waits
+  for its transport to succeed instead of creating a draft that cannot fetch the branch.
+- The destination reuses an existing local checkout of the branch, including the project's primary
+  checkout. Otherwise it explicitly fetches that branch from `origin` and checks it out on first
+  send, including in clones whose default fetch refspec does not include every branch.
 - If destination bootstrap fails after consuming its event-sourced thread identity, retry keeps the
   draft and branch intent but mints a fresh thread identity.
 - Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31).

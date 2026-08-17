@@ -588,9 +588,14 @@ describe("vcsActionState", () => {
           successfulActionId,
         );
         const failedTransportActionId = createVcsActionTransportId(targetKey, failedActionId);
+        const receivedInputs: Array<{ readonly pushRemoteName?: string }> = [];
         const client = {
-          [WS_METHODS.gitRunStackedAction]: (input: { readonly actionId: string }) =>
-            input.actionId === successfulTransportActionId
+          [WS_METHODS.gitRunStackedAction]: (input: {
+            readonly actionId: string;
+            readonly pushRemoteName?: string;
+          }) => {
+            receivedInputs.push(input);
+            return input.actionId === successfulTransportActionId
               ? Stream.make(
                   progress({
                     kind: "action_finished",
@@ -609,7 +614,8 @@ describe("vcsActionState", () => {
                     phase: "push",
                     message: "push failed after creating the branch",
                   }),
-                ),
+                );
+          },
         } as unknown as WsRpcProtocolClient;
         const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
           target,
@@ -655,12 +661,14 @@ describe("vcsActionState", () => {
           manager.runStackedAction(targetKey).run(registry, {
             actionId: successfulActionId,
             action,
+            pushRemoteName: "origin",
           }),
         );
 
         expect(AsyncResult.isSuccess(successfulResult)).toBe(true);
         expect(registry.get(state).revision).toBe(1);
         expect(removed).toEqual([`${environmentId}:*`]);
+        expect(receivedInputs[0]?.pushRemoteName).toBe("origin");
 
         const failedResult = yield* Effect.promise(() =>
           manager.runStackedAction(targetKey).run(registry, {

@@ -16,11 +16,13 @@ their pinned threads keep the default newest-first order below the ones you have
 
 When the same repository project is available on two connected environments, open a thread's
 menu and choose **Continue branch on…**, then choose the destination environment. T3 Code opens a
-new thread draft there. On the first send, it fetches `origin` and checks out the same branch in a
-worktree. The source thread and its conversation stay where they are.
+new thread draft there after pushing the source branch to `origin`. On the first send, it reuses a
+matching local checkout when one exists; otherwise it fetches that branch from `origin` and checks
+it out in a worktree. The source thread and its conversation stay where they are.
 
-Push the branch before continuing it so the destination can fetch it. If the branch already has a
-checkout on the destination, T3 Code reuses that checkout instead of creating a duplicate.
+Only committed Git changes move with the branch. Uncommitted changes remain in the source checkout.
+If the branch already has a checkout on the destination, T3 Code reuses that checkout instead of
+creating a duplicate.
 
 ## Environment artwork
 
