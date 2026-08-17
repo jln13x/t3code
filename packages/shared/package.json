@@ -230,10 +230,6 @@
     "./worktreeResource": {
       "types": "./src/worktreeResource.ts",
       "import": "./src/worktreeResource.ts"
-    },
-    "./threadTurnDelivery": {
-      "types": "./src/threadTurnDelivery.ts",
-      "import": "./src/threadTurnDelivery.ts"
     }
   },
   "scripts": {

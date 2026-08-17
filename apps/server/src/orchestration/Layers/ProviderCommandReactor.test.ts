@@ -150,7 +150,6 @@ describe("ProviderCommandReactor", () => {
     readonly requiresNewThreadForModelChange?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
     readonly titleRegenerationBeforeStart?: "one" | "two";
-    readonly queuedTurnHandoffBeforeStart?: boolean;
     readonly startSessionEffect?: (
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
@@ -416,7 +415,6 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
-      Layer.provide(SqlitePersistenceMemory),
     );
     runtime = ManagedRuntime.make(layer);
 
@@ -483,39 +481,6 @@ describe("ProviderCommandReactor", () => {
           ),
           threadId,
           regenerateTitle: true,
-        }),
-      );
-    }
-    if (input?.queuedTurnHandoffBeforeStart === true) {
-      const queuedAt = "2026-08-16T10:00:00.000Z";
-      await Effect.runPromise(
-        engine.dispatch({
-          type: "thread.turn.start",
-          commandId: CommandId.make("cmd-queued-before-reactor-start"),
-          threadId: ThreadId.make("thread-1"),
-          message: {
-            messageId: asMessageId("message-queued-before-reactor-start"),
-            role: "user",
-            text: "Recover me",
-            attachments: [],
-          },
-          runtimeMode: "approval-required",
-          interactionMode: "default",
-          modelSelection,
-          deliveryMode: "after-current",
-          createdAt: queuedAt,
-        }),
-      );
-      await Effect.runPromise(
-        engine.dispatch({
-          type: "thread.queued-turn.dispatch",
-          commandId: CommandId.make("cmd-mark-queued-handoff-before-reactor-start"),
-          threadId: ThreadId.make("thread-1"),
-          messageId: asMessageId("message-queued-before-reactor-start"),
-          runtimeMode: "approval-required",
-          interactionMode: "default",
-          queuedAt,
-          createdAt: "2026-08-16T10:00:01.000Z",
         }),
       );
     }
@@ -2417,164 +2382,6 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  effectIt.effect("keeps the session healthy when the provider refuses to steer a turn", () =>
-    Effect.gen(function* () {
-      const harness = yield* Effect.promise(() => createHarness());
-      const now = "2026-01-01T00:00:00.000Z";
-
-      // A turn is running: this is the state a mid-turn send arrives in.
-      yield* harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-session-set-steering"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "running",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: asTurnId("turn-running"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      });
-
-      // A turn that cannot absorb the message — a `/review`, or one whose
-      // settings the send asks to change. The provider declined; nothing is
-      // broken.
-      harness.sendTurn.mockImplementationOnce(
-        () =>
-          Effect.fail(
-            new ProviderAdapterRequestError({
-              provider: "codex",
-              method: "turn/steer",
-              detail: "Codex is running a review turn, which does not accept new messages.",
-            }),
-          ) as unknown as ReturnType<typeof harness.sendTurn>,
-      );
-
-      yield* harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start-steer-refused"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-steer-refused"),
-          role: "user",
-          text: "one more thing",
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      });
-
-      yield* Effect.promise(() =>
-        waitFor(async () => {
-          const readModel = await harness.readModel();
-          const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
-          return (
-            thread?.activities.some(
-              (activity) => activity.kind === "provider.turn.steer.rejected",
-            ) ?? false
-          );
-        }),
-      );
-
-      const readModel = yield* Effect.promise(() => harness.readModel());
-      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
-      expect(
-        thread?.activities.find((activity) => activity.kind === "provider.turn.steer.rejected"),
-      ).toMatchObject({
-        tone: "info",
-        summary: "Message not sent",
-        payload: { detail: expect.stringContaining("does not accept new messages") },
-      });
-      // Reporting it as a turn-start failure would mark the session errored
-      // and null out its active turn, making the turn the provider is still
-      // working on vanish from the UI.
-      expect(
-        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
-      ).toBe(false);
-      expect(thread?.session?.status).not.toBe("error");
-      expect(thread?.session?.lastError ?? null).toBe(null);
-    }),
-  );
-
-  effectIt.effect("reports uncertain delivery when steer succeeds for an unexpected turn", () =>
-    Effect.gen(function* () {
-      const harness = yield* Effect.promise(() => createHarness());
-      const now = "2026-01-01T00:00:00.000Z";
-
-      yield* harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-session-set-steer-uncertain"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "running",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: asTurnId("turn-running"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      });
-
-      const uncertainError = Object.assign(
-        new ProviderAdapterRequestError({
-          provider: "codex",
-          method: "turn/steer",
-          detail: "Codex steered turn turn-other instead of the expected active turn turn-running.",
-        }),
-        { reason: "turn-id-mismatch", delivery: "uncertain" as const },
-      );
-      harness.sendTurn.mockImplementationOnce(
-        () => Effect.fail(uncertainError) as unknown as ReturnType<typeof harness.sendTurn>,
-      );
-
-      yield* harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start-steer-uncertain"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-steer-uncertain"),
-          role: "user",
-          text: "one more thing",
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      });
-
-      yield* Effect.promise(() =>
-        waitFor(async () => {
-          const readModel = await harness.readModel();
-          const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
-          return (
-            thread?.activities.some(
-              (activity) => activity.kind === "provider.turn.steer.rejected",
-            ) ?? false
-          );
-        }),
-      );
-
-      const readModel = yield* Effect.promise(() => harness.readModel());
-      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
-      expect(
-        thread?.activities.find((activity) => activity.kind === "provider.turn.steer.rejected"),
-      ).toMatchObject({
-        tone: "info",
-        summary: "Delivery uncertain",
-        payload: { detail: expect.stringContaining("unexpected active turn") },
-      });
-      expect(thread?.session?.status).not.toBe("error");
-    }),
-  );
-
   it("rejects cross-driver provider changes after the existing thread session has stopped", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
@@ -2999,7 +2806,7 @@ describe("ProviderCommandReactor", () => {
       ),
     );
 
-    await harness.runEffect(
+    await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-for-user-input-error"),
@@ -3017,7 +2824,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await harness.runEffect(
+    await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.activity.append",
         commandId: CommandId.make("cmd-user-input-requested"),
@@ -3050,7 +2857,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await harness.runEffect(
+    await Effect.runPromise(
       harness.engine.dispatch({
         type: "thread.user-input.respond",
         commandId: CommandId.make("cmd-user-input-respond-stale"),
@@ -3135,181 +2942,5 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.providerInstanceId).toBe(ProviderInstanceId.make("codex_work"));
     expect(thread?.session?.activeTurnId).toBeNull();
-  });
-
-  it("holds after-current messages on the server until the active turn settles", async () => {
-    const harness = await createHarness();
-    const now = "2026-08-16T12:00:00.000Z";
-
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-queue-session-running"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "running",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: asTurnId("active-turn"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-queue-after-current"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("queued-message"),
-          role: "user",
-          text: "Run after the current turn",
-          attachments: [],
-        },
-        runtimeMode: "approval-required",
-        interactionMode: "default",
-        modelSelection: {
-          instanceId: ProviderInstanceId.make("codex"),
-          model: "gpt-5-codex",
-        },
-        deliveryMode: "after-current",
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-
-    expect(harness.sendTurn).not.toHaveBeenCalled();
-    const queuedThread = (await harness.readModel()).threads[0];
-    expect(
-      queuedThread?.messages.find((message) => message.id === "queued-message")?.deliveryState,
-    ).toBe("queued");
-
-    const settledAt = "2026-08-16T12:01:00.000Z";
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-queue-session-ready"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "ready",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: null,
-          lastError: null,
-          updatedAt: settledAt,
-        },
-        createdAt: settledAt,
-      }),
-    );
-    await harness.drain();
-
-    expect(harness.sendTurn).toHaveBeenCalledTimes(1);
-    const deliveredThread = (await harness.readModel()).threads[0];
-    expect(
-      deliveredThread?.messages.find((message) => message.id === "queued-message")?.deliveryState,
-    ).toBeUndefined();
-  });
-
-  it("does not replay an ambiguous provider handoff after reactor startup", async () => {
-    const harness = await createHarness({ queuedTurnHandoffBeforeStart: true });
-    await harness.drain();
-
-    expect(harness.sendTurn).not.toHaveBeenCalled();
-    const thread = (await harness.readModel()).threads[0];
-    expect(thread?.session?.status).toBe("error");
-    expect(thread?.session?.lastError).toContain("may already have received it");
-    expect(
-      thread?.activities.some(
-        (activity) =>
-          activity.kind === "provider.turn.start.failed" &&
-          activity.summary === "Queued turn handoff interrupted",
-      ),
-    ).toBe(true);
-  });
-
-  it("does not dispatch a queued message after it is cancelled", async () => {
-    const harness = await createHarness();
-    const now = "2026-08-16T13:00:00.000Z";
-
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-cancel-queue-session-running"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "running",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: asTurnId("active-turn"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      }),
-    );
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-cancel-queue-start"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("cancelled-queued-message"),
-          role: "user",
-          text: "Do not run this",
-          attachments: [],
-        },
-        runtimeMode: "approval-required",
-        interactionMode: "default",
-        deliveryMode: "after-current",
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.queued-turn.cancel",
-        commandId: CommandId.make("cmd-cancel-queued-message"),
-        threadId: ThreadId.make("thread-1"),
-        messageId: asMessageId("cancelled-queued-message"),
-        createdAt: "2026-08-16T13:00:01.000Z",
-      }),
-    );
-    await harness.runEffect(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("cmd-cancel-queue-session-ready"),
-        threadId: ThreadId.make("thread-1"),
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "ready",
-          providerName: "codex",
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          runtimeMode: "approval-required",
-          activeTurnId: null,
-          lastError: null,
-          updatedAt: "2026-08-16T13:01:00.000Z",
-        },
-        createdAt: "2026-08-16T13:01:00.000Z",
-      }),
-    );
-    await harness.drain();
-
-    expect(harness.sendTurn).not.toHaveBeenCalled();
-    expect(
-      (await harness.readModel()).threads[0]?.messages.some(
-        (message) => message.id === "cancelled-queued-message",
-      ),
-    ).toBe(false);
   });
 });

@@ -2707,7 +2707,7 @@ describe("ProviderRuntimeIngestion", () => {
       harness.readModel,
       (entry) =>
         entry.session?.status === "error" &&
-        entry.session?.activeTurnId === null &&
+        entry.session?.activeTurnId === "turn-3" &&
         entry.session?.lastError === "runtime exploded",
     );
     expect(thread.session?.status).toBe("error");
@@ -3602,7 +3602,7 @@ describe("ProviderRuntimeIngestion", () => {
       harness.readModel,
       (entry) =>
         entry.session?.status === "error" &&
-        entry.session?.activeTurnId === null &&
+        entry.session?.activeTurnId === "turn-after-failure" &&
         entry.session?.lastError === "runtime still processed",
     );
     expect(thread.session?.status).toBe("error");

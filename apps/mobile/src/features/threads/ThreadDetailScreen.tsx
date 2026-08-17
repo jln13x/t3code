@@ -14,7 +14,6 @@ import type {
   RuntimeMode,
   ServerConfig as T3ServerConfig,
   ThreadId,
-  ThreadTurnDeliveryMode,
   UserInputQuestion,
 } from "@t3tools/contracts";
 import * as Haptics from "expo-haptics";
@@ -116,8 +115,7 @@ export interface ThreadDetailScreenProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
-  readonly onSendMessage: (deliveryMode?: ThreadTurnDeliveryMode) => Promise<MessageId | null>;
-  readonly onCancelQueuedMessage: (messageId: MessageId) => void;
+  readonly onSendMessage: () => Promise<MessageId | null>;
   readonly onReconnectEnvironment: () => void;
   readonly onUpdateThreadModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateThreadRuntimeMode: (runtimeMode: RuntimeMode) => void;
@@ -517,20 +515,17 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     selectedThreadKey,
   ]);
 
-  const handleSendMessage = useCallback(
-    async (deliveryMode?: ThreadTurnDeliveryMode) => {
-      const targetThreadKey = selectedThreadKey;
-      const messageId = await props.onSendMessage(deliveryMode);
-      if (messageId === null || selectedThreadKeyRef.current !== targetThreadKey) {
-        return messageId;
-      }
-
-      setAnchorMessageId(messageId);
-      composerEditorRef.current?.blur();
+  const handleSendMessage = useCallback(async () => {
+    const targetThreadKey = selectedThreadKey;
+    const messageId = await props.onSendMessage();
+    if (messageId === null || selectedThreadKeyRef.current !== targetThreadKey) {
       return messageId;
-    },
-    [props.onSendMessage, selectedThreadKey],
-  );
+    }
+
+    setAnchorMessageId(messageId);
+    composerEditorRef.current?.blur();
+    return messageId;
+  }, [props.onSendMessage, selectedThreadKey]);
 
   const collapseComposer = useCallback(() => {
     composerEditorRef.current?.blur();
@@ -610,7 +605,6 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
             onEndFollowEnabledChange={setEndFollowEnabled}
             skills={selectedProviderSkills}
             loadEarlier={props.loadEarlier ?? null}
-            onCancelQueuedMessage={props.onCancelQueuedMessage}
           />
         </View>
       ) : (

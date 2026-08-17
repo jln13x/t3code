@@ -4,11 +4,9 @@ Messages can contain up to 120,000 characters. If a draft is longer, T3 Code kee
 composer and shows how many characters need to be removed. Shorten the draft or split it into
 multiple messages, then send again in the same thread.
 
-While an agent is working, the primary send action queues the message to run after the active turn.
-Use **Steer** when the message should reach the active Codex turn immediately instead. On mobile,
-expand the composer to see both actions. Server-queued messages remain visible in the thread and
-can be cancelled before they start, even if the client disconnects.
+On web and desktop, sending while an agent is working adds the message to a queue directly above
+the composer. Use the arrow button to submit a queued message immediately, or the trash button to
+delete it. Otherwise, the next message is submitted automatically when the active turn finishes.
 
-If the server restarts during the narrow handoff to a provider, T3 Code reports the delivery as
-interrupted instead of replaying it automatically, because the provider may already have received
-the message. Check the provider transcript before resending it.
+The queue belongs to the current browser client. Reloading or closing that client clears it, and it
+does not appear on other devices. Keep the client open until queued work has been submitted.

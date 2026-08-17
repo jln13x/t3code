@@ -2,9 +2,6 @@ import * as Schema from "effect/Schema";
 
 import type { CheckpointServiceError } from "../checkpointing/Errors.ts";
 
-export const ProviderRequestDelivery = Schema.Literals(["not-delivered", "uncertain"]);
-export type ProviderRequestDelivery = typeof ProviderRequestDelivery.Type;
-
 /**
  * ProviderAdapterValidationError - Invalid adapter API input.
  */
@@ -63,8 +60,6 @@ export class ProviderAdapterRequestError extends Schema.TaggedErrorClass<Provide
     provider: Schema.String,
     method: Schema.String,
     detail: Schema.String,
-    reason: Schema.optionalKey(Schema.String),
-    delivery: Schema.optionalKey(ProviderRequestDelivery),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {

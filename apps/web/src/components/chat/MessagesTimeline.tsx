@@ -139,7 +139,6 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
-  onCancelQueuedMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
@@ -219,7 +218,6 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
-  onCancelQueuedMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -266,7 +264,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
-  onCancelQueuedMessage,
   isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
@@ -515,7 +512,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
-      onCancelQueuedMessage,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -532,7 +528,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
-      onCancelQueuedMessage,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
@@ -1040,28 +1035,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           markdownCwd={ctx.markdownCwd}
         />
       </div>
-      <div
-        className={cn(
-          "flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100",
-          row.message.deliveryState === "queued" && "opacity-100",
-        )}
-      >
+      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
-          {row.message.deliveryState === "queued" ? (
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Queued</span>
-              <Button
-                type="button"
-                size="xs"
-                variant="link"
-                aria-label="Cancel queued message"
-                className="px-0 text-destructive"
-                onClick={() => ctx.onCancelQueuedMessage(row.message.id)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
               {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
@@ -2260,12 +2235,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const [expanded, setExpanded] = useState(false);
   const iconConfig = workToneIcon(workEntry.tone);
   const showWarningIndicator = workEntry.sourceActivityKind === "runtime.warning";
-  const showRejectedIndicator = workEntry.sourceActivityKind === "provider.turn.steer.rejected";
-  const entryIconName = showWarningIndicator
-    ? "x"
-    : showRejectedIndicator
-      ? "circle-alert"
-      : workEntryIconName(workEntry);
+  const entryIconName = showWarningIndicator ? "x" : workEntryIconName(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
   const preview =
@@ -2285,21 +2255,17 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     "flex size-5 shrink-0 items-center justify-center",
     showWarningIndicator
       ? "text-destructive"
-      : showRejectedIndicator
-        ? "text-warning"
-        : showDestructiveRowStyle
-          ? "text-destructive"
-          : workEntry.tone === "tool" || showFailedIndicator
-            ? "text-icon-muted"
-            : iconConfig.className,
+      : showDestructiveRowStyle
+        ? "text-destructive"
+        : workEntry.tone === "tool" || showFailedIndicator
+          ? "text-icon-muted"
+          : iconConfig.className,
   );
   const headingClass = showWarningIndicator
     ? "font-medium text-warning"
-    : showRejectedIndicator
-      ? "font-medium text-warning"
-      : showDestructiveRowStyle
-        ? "font-medium text-destructive"
-        : "font-medium text-foreground";
+    : showDestructiveRowStyle
+      ? "font-medium text-destructive"
+      : "font-medium text-foreground";
   const turnSettled = !activity.activeTurnInProgress;
   const showNeutralIndicator = !turnSettled && workEntryIndicatesToolNeutralStatus(workEntry);
   const showSuccessIndicator =
