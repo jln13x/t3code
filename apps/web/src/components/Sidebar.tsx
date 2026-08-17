@@ -1751,7 +1751,6 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
     !isSelected;
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
-  const driverKind = providerEntry?.driverKind ?? null;
   const showInstanceBadge =
     providerEntry !== null &&
     shouldShowInstanceBadge(providerEntry, props.providerEntryByInstanceId.values());
@@ -1919,20 +1918,6 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
           <PinIcon aria-label="Pinned" className="size-3 shrink-0" />
         ) : null}
         {statusGlyph}
-        {driverKind ? (
-          <span className="inline-flex shrink-0 items-center opacity-60">
-            <ProviderInstanceIcon
-              driverKind={driverKind}
-              displayName={
-                providerEntry?.displayName ?? thread.session?.providerName ?? modelInstanceId
-              }
-              accentColor={providerEntry?.accentColor}
-              showBadge={showInstanceBadge}
-              iconClassName="size-3.5"
-              badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-[7px]"
-            />
-          </span>
-        ) : null}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
       </TooltipTrigger>
       <SidebarThreadTooltip
@@ -2332,6 +2317,30 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             ) : null}
           </span>
         </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/55">
+          {checkoutBranch ? (
+            <span className="flex min-w-0 flex-1 items-center gap-1">
+              <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+              <span className="truncate whitespace-nowrap">{checkoutBranch}</span>
+            </span>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {prStatus && pr ? (
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={handlePrClick}
+              className={cn("shrink-0 text-xs tabular-nums hover:underline", prStatus.colorClass)}
+              aria-label={prStatus.tooltip}
+            >
+              #{pr.number}
+            </a>
+          ) : null}
+          {isRemote ? <ServerIcon aria-label="Remote environment" className="size-3.5" /> : null}
+        </div>
         <div className="mt-1.5 flex flex-col gap-1">
           {threads.map((thread, index) => {
             const memberKey = memberKeys[index]!;
@@ -2362,30 +2371,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
               />
             );
           })}
-        </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/55">
-          {checkoutBranch ? (
-            <span className="flex min-w-0 flex-1 items-center gap-1">
-              <GitBranchIcon aria-hidden className="size-3 shrink-0" />
-              <span className="truncate whitespace-nowrap">{checkoutBranch}</span>
-            </span>
-          ) : (
-            <span className="flex-1" />
-          )}
-          {prStatus && pr ? (
-            <a
-              href={pr.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={handlePrClick}
-              className={cn("shrink-0 text-xs tabular-nums hover:underline", prStatus.colorClass)}
-              aria-label={prStatus.tooltip}
-            >
-              #{pr.number}
-            </a>
-          ) : null}
-          {isRemote ? <ServerIcon aria-label="Remote environment" className="size-3.5" /> : null}
         </div>
       </div>
     </li>
