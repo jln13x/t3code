@@ -78,6 +78,7 @@ This file is both the current inventory and the retirement record used during up
 - Source candidates: upstream [#5335](https://github.com/pingdotgg/t3code/pull/5335) for
   workspace-aware discovery and [#7196](https://github.com/pingdotgg/t3code/pull/7196) for
   structured invocation and token matching.
+- Fork implementation: [jln13x/t3code#28](https://github.com/jln13x/t3code/pull/28).
 - Sync boundary: preserve the project-scoped `providerSkills` RPC path through contracts, server
   registry, client runtime, and composer queries. In `CodexSessionRuntime`, skill binding must stay
   shared by `turn/start` and `turn/steer`; future upstream changes to either path need both cases
@@ -94,6 +95,7 @@ This file is both the current inventory and the retirement record used during up
 - Source candidates: upstream [#7240](https://github.com/pingdotgg/t3code/pull/7240) for the durable
   server queue and [#5795](https://github.com/pingdotgg/t3code/pull/5795) for correct Codex
   `turn/steer` handling.
+- Fork implementation: [jln13x/t3code#28](https://github.com/jln13x/t3code/pull/28).
 - Sync boundary: `ThreadTurnDeliveryMode` and queued-turn projections form the cross-client wire
   contract. Web and mobile must continue to send `after-current` for the primary action during
   active work and `immediate` only for explicit Steer. Codex's active-turn state and serialized
