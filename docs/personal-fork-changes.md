@@ -1,8 +1,8 @@
 # Personal Fork Changes
 
-The personal fork intentionally maintains only three product differences from `upstream/main`:
-desktop fork identity, completion/attention sounds, and native macOS completion notifications.
-Everything else follows upstream directly.
+The personal fork intentionally maintains four product differences from `upstream/main`: desktop
+fork identity, completion/attention sounds, native macOS completion notifications, and
+worktree-grouped web/desktop threads. Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
@@ -43,26 +43,49 @@ This file is both the current inventory and the retirement record used during up
 - Detection intentionally shares the renderer's live completion transition. It does not restore the
   retired event-replay cursor or durable notification outbox.
 
+### Worktree-grouped threads and checkout resources
+
+- Unpinned active threads that share the same Git worktree, or the same project's main checkout,
+  render in one sidebar card. Snoozed and settled threads collapse to one shelf row per checkout.
+- Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
+  the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
+  with a fork-specific group-order model.
+- Each conversation keeps independent messages and agent state, while terminal sessions, terminal
+  layout, preview tabs, open-file state, and Git diff state use a canonical checkout identity.
+- Checkout-level terminal and dev-server indicators appear on the grouped card. Removing one thread
+  preserves shared resources while siblings remain; removing the final sibling performs cleanup.
+- Settle, snooze, wake, and un-settle actions expand from a selected grouped thread to the checkout's
+  member threads. Search results, drafts, archive/delete, copying, title regeneration, provider
+  badges, durable PR display state, and project filtering continue to follow upstream behavior.
+- `chat.newInWorktree` creates a sibling conversation in the current checkout and defaults to
+  `mod+t`. This is a narrow explicit command; the retired arbitrary-worktree picker, mobile checkout
+  flow, PR-to-worktree resolution, and cross-project checkout inheritance remain retired.
+- The behavior is always enabled on web/desktop and has no fork feature flag or app preference.
+- Sync boundary: grouping helpers live in `SidebarV2.logic.ts`, checkout resource identity lives in
+  `worktreeScope.ts` and `packages/shared/src/worktreeResource.ts`, and the upstream sidebar is
+  extended rather than replaced. Future merges must preserve upstream search, drafts, pinning and
+  reorder, lifecycle/context-menu actions, provider badges, shelf persistence, and PR snapshots.
+
 ## Retired on 2026-08-16
 
 The following customizations and their centralized feature flags were removed in favor of current
 upstream behavior. Their migrations, contracts, settings controls, UI branches, native bridges, and
 tests were removed with them.
 
-| Retired customization                  | Historical fork behavior and retirement decision                                                                                                                                                                                                                                                                                                                                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Projectless standalone chats           | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                                                                                                           |
-| Native macOS sidebar                   | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                                                                                             |
-| Durable completion-notification replay | Persisted an event cursor/outbox so notifications could survive renderer reloads and retry failed IPC delivery. The durable replay machinery remains retired; the maintained native notification uses the live completion transition instead.                                                                                                                                                                 |
-| Sidebar worktree navigation            | Exposed worktree actions and preserved empty checkout groups in the sidebar. The fork now uses upstream navigation.                                                                                                                                                                                                                                                                                           |
-| Worktree source control                | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork now uses upstream source-control surfaces.                                                                                                                                                                                                                     |
-| Checkout-aware thread creation         | Preserved the exact active checkout for keyboard-created threads, reused arbitrary existing worktrees, added a searchable mobile checkout picker, resolved pull requests to worktrees, and prevented cross-project drafts from inheriting the active project's checkout. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream creation behavior. |
-| Fork-aware pull-request targeting      | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                                                                                                       |
-| Durable pull-request status            | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                                                                                                      |
-| Project provider skill discovery       | Rediscovered provider skills for the active project and worktree. The fork now uses upstream provider-skill behavior.                                                                                                                                                                                                                                                                                         |
-| Markdown and text attachments          | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                                                                                                        |
-| Generated-image rendering              | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                                                                                             |
-| Fork backports and integration ledger  | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                                                                                                    |
+| Retired customization                  | Historical fork behavior and retirement decision                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Projectless standalone chats           | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                               |
+| Native macOS sidebar                   | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                 |
+| Durable completion-notification replay | Persisted an event cursor/outbox so notifications could survive renderer reloads and retry failed IPC delivery. The durable replay machinery remains retired; the maintained native notification uses the live completion transition instead.                                                                                     |
+| Sidebar worktree navigation            | The former native-style project/worktree hierarchy exposed checkout actions and preserved empty checkout groups. That hierarchy remains retired. The maintained grouping is narrower: it groups live threads by checkout inside the upstream sidebar and does not restore empty checkout navigation.                              |
+| Worktree source control                | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork now uses upstream source-control surfaces.                                                                                                                                         |
+| Checkout-aware thread creation         | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. Grouping now carries only the explicit web/desktop `chat.newInWorktree` sibling-thread command described above. |
+| Fork-aware pull-request targeting      | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                           |
+| Durable pull-request status            | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                          |
+| Project provider skill discovery       | Rediscovered provider skills for the active project and worktree. The fork now uses upstream provider-skill behavior.                                                                                                                                                                                                             |
+| Markdown and text attachments          | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                            |
+| Generated-image rendering              | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                 |
+| Fork backports and integration ledger  | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                        |
 
 ## Earlier retirements
 
