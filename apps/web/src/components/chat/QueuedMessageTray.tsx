@@ -31,7 +31,7 @@ export const QueuedMessageTray = memo(function QueuedMessageTray({
   return (
     <section
       aria-label="Queued messages"
-      className="mx-auto mb-2 w-full max-w-3xl overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lg shadow-black/6 backdrop-blur-xl dark:bg-card/90 dark:shadow-black/20"
+      className="relative z-10 w-full overflow-hidden border-border/60 border-b bg-transparent"
       data-chat-queued-messages="true"
     >
       <div className="flex items-center gap-2 border-border/60 border-b px-3 py-2 text-muted-foreground">

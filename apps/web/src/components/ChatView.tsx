@@ -6576,12 +6576,6 @@ function ChatViewContent(props: ChatViewProps) {
                   ) : (
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                   )}
-                  <QueuedMessageTray
-                    messages={queuedMessages}
-                    busyMessageIds={queuedActionDisabledMessageIds}
-                    onSteer={(messageId) => void onSteerQueuedMessage(messageId)}
-                    onDelete={(messageId) => void onCancelQueuedMessage(messageId)}
-                  />
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}
@@ -6599,10 +6593,17 @@ function ChatViewContent(props: ChatViewProps) {
                         showComposerContextStrip && "chat-composer-glass-shell-with-context",
                       )}
                     >
-                      <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
+                      <div className="chat-composer-glass-host relative z-10 w-full overflow-hidden rounded-[22px]">
+                        <QueuedMessageTray
+                          messages={queuedMessages}
+                          busyMessageIds={queuedActionDisabledMessageIds}
+                          onSteer={(messageId) => void onSteerQueuedMessage(messageId)}
+                          onDelete={(messageId) => void onCancelQueuedMessage(messageId)}
+                        />
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <ChatComposer
                             composerRef={composerRef}
+                            connectedTop={queuedMessages.length > 0}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}
                             routeKind={routeKind}
