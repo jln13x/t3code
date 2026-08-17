@@ -47,6 +47,15 @@ vi.mock("~/state/session", () => ({
   readPreparedConnection: mocks.readPreparedConnection,
 }));
 
+// worktreeScope pulls the full entities/server atom graph into the module
+// graph; identity stubs keep this suite's narrow mocks sufficient.
+vi.mock("~/worktreeScope", () => ({
+  useWorktreeCanonicalThreadRef: (ref: unknown) => ref,
+  useWorktreeScopeKeyForThreadRef: (ref: unknown) => (ref === null ? null : JSON.stringify(ref)),
+  resolveWorktreeCanonicalThreadRef: (ref: unknown) => ref,
+  resolveWorktreeScopeKeyForThreadRef: (ref: unknown) => JSON.stringify(ref),
+}));
+
 // Stubbed at the direct dependency rather than letting the real module pull in
 // `useSettings` -> `state/server`, which would drag the whole settings and
 // connection graph into a test that only cares about the browser chrome.

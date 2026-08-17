@@ -7,11 +7,15 @@ When asked to sync or rebuild the personal fork, run this checklist end-to-end.
 - `origin/main` mirrors `upstream/main`; `personal` is the long-lived fork branch.
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before resolving conflicts.
   Preserve only the maintained desktop identity, completion/attention sounds, and native macOS
-  completion notifications.
+  completion notifications, plus the documented worktree grouping and checkout-resource boundary.
 - If upstream replaces or makes a customization obsolete, update the inventory instead of silently
   dropping it.
 - Do not restore retired customizations or fork feature flags during conflict resolution.
 - Never reset, rebase, or develop features directly on `personal`.
+- Never resolve `apps/web/src/components/Sidebar.tsx` wholesale as ours or theirs. Start from the
+  current upstream sidebar and reapply/reconcile only the documented grouping boundary. Verify that
+  upstream search, drafts, pinned-thread ordering, context-menu actions, provider badges, persisted
+  shelves, and PR snapshot behavior are still present before committing a sync.
 
 Start with a clean working tree, then:
 
@@ -30,7 +34,8 @@ git push origin personal
 ```
 
 Resolve merge conflicts at the narrow boundaries documented in the inventory, then rerun the
-checks. Verify completion sounds and macOS notifications from a live completion transition.
+checks. Run the focused worktree grouping/resource tests, and verify completion sounds and macOS
+notifications from a live completion transition.
 
 ## Rebuild the macOS app
 
