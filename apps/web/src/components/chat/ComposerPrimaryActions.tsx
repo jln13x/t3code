@@ -246,7 +246,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 ? "Preparing worktree"
                 : isSendBusy
                   ? "Sending"
-                  : "Send message"
+                  : isRunning
+                    ? "Queue message"
+                    : "Send message"
       }
     >
       {stageBackdropVariant ? (

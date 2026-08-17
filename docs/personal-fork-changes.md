@@ -1,9 +1,9 @@
 # Personal Fork Changes
 
-The personal fork intentionally maintains six product differences from `upstream/main`: desktop
+The personal fork intentionally maintains seven product differences from `upstream/main`: desktop
 fork identity, completion/attention sounds, native macOS completion notifications,
 worktree-grouped web/desktop threads, cross-environment branch continuation, and Codex skill
-handling. Everything else follows upstream directly.
+handling, plus a client-local active-turn message queue. Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
@@ -96,6 +96,25 @@ This file is both the current inventory and the retirement record used during up
 - Sync boundary: the menu and destination resolution stay in the upstream sidebar, while the draft
   handoff context and bootstrap behavior remain narrow additions to composer state and turn start.
 
+### Client-local active-turn message queue
+
+- Web and desktop hold messages submitted during an active turn in the current browser client and
+  show them in a queue attached directly above the composer. The queue is kept out of the
+  conversation timeline.
+- The primary composer action adds to the queue. Each queued item can be submitted immediately
+  through the existing `thread.turn.start` path or deleted. When the active turn becomes ready, the
+  client submits the next queued item automatically.
+- This queue intentionally has no server contract, database migration, projection, or provider
+  adapter customization. It is not persisted across a reload, shared with other clients, or drained
+  while the relevant client is closed. Immediate mid-turn submission retains upstream provider
+  behavior and is not guaranteed to use Codex's native `turn/steer` protocol.
+- Source candidates: upstream [#7240](https://github.com/pingdotgg/t3code/pull/7240) informed the
+  queue UX and [#5795](https://github.com/pingdotgg/t3code/pull/5795) documented the native Codex
+  steering distinction. Neither server implementation is carried by this fork.
+- Sync boundary: the queue state stays in `clientTurnQueueStore.ts`; `ChatView` owns enqueue and
+  dispatch, and `QueuedMessageTray` owns the two per-item controls. Preserve upstream orchestration,
+  persistence, wire contracts, provider adapters, and mobile behavior.
+
 ## Retired on 2026-08-16
 
 The following customizations and their centralized feature flags were removed in favor of current
@@ -112,7 +131,7 @@ tests were removed with them.
 | Checkout-aware thread creation         | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. Grouping now carries only the explicit web/desktop `chat.newInWorktree` sibling-thread command described above. |
 | Fork-aware pull-request targeting      | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                           |
 | Durable pull-request status            | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                          |
-| Project provider skill discovery       | Rediscovered provider skills for the active project and worktree. The fork now uses upstream provider-skill behavior.                                                                                                                                                                                                             |
+| Durable server turn queue and steering | PR [#28](https://github.com/jln13x/t3code/pull/28) briefly added queued-turn persistence, projections, migrations, cross-client commands, and explicit Codex `turn/steer`. Those server changes were removed; the maintained queue is intentionally client-local and uses the existing turn-start command.                        |
 | Markdown and text attachments          | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                            |
 | Generated-image rendering              | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                 |
 | Fork backports and integration ledger  | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                        |
