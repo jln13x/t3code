@@ -7714,8 +7714,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["remoteExists"]>[0]) =>
           Effect.succeed(true),
       );
-      const fetchRemote = vi.fn(
-        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["fetchRemote"]>[0]) => Effect.void,
+      const fetchRemoteTrackingBranch = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteTrackingBranch"]>[0]) =>
+          Effect.void,
       );
       const resolveRemoteTrackingCommit = vi.fn(
         (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["resolveRemoteTrackingCommit"]>[0]) =>
@@ -7745,9 +7746,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       yield* buildAppUnderTest({
         layers: {
+          vcsDriver: {
+            isInsideWorkTree: () => Effect.succeed(true),
+          },
           gitVcsDriver: {
             remoteExists,
-            fetchRemote,
+            fetchRemoteTrackingBranch,
             resolveRemoteTrackingCommit,
             listRefs,
             createWorktree,
@@ -7811,6 +7815,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         refresh: true,
         limit: 100,
       });
+      assert.deepEqual(fetchRemoteTrackingBranch.mock.calls[0]?.[0], {
+        cwd: "/tmp/project",
+        remoteName: "origin",
+        remoteBranch: "feat/handoff",
+      });
       assert.deepEqual(createWorktree.mock.calls[0]?.[0], {
         cwd: "/tmp/project",
         refName: "origin/feat/handoff",
@@ -7821,6 +7830,129 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         dispatchedCommands.map((command) => command.type),
         ["thread.create", "thread.meta.update", "thread.turn.start"],
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("reuses a destination branch checkout without resolving it on origin", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const remoteExists = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["remoteExists"]>[0]) =>
+          Effect.succeed(true),
+      );
+      const fetchRemoteTrackingBranch = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteTrackingBranch"]>[0]) =>
+          Effect.void,
+      );
+      const resolveRemoteTrackingCommit = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["resolveRemoteTrackingCommit"]>[0]) =>
+          Effect.succeed({
+            commitSha: "0123456789abcdef0123456789abcdef01234567",
+            remoteRefName: "origin/feat/handoff",
+          }),
+      );
+      const listRefs = vi.fn((_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["listRefs"]>[0]) =>
+        Effect.succeed({
+          refs: [
+            {
+              name: "feat/handoff",
+              current: true,
+              isDefault: false,
+              worktreePath: "/tmp/project",
+            },
+          ],
+          isRepo: true,
+          hasPrimaryRemote: true,
+          nextCursor: null,
+          totalCount: 1,
+        }),
+      );
+      const createWorktree = vi.fn(
+        (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["createWorktree"]>[0]) =>
+          Effect.succeed({
+            worktree: {
+              refName: "feat/handoff",
+              path: "/tmp/project",
+            },
+          }),
+      );
+
+      yield* buildAppUnderTest({
+        layers: {
+          vcsDriver: {
+            isInsideWorkTree: () => Effect.succeed(true),
+          },
+          gitVcsDriver: {
+            remoteExists,
+            fetchRemoteTrackingBranch,
+            resolveRemoteTrackingCommit,
+            listRefs,
+            createWorktree,
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+            readEvents: () => Stream.empty,
+          },
+        },
+      });
+
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("cmd-continue-local-branch"),
+            threadId: ThreadId.make("thread-continue-local-branch"),
+            message: {
+              messageId: MessageId.make("msg-continue-local-branch"),
+              role: "user",
+              text: "continue here",
+              attachments: [],
+            },
+            modelSelection: defaultModelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            bootstrap: {
+              createThread: {
+                projectId: defaultProjectId,
+                title: "Continue local branch",
+                modelSelection: defaultModelSelection,
+                runtimeMode: "full-access",
+                interactionMode: "default",
+                branch: "feat/handoff",
+                worktreePath: null,
+                createdAt,
+              },
+              prepareWorktree: {
+                projectCwd: "/tmp/project",
+                baseBranch: "feat/handoff",
+                branch: "feat/handoff",
+                startFromOrigin: true,
+                continueBranch: true,
+              },
+            },
+            createdAt,
+          }),
+        ),
+      );
+
+      assert.equal(remoteExists.mock.calls.length, 0);
+      assert.equal(fetchRemoteTrackingBranch.mock.calls.length, 0);
+      assert.equal(resolveRemoteTrackingCommit.mock.calls.length, 0);
+      assert.equal(createWorktree.mock.calls.length, 0);
+      const metadataUpdate = dispatchedCommands.find(
+        (command) => command.type === "thread.meta.update",
+      );
+      assert.deepInclude(metadataUpdate, {
+        type: "thread.meta.update",
+        branch: "feat/handoff",
+        worktreePath: null,
+      });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
