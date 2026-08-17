@@ -31,6 +31,16 @@ export function sidebarThreadKey(thread: EnvironmentThreadShell): string {
   return scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
 }
 
+/** Active checkout cards only show conversations that still belong in the
+    inbox. Settled siblings remain in the group so checkout-scoped resources
+    and lifecycle actions continue to account for them. */
+export function visibleWorktreeGroupMemberIndexes(group: SidebarWorktreeGroup): number[] {
+  if (group.section !== "active") return group.threads.map((_, index) => index);
+  return group.classifications.flatMap((classification, index) =>
+    classification === "settled" ? [] : [index],
+  );
+}
+
 function groupSettledTimestampMs(group: SidebarWorktreeGroup): number {
   let latest = 0;
   for (const thread of group.threads) {

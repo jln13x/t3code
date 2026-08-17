@@ -47,7 +47,8 @@ This file is both the current inventory and the retirement record used during up
 ### Worktree-grouped threads and checkout resources
 
 - Unpinned active threads that share the same Git worktree, or the same project's main checkout,
-  render in one sidebar card. Snoozed and settled threads collapse to one shelf row per checkout.
+  render in one sidebar card. Settled siblings stay hidden while that card has active work, and
+  snoozed and fully settled checkouts collapse to one shelf row per checkout.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
   the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
   with a fork-specific group-order model.

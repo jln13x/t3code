@@ -3,7 +3,8 @@
 The sidebar groups unpinned active threads by checkout. Threads that use the
 same Git worktree appear in one card, and threads that use a project's main
 checkout share a card as well. Pinned threads stay in the pinned section so
-their existing drag order is preserved.
+their existing drag order is preserved. Settled conversations are hidden from
+an active checkout card so its remaining work stays easy to scan.
 
 Each conversation keeps its own messages, turns, approvals, and plan. Resources
 that belong to the checkout are shared across the card:
