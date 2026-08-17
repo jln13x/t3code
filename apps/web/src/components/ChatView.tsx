@@ -14,6 +14,7 @@ import {
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
+  type ThreadTurnDeliveryMode,
   type TurnId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
@@ -46,6 +47,7 @@ import {
 import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import { resolveComposerDeliveryMode } from "@t3tools/shared/threadTurnDelivery";
 import { nextTerminalId, resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
@@ -1237,6 +1239,10 @@ function ChatViewContent(props: ChatViewProps) {
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const cancelQueuedTurn = useAtomCommand(
+    threadEnvironment.cancelQueuedTurn,
+    "queued message cancellation",
+  );
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
@@ -4977,6 +4983,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const onSend = async (
     e?: { preventDefault: () => void },
+    deliveryMode?: ThreadTurnDeliveryMode,
     directAnnotation?: {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
@@ -5205,6 +5212,10 @@ function ChatViewContent(props: ChatViewProps) {
 
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
+    const resolvedDeliveryMode = resolveComposerDeliveryMode({
+      hasActiveTurn: phase === "running",
+      ...(deliveryMode ? { requested: deliveryMode } : {}),
+    });
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
         type: "image" as const,
@@ -5377,6 +5388,7 @@ function ChatViewContent(props: ChatViewProps) {
           titleSeed: title,
           runtimeMode,
           interactionMode,
+          deliveryMode: resolvedDeliveryMode,
           ...(bootstrap ? { bootstrap } : {}),
           createdAt: messageCreatedAt,
         },
@@ -6109,6 +6121,21 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
+  const onCancelQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      if (!activeThread) {
+        return;
+      }
+      void cancelQueuedTurn({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId: activeThread.id,
+          messageId,
+        },
+      });
+    },
+    [activeThread, cancelQueuedTurn],
+  );
 
   // Empty state: no active thread
   if (!activeThread) {
@@ -6161,7 +6188,7 @@ function ChatViewContent(props: ChatViewProps) {
           configuredUrls={configuredPreviewUrls}
           visible
           onSendAnnotation={(annotation, image) => {
-            void onSend(undefined, { annotation, image });
+            void onSend(undefined, undefined, { annotation, image });
           }}
         />
       </Suspense>
@@ -6391,6 +6418,7 @@ function ChatViewContent(props: ChatViewProps) {
                 onOpenTurnDiff={onOpenTurnDiff}
                 revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                 onRevertUserMessage={onRevertUserMessage}
+                onCancelQueuedMessage={onCancelQueuedMessage}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 markdownCwd={gitCwd ?? undefined}
@@ -6492,6 +6520,7 @@ function ChatViewContent(props: ChatViewProps) {
                             routeKind={routeKind}
                             routeThreadRef={routeThreadRef}
                             draftId={draftId}
+                            activeProjectId={activeProject?.id ?? null}
                             activeThreadId={activeThreadId}
                             activeThreadEnvironmentId={activeThread?.environmentId}
                             activeThread={activeThread}

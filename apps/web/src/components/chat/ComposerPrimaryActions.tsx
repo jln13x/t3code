@@ -33,6 +33,7 @@ interface ComposerPrimaryActionsProps {
   showSendWhileRunning?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
+  onSteer: () => void;
   onImplementPlanInNewThread: () => void;
 }
 
@@ -74,6 +75,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   showSendWhileRunning = false,
   onPreviousPendingQuestion,
   onInterrupt,
+  onSteer,
   onImplementPlanInNewThread,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
@@ -277,7 +279,33 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   return (
     <>
       {renderStopGenerationButton(false)}
-      {showSendWhileRunning && hasSendableContent ? sendButton : null}
+      {showSendWhileRunning && hasSendableContent ? (
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="submit"
+            size="sm"
+            className={cn(
+              "rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover",
+              compact ? "px-3" : "px-4",
+            )}
+            {...pointerFocusProps}
+            disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+          >
+            Queue
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className={cn("rounded-full", compact ? "px-3" : "px-4")}
+            {...pointerFocusProps}
+            disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+            onClick={onSteer}
+          >
+            Steer
+          </Button>
+        </div>
+      ) : null}
     </>
   );
 });

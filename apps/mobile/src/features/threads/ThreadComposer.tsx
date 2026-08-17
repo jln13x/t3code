@@ -6,6 +6,7 @@ import type {
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as T3ServerConfig,
+  ThreadTurnDeliveryMode,
 } from "@t3tools/contracts";
 import {
   detectComposerTrigger,
@@ -114,7 +115,7 @@ export interface ThreadComposerProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
-  readonly onSendMessage: () => Promise<MessageId | null>;
+  readonly onSendMessage: (deliveryMode?: ThreadTurnDeliveryMode) => Promise<MessageId | null>;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
@@ -332,7 +333,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.selectedThread.session?.status === "starting";
 
   const sendLabel =
-    props.connectionState !== "connected" || props.queueCount > 0 ? "Queue" : "Send";
+    showStopAction || props.connectionState !== "connected" || props.queueCount > 0
+      ? "Queue"
+      : "Send";
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const connectionStatus = composerConnectionStatus({
@@ -536,31 +539,39 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   // ── Handle command selection ──────────────────────────────
   const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
 
-  const handleSend = useCallback(async () => {
-    const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
-    if (inFlightThreadIdsRef.current.has(threadKey)) return;
-    inFlightThreadIdsRef.current.add(threadKey);
-    try {
-      await onSendMessage();
-      // Sending a prompt starts agent work: arm the lock-screen card while the
-      // app is foregrounded and the activity token can be registered. Armed
-      // after the send so its preference read and native Activity start don't
-      // contend with the queued-message feedback on the tap frame.
-      armAgentAwarenessLiveActivityForLocalWork({
-        environmentId: props.environmentId,
-        threadTitle: props.selectedThread.title,
-        projectTitle: props.environmentLabel ?? "T3 Code",
-      });
-    } finally {
-      inFlightThreadIdsRef.current.delete(threadKey);
-    }
-  }, [
-    onSendMessage,
-    props.environmentId,
-    props.environmentLabel,
-    props.selectedThread.id,
-    props.selectedThread.title,
-  ]);
+  const sendWithDeliveryMode = useCallback(
+    async (deliveryMode?: ThreadTurnDeliveryMode) => {
+      const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+      if (inFlightThreadIdsRef.current.has(threadKey)) return;
+      inFlightThreadIdsRef.current.add(threadKey);
+      try {
+        await onSendMessage(deliveryMode);
+        // Sending a prompt starts agent work: arm the lock-screen card while the
+        // app is foregrounded and the activity token can be registered. Armed
+        // after the send so native Activity setup does not contend with the
+        // queued-message feedback on the tap frame.
+        armAgentAwarenessLiveActivityForLocalWork({
+          environmentId: props.environmentId,
+          threadTitle: props.selectedThread.title,
+          projectTitle: props.environmentLabel ?? "T3 Code",
+        });
+      } finally {
+        inFlightThreadIdsRef.current.delete(threadKey);
+      }
+    },
+    [
+      onSendMessage,
+      props.environmentId,
+      props.environmentLabel,
+      props.selectedThread.id,
+      props.selectedThread.title,
+    ],
+  );
+  const handleSend = useCallback(async () => sendWithDeliveryMode(), [sendWithDeliveryMode]);
+  const handleSteer = useCallback(
+    async () => sendWithDeliveryMode("immediate"),
+    [sendWithDeliveryMode],
+  );
   const handleCommandSelect = useCallback(
     (item: ComposerCommandItem) => {
       if (!composerTrigger) return;
@@ -838,7 +849,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           {!isExpanded ? (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(100)}>
               {showStopAction ? (
-                <ControlPill icon="stop.fill" variant="danger" onPress={props.onStopThread} />
+                <View className="flex-row gap-1.5">
+                  <ControlPill icon="stop.fill" variant="danger" onPress={props.onStopThread} />
+                  {hasContent ? (
+                    <ControlPill
+                      accessibilityLabel="Queue message"
+                      icon="arrow.up"
+                      variant="primary"
+                      onPress={handleSend}
+                    />
+                  ) : null}
+                </View>
               ) : (
                 <ControlPill
                   icon="arrow.up"
@@ -882,14 +903,36 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   />
                 ) : null}
               </ComposerToolbarScroller>
-              <ComposerToolbarButton
-                accessibilityLabel={sendLabel}
-                icon="arrow.up"
-                variant="primary"
-                disabled={!canSend}
-                onPress={handleSend}
-                showChevron={false}
-              />
+              {showStopAction ? (
+                <View className="flex-row gap-2">
+                  <ComposerToolbarButton
+                    accessibilityLabel="Steer active turn"
+                    icon="arrow.up.right"
+                    label="Steer"
+                    disabled={!canSend}
+                    onPress={handleSteer}
+                    showChevron={false}
+                  />
+                  <ComposerToolbarButton
+                    accessibilityLabel="Queue message"
+                    icon="arrow.up"
+                    label="Queue"
+                    variant="primary"
+                    disabled={!canSend}
+                    onPress={handleSend}
+                    showChevron={false}
+                  />
+                </View>
+              ) : (
+                <ComposerToolbarButton
+                  accessibilityLabel={sendLabel}
+                  icon="arrow.up"
+                  variant="primary"
+                  disabled={!canSend}
+                  onPress={handleSend}
+                  showChevron={false}
+                />
+              )}
             </ComposerToolbarRow>
           ) : null}
         </ComposerSurface>
