@@ -5346,6 +5346,7 @@ function ChatViewContent(props: ChatViewProps) {
       failure = turnAttachmentsResult;
     }
 
+    let turnStartAttempted = false;
     let turnStartSucceeded = false;
     if (failure === null && turnAttachmentsResult._tag === "Success") {
       const bootstrap =
@@ -5382,6 +5383,7 @@ function ChatViewContent(props: ChatViewProps) {
             }
           : undefined;
       beginLocalDispatch({ preparingWorktree: false });
+      turnStartAttempted = true;
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -5445,7 +5447,15 @@ function ChatViewContent(props: ChatViewProps) {
           detectTrigger: true,
         });
       }
-      if (!isAtomCommandInterrupted(failure)) {
+      const interrupted = isAtomCommandInterrupted(failure);
+      if (!interrupted) {
+        // A failed bootstrap deletes its visible thread, but event-sourced ids remain consumed.
+        // Keep the stable draft identity and give its next attempt a fresh server thread id.
+        if (turnStartAttempted && isLocalDraftThread && draftId) {
+          useComposerDraftStore
+            .getState()
+            .remintDraftThreadForRetry(draftId, threadIdForSend, newThreadId());
+        }
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,

@@ -391,6 +391,12 @@ interface ComposerDraftStoreState {
       interactionMode?: ProviderInteractionMode;
     },
   ) => void;
+  /** Replaces a failed bootstrap's consumed thread id without changing the draft session. */
+  remintDraftThreadForRetry: (
+    draftId: DraftId,
+    expectedThreadId: ThreadId,
+    nextThreadId: ThreadId,
+  ) => boolean;
   /** Creates or updates the draft session tracked for a concrete project ref. */
   setProjectDraftThreadId: (
     projectRef: ScopedProjectRef,
@@ -2423,6 +2429,27 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 nextLogicalProjectDraftThreadKeyByLogicalProjectKey,
             };
           });
+        },
+        remintDraftThreadForRetry: (draftId, expectedThreadId, nextThreadId) => {
+          let reminted = false;
+          set((state) => {
+            const existingThread = state.draftThreadsByThreadKey[draftId];
+            if (!existingThread || existingThread.threadId !== expectedThreadId) {
+              return state;
+            }
+            reminted = true;
+            return {
+              draftThreadsByThreadKey: {
+                ...state.draftThreadsByThreadKey,
+                [draftId]: {
+                  ...existingThread,
+                  threadId: nextThreadId,
+                  promotedTo: null,
+                },
+              },
+            };
+          });
+          return reminted;
         },
         setProjectDraftThreadId: (projectRef, draftId, options) => {
           get().setLogicalProjectDraftThreadId(
