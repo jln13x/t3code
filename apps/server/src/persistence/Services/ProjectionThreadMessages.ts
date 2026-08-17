@@ -31,7 +31,6 @@ export const ProjectionThreadMessage = Schema.Struct({
   isStreaming: Schema.Boolean,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
-  deliveryState: Schema.optional(Schema.Literal("queued")),
 });
 export type ProjectionThreadMessage = typeof ProjectionThreadMessage.Type;
 
@@ -47,10 +46,6 @@ export type GetProjectionThreadMessageInput = typeof GetProjectionThreadMessageI
 
 export const DeleteProjectionThreadMessagesInput = Schema.Struct({
   threadId: ThreadId,
-});
-export const SetProjectionThreadMessageDeliveryStateInput = Schema.Struct({
-  messageId: MessageId,
-  deliveryState: Schema.NullOr(Schema.Literal("queued")),
 });
 export type DeleteProjectionThreadMessagesInput = typeof DeleteProjectionThreadMessagesInput.Type;
 
@@ -73,14 +68,6 @@ export interface ProjectionThreadMessageRepositoryShape {
   readonly getByMessageId: (
     input: GetProjectionThreadMessageInput,
   ) => Effect.Effect<Option.Option<ProjectionThreadMessage>, ProjectionRepositoryError>;
-
-  readonly setDeliveryState: (
-    input: typeof SetProjectionThreadMessageDeliveryStateInput.Type,
-  ) => Effect.Effect<void, ProjectionRepositoryError>;
-
-  readonly deleteByMessageId: (
-    input: GetProjectionThreadMessageInput,
-  ) => Effect.Effect<void, ProjectionRepositoryError>;
 
   /**
    * List projected thread messages for a thread.
