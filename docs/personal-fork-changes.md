@@ -123,6 +123,10 @@ tests were removed with them.
 | Generated-image rendering              | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                 |
 | Fork backports and integration ledger  | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                        |
 
+Released fork databases can retain the historical migration IDs used by retired customizations.
+Forward-only compatibility migrations must repair any upstream schema that now occupies one of those
+IDs instead of renumbering released history or requiring users to reset their T3 home.
+
 ## Earlier retirements
 
 - Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
