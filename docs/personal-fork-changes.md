@@ -111,6 +111,7 @@ This file is both the current inventory and the retirement record used during up
 - Source candidates: upstream [#7240](https://github.com/pingdotgg/t3code/pull/7240) informed the
   queue UX and [#5795](https://github.com/pingdotgg/t3code/pull/5795) documented the native Codex
   steering distinction. Neither server implementation is carried by this fork.
+- Fork implementation: [jln13x/t3code#35](https://github.com/jln13x/t3code/pull/35).
 - Sync boundary: the queue state stays in `clientTurnQueueStore.ts`; `ChatView` owns enqueue and
   dispatch, and `QueuedMessageTray` owns the two per-item controls. Preserve upstream orchestration,
   persistence, wire contracts, provider adapters, and mobile behavior.
