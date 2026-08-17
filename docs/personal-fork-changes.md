@@ -49,6 +49,14 @@ This file is both the current inventory and the retirement record used during up
 - Unpinned active threads that share the same Git worktree, or the same project's main checkout,
   render in one sidebar card. Settled siblings stay hidden while that card has active work, and
   snoozed and fully settled checkouts collapse to one shelf row per checkout.
+- Opening or multi-selecting a conversation highlights only that conversation's inner row; the
+  surrounding checkout card adds no selection or hover fill, so it stays visually neutral and does
+  not imply checkout-wide scope.
+- Each inner conversation row exposes its own archive action on hover or keyboard focus. It uses the
+  existing archive confirmation preference and remains unavailable while that conversation runs.
+  A temporary success toast offers Undo through the existing unarchive path.
+- A newly completed, unvisited conversation uses a brighter, stronger title until the conversation
+  opens; ordinary idle siblings recede slightly without adding a completion icon or row tint.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
   the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
   with a fork-specific group-order model.
