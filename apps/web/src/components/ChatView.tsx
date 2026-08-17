@@ -1019,7 +1019,10 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
 });
 
 interface PersistentThreadTerminalPanelProps {
+  /** Real conversation ref used to resolve project and checkout metadata. */
   threadRef: ScopedThreadRef;
+  /** Checkout-scoped synthetic owner used for terminal sessions and RPCs. */
+  terminalThreadId: ThreadId;
   surface: Extract<RightPanelSurface, { kind: "terminal" }>;
   launchContext: PersistentTerminalLaunchContext | null;
   focusRequestId: number;
@@ -1038,6 +1041,7 @@ interface PersistentThreadTerminalPanelProps {
 
 const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPanel({
   threadRef,
+  terminalThreadId,
   surface,
   launchContext,
   focusRequestId,
@@ -1063,7 +1067,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
   const project = useProject(projectRef);
   const knownTerminalSessions = useKnownTerminalSessions({
     environmentId: threadRef.environmentId,
-    threadId: threadRef.threadId,
+    threadId: terminalThreadId,
   });
   const threadWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
   const activeSummary =
@@ -1153,7 +1157,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     <ThreadTerminalDrawer
       mode="panel"
       threadRef={threadRef}
-      threadId={threadRef.threadId}
+      threadId={terminalThreadId}
       cwd={cwd}
       worktreePath={worktreePath}
       runtimeEnv={runtimeEnv}
@@ -6167,7 +6171,8 @@ function ChatViewContent(props: ChatViewProps) {
       </Suspense>
     ) : activeRightPanelSurface?.kind === "terminal" ? (
       <PersistentThreadTerminalPanel
-        threadRef={canonicalWorktreeThreadRef ?? activeThreadRef}
+        threadRef={activeThreadRef}
+        terminalThreadId={terminalThreadId ?? activeThreadRef.threadId}
         surface={activeRightPanelSurface}
         launchContext={activeTerminalLaunchContext ?? null}
         focusRequestId={terminalFocusRequestId}
