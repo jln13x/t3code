@@ -160,6 +160,7 @@ export interface ThreadFeedProps {
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
   readonly onCancelQueuedMessage: (messageId: MessageId) => void;
+  readonly onSteerQueuedMessage: (messageId: MessageId) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   /** Non-null when older turns exist beyond the loaded window. */
   readonly loadEarlier?: {
@@ -807,6 +808,7 @@ function renderFeedEntry(
     readonly onPressImage: (uri: string, headers?: Record<string, string>) => void;
     readonly onMarkdownLinkPress: (href: string) => void;
     readonly onCancelQueuedMessage: (messageId: MessageId) => void;
+    readonly onSteerQueuedMessage: (messageId: MessageId) => void;
     readonly iconSubtleColor: string | import("react-native").ColorValue;
     readonly userBubbleColor: string | import("react-native").ColorValue;
     readonly markdownStyles: MarkdownStyleSets;
@@ -924,14 +926,32 @@ function renderFeedEntry(
               <>
                 <Text className="font-t3-medium text-xs text-foreground-muted">Queued</Text>
                 <Pressable
-                  accessibilityLabel="Cancel queued message"
+                  accessibilityLabel="Steer queued message now"
                   accessibilityRole="button"
                   hitSlop={6}
+                  className="size-7 items-center justify-center rounded-full"
+                  onPress={() => props.onSteerQueuedMessage(message.id)}
+                >
+                  <SymbolView
+                    name="arrow.up.right"
+                    size={13}
+                    tintColor={iconSubtleColor}
+                    type="monochrome"
+                  />
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Delete queued message"
+                  accessibilityRole="button"
+                  hitSlop={6}
+                  className="size-7 items-center justify-center rounded-full"
                   onPress={() => props.onCancelQueuedMessage(message.id)}
                 >
-                  <Text className="font-t3-semibold text-xs text-red-600 dark:text-red-400">
-                    Cancel
-                  </Text>
+                  <SymbolView
+                    name="trash"
+                    size={13}
+                    tintColor={iconSubtleColor}
+                    type="monochrome"
+                  />
                 </Pressable>
               </>
             ) : null}
@@ -1822,6 +1842,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         onPressImage,
         onMarkdownLinkPress,
         onCancelQueuedMessage: props.onCancelQueuedMessage,
+        onSteerQueuedMessage: props.onSteerQueuedMessage,
         iconSubtleColor,
         userBubbleColor,
         markdownStyles,
@@ -1844,6 +1865,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       onCopyWorkRow,
       onMarkdownLinkPress,
       props.onCancelQueuedMessage,
+      props.onSteerQueuedMessage,
       onPressImage,
       onToggleTurnFold,
       onToggleWorkGroup,

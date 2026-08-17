@@ -59,6 +59,7 @@ type ProviderIntentEvent = Extract<
       | "thread.meta-updated"
       | "thread.runtime-mode-set"
       | "thread.turn-queued"
+      | "thread.queued-turn-steer-requested"
       | "thread.turn-start-requested"
       | "thread.turn-interrupt-requested"
       | "thread.approval-response-requested"
@@ -1255,6 +1256,32 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const dispatchQueuedTurn = Effect.fn("dispatchQueuedTurn")(function* (
+    row: ProjectionQueuedTurns.ProjectionQueuedTurn,
+    createdAt: string,
+  ) {
+    yield* orchestrationEngine.dispatch({
+      type: "thread.queued-turn.dispatch",
+      commandId: row.commandId,
+      threadId: row.threadId,
+      messageId: row.messageId,
+      ...(row.modelSelection !== null ? { modelSelection: row.modelSelection } : {}),
+      ...(row.titleSeed !== null ? { titleSeed: row.titleSeed } : {}),
+      runtimeMode: row.runtimeMode,
+      interactionMode: row.interactionMode,
+      ...(row.sourceProposedPlanThreadId !== null && row.sourceProposedPlanId !== null
+        ? {
+            sourceProposedPlan: {
+              threadId: row.sourceProposedPlanThreadId,
+              planId: row.sourceProposedPlanId,
+            },
+          }
+        : {}),
+      queuedAt: row.queuedAt,
+      createdAt,
+    });
+  });
+
   const tryDispatchNextQueuedTurn = Effect.fn("tryDispatchNextQueuedTurn")(function* (
     threadId: ThreadId,
   ) {
@@ -1275,26 +1302,22 @@ const make = Effect.gen(function* () {
       return;
     }
     const createdAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
-    yield* orchestrationEngine.dispatch({
-      type: "thread.queued-turn.dispatch",
-      commandId: next.commandId,
-      threadId: next.threadId,
-      messageId: next.messageId,
-      ...(next.modelSelection !== null ? { modelSelection: next.modelSelection } : {}),
-      ...(next.titleSeed !== null ? { titleSeed: next.titleSeed } : {}),
-      runtimeMode: next.runtimeMode,
-      interactionMode: next.interactionMode,
-      ...(next.sourceProposedPlanThreadId !== null && next.sourceProposedPlanId !== null
-        ? {
-            sourceProposedPlan: {
-              threadId: next.sourceProposedPlanThreadId,
-              planId: next.sourceProposedPlanId,
-            },
-          }
-        : {}),
-      queuedAt: next.queuedAt,
-      createdAt,
+    yield* dispatchQueuedTurn(next, createdAt);
+  });
+
+  const processQueuedTurnSteerRequested = Effect.fn("processQueuedTurnSteerRequested")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.queued-turn-steer-requested" }>,
+  ) {
+    const rows = yield* projectionQueuedTurnRepository.listByThreadId({
+      threadId: event.payload.threadId,
     });
+    const queuedTurn = rows.find(
+      (row) => row.messageId === event.payload.messageId && row.status === "queued",
+    );
+    if (queuedTurn === undefined) {
+      return;
+    }
+    yield* dispatchQueuedTurn(queuedTurn, event.payload.requestedAt);
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1470,6 +1493,9 @@ const make = Effect.gen(function* () {
       case "thread.turn-queued":
         yield* tryDispatchNextQueuedTurn(event.payload.threadId);
         return;
+      case "thread.queued-turn-steer-requested":
+        yield* processQueuedTurnSteerRequested(event);
+        return;
       case "thread.turn-start-requested":
         yield* processTurnStartRequested(event);
         return;
@@ -1529,6 +1555,7 @@ const make = Effect.gen(function* () {
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||
         event.type === "thread.runtime-mode-set" ||
         event.type === "thread.turn-queued" ||
+        event.type === "thread.queued-turn-steer-requested" ||
         event.type === "thread.turn-start-requested" ||
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||

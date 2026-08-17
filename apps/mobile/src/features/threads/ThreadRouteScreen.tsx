@@ -218,6 +218,10 @@ function ThreadRouteContent(
     threadEnvironment.cancelQueuedTurn,
     "queued message cancellation",
   );
+  const steerQueuedTurn = useAtomCommand(
+    threadEnvironment.steerQueuedTurn,
+    "queued message steering",
+  );
   const navigation = useNavigation();
   const params = props.route.params;
   const environmentIdRaw = firstRouteParam(params.environmentId);
@@ -515,6 +519,21 @@ function ThreadRouteContent(
       });
     },
     [cancelQueuedTurn, selectedThread],
+  );
+  const handleSteerQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      if (!selectedThread) {
+        return;
+      }
+      void steerQueuedTurn({
+        environmentId: selectedThread.environmentId,
+        input: {
+          threadId: selectedThread.id,
+          messageId,
+        },
+      });
+    },
+    [selectedThread, steerQueuedTurn],
   );
 
   const handleOpenTerminal = useCallback(
@@ -820,6 +839,7 @@ function ThreadRouteContent(
           onStopThread={handleStopThread}
           onSendMessage={composer.onSendMessage}
           onCancelQueuedMessage={handleCancelQueuedMessage}
+          onSteerQueuedMessage={handleSteerQueuedMessage}
           onReconnectEnvironment={handleReconnectEnvironment}
           onUpdateThreadModelSelection={composer.onUpdateModelSelection}
           onUpdateThreadRuntimeMode={composer.onUpdateRuntimeMode}

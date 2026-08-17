@@ -14,7 +14,6 @@ import {
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
-  type ThreadTurnDeliveryMode,
   type TurnId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
@@ -291,6 +290,7 @@ import {
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
+import { QueuedMessageTray } from "./chat/QueuedMessageTray";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
   DRAFT_HERO_TRANSITION_DURATION_MS,
@@ -1243,6 +1243,10 @@ function ChatViewContent(props: ChatViewProps) {
     threadEnvironment.cancelQueuedTurn,
     "queued message cancellation",
   );
+  const steerQueuedTurn = useAtomCommand(
+    threadEnvironment.steerQueuedTurn,
+    "queued message steering",
+  );
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
@@ -1358,6 +1362,9 @@ function ChatViewContent(props: ChatViewProps) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  const [queuedActionMessageIds, setQueuedActionMessageIds] = useState<ReadonlySet<MessageId>>(
+    () => new Set(),
+  );
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
   const [localDraftErrorsByDraftId, setLocalDraftErrorsByDraftId] = useState<
@@ -2607,22 +2614,57 @@ function ChatViewContent(props: ChatViewProps) {
     if (optimisticUserMessages.length === 0) {
       return serverMessagesWithPreviewHandoff;
     }
-    const serverIds = new Set(serverMessagesWithPreviewHandoff.map((message) => message.id));
+    const optimisticQueuedIds = new Set(
+      optimisticUserMessages
+        .filter((message) => message.deliveryState === "queued")
+        .map((message) => message.id),
+    );
+    const messagesWithQueuedOptimism =
+      optimisticQueuedIds.size === 0
+        ? serverMessagesWithPreviewHandoff
+        : serverMessagesWithPreviewHandoff.map((message) =>
+            optimisticQueuedIds.has(message.id) && message.deliveryState !== "queued"
+              ? { ...message, deliveryState: "queued" as const }
+              : message,
+          );
+    const serverIds = new Set(messagesWithQueuedOptimism.map((message) => message.id));
     const pendingMessages = optimisticUserMessages.filter((message) => !serverIds.has(message.id));
     if (pendingMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff;
+      return messagesWithQueuedOptimism;
     }
-    return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
+    return [...messagesWithQueuedOptimism, ...pendingMessages];
   }, [attachmentPreviewHandoffByMessageId, displayServerMessages, optimisticUserMessages]);
+  const queuedMessages = useMemo(
+    () => timelineMessages.filter((message) => message.deliveryState === "queued"),
+    [timelineMessages],
+  );
+  const queuedActionDisabledMessageIds = useMemo(() => {
+    const confirmedQueuedMessageIds = new Set(
+      displayServerMessages
+        .filter((message) => message.deliveryState === "queued")
+        .map((message) => message.id),
+    );
+    const disabled = new Set(queuedActionMessageIds);
+    for (const message of queuedMessages) {
+      if (!confirmedQueuedMessageIds.has(message.id)) {
+        disabled.add(message.id);
+      }
+    }
+    return disabled;
+  }, [displayServerMessages, queuedActionMessageIds, queuedMessages]);
+  const conversationMessages = useMemo(
+    () => timelineMessages.filter((message) => message.deliveryState !== "queued"),
+    [timelineMessages],
+  );
   const timelineEntries = useMemo(
     () =>
       deriveTimelineEntries(
-        timelineMessages,
+        conversationMessages,
         activeThread?.proposedPlans ?? [],
         workLogEntries,
         turnPlans,
       ),
-    [activeThread?.proposedPlans, timelineMessages, turnPlans, workLogEntries],
+    [activeThread?.proposedPlans, conversationMessages, turnPlans, workLogEntries],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -4117,14 +4159,21 @@ function ChatViewContent(props: ChatViewProps) {
     if (activeThread.messages.length === 0) {
       return;
     }
-    const serverIds = new Set(activeThread.messages.map((message) => message.id));
-    const removedMessages = optimisticUserMessages.filter((message) => serverIds.has(message.id));
+    const serverMessagesById = new Map(
+      activeThread.messages.map((message) => [message.id, message]),
+    );
+    const removedMessages = optimisticUserMessages.filter((message) => {
+      const serverMessage = serverMessagesById.get(message.id);
+      if (!serverMessage) return false;
+      return message.deliveryState !== "queued" || serverMessage.deliveryState === "queued";
+    });
     if (removedMessages.length === 0) {
       return;
     }
+    const removedMessageIds = new Set(removedMessages.map((message) => message.id));
     const timer = window.setTimeout(() => {
       setOptimisticUserMessages((existing) =>
-        existing.filter((message) => !serverIds.has(message.id)),
+        existing.filter((message) => !removedMessageIds.has(message.id)),
       );
     }, 0);
     for (const removedMessage of removedMessages) {
@@ -4983,7 +5032,6 @@ function ChatViewContent(props: ChatViewProps) {
 
   const onSend = async (
     e?: { preventDefault: () => void },
-    deliveryMode?: ThreadTurnDeliveryMode,
     directAnnotation?: {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
@@ -5214,7 +5262,6 @@ function ChatViewContent(props: ChatViewProps) {
     const messageCreatedAt = new Date().toISOString();
     const resolvedDeliveryMode = resolveComposerDeliveryMode({
       hasActiveTurn: phase === "running",
-      ...(deliveryMode ? { requested: deliveryMode } : {}),
     });
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
@@ -5233,21 +5280,22 @@ function ChatViewContent(props: ChatViewProps) {
       sizeBytes: image.sizeBytes,
       previewUrl: image.previewUrl,
     }));
-    // Sending always returns to the live edge. The new row becomes the
-    // anchored end-space target so it lands near the top while the response
-    // streams into the reserved space below it.
-    isAtEndRef.current = true;
-    timelineScrollModeRef.current = "anchoring-new-turn";
-    liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
-    setTimelineLiveFollowEnabled(true);
-    pendingTimelineAnchorRef.current = messageIdForSend;
-    activeTimelineAnchorIndexRef.current = null;
-    showScrollDebouncer.current.cancel();
-    setShowScrollToBottom(false);
-    setTimelineAnchor({
-      threadKey: scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
-      messageId: messageIdForSend,
-    });
+    if (resolvedDeliveryMode !== "after-current") {
+      // Immediate sends return to the live edge. Queued messages stay above
+      // the composer and must not create a missing timeline anchor.
+      isAtEndRef.current = true;
+      timelineScrollModeRef.current = "anchoring-new-turn";
+      liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
+      setTimelineLiveFollowEnabled(true);
+      pendingTimelineAnchorRef.current = messageIdForSend;
+      activeTimelineAnchorIndexRef.current = null;
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+      setTimelineAnchor({
+        threadKey: scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
+        messageId: messageIdForSend,
+      });
+    }
     setOptimisticUserMessages((existing) => [
       ...existing,
       {
@@ -5259,6 +5307,7 @@ function ChatViewContent(props: ChatViewProps) {
         createdAt: messageCreatedAt,
         updatedAt: messageCreatedAt,
         streaming: false,
+        ...(resolvedDeliveryMode === "after-current" ? { deliveryState: "queued" as const } : {}),
       },
     ]);
     setThreadError(threadIdForSend, null);
@@ -6122,19 +6171,52 @@ function ChatViewContent(props: ChatViewProps) {
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
   const onCancelQueuedMessage = useCallback(
-    (messageId: MessageId) => {
+    async (messageId: MessageId) => {
       if (!activeThread) {
         return;
       }
-      void cancelQueuedTurn({
+      setQueuedActionMessageIds((current) => new Set(current).add(messageId));
+      const result = await cancelQueuedTurn({
         environmentId: activeThread.environmentId,
         input: {
           threadId: activeThread.id,
           messageId,
         },
       });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        setThreadError(activeThread.id, chatActionErrorMessage(squashAtomCommandFailure(result)));
+      }
+      setQueuedActionMessageIds((current) => {
+        const next = new Set(current);
+        next.delete(messageId);
+        return next;
+      });
     },
-    [activeThread, cancelQueuedTurn],
+    [activeThread, cancelQueuedTurn, setThreadError],
+  );
+  const onSteerQueuedMessage = useCallback(
+    async (messageId: MessageId) => {
+      if (!activeThread) {
+        return;
+      }
+      setQueuedActionMessageIds((current) => new Set(current).add(messageId));
+      const result = await steerQueuedTurn({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId: activeThread.id,
+          messageId,
+        },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        setThreadError(activeThread.id, chatActionErrorMessage(squashAtomCommandFailure(result)));
+      }
+      setQueuedActionMessageIds((current) => {
+        const next = new Set(current);
+        next.delete(messageId);
+        return next;
+      });
+    },
+    [activeThread, setThreadError, steerQueuedTurn],
   );
 
   // Empty state: no active thread
@@ -6188,7 +6270,7 @@ function ChatViewContent(props: ChatViewProps) {
           configuredUrls={configuredPreviewUrls}
           visible
           onSendAnnotation={(annotation, image) => {
-            void onSend(undefined, undefined, { annotation, image });
+            void onSend(undefined, { annotation, image });
           }}
         />
       </Suspense>
@@ -6494,6 +6576,12 @@ function ChatViewContent(props: ChatViewProps) {
                   ) : (
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                   )}
+                  <QueuedMessageTray
+                    messages={queuedMessages}
+                    busyMessageIds={queuedActionDisabledMessageIds}
+                    onSteer={(messageId) => void onSteerQueuedMessage(messageId)}
+                    onDelete={(messageId) => void onCancelQueuedMessage(messageId)}
+                  />
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}

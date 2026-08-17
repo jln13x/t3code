@@ -3218,6 +3218,71 @@ describe("ProviderCommandReactor", () => {
     ).toBeUndefined();
   });
 
+  it("steers a selected queued message into the active provider turn", async () => {
+    const harness = await createHarness();
+    const now = "2026-08-16T12:30:00.000Z";
+    const messageId = asMessageId("steered-queued-message");
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-steer-session-running"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("active-turn"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-queue-before-steer"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId,
+          role: "user",
+          text: "Change direction now",
+          attachments: [],
+        },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt: now,
+      }),
+    );
+    await harness.drain();
+
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.queued-turn.steer",
+        commandId: CommandId.make("cmd-steer-queued-message"),
+        threadId: ThreadId.make("thread-1"),
+        messageId,
+        createdAt: "2026-08-16T12:30:01.000Z",
+      }),
+    );
+    await harness.drain();
+
+    expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+    expect(
+      (await harness.readModel()).threads[0]?.messages.find((message) => message.id === messageId)
+        ?.deliveryState,
+    ).toBeUndefined();
+  });
+
   it("does not replay an ambiguous provider handoff after reactor startup", async () => {
     const harness = await createHarness({ queuedTurnHandoffBeforeStart: true });
     await harness.drain();

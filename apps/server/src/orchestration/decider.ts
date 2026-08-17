@@ -990,7 +990,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         })),
         causationEventId: userMessageEvent.eventId,
         type:
-          command.deliveryMode === "after-current"
+          command.deliveryMode === "after-current" ||
+          targetThread.session?.status === "starting" ||
+          targetThread.session?.status === "running"
             ? "thread.turn-queued"
             : "thread.turn-start-requested",
         payload: {
@@ -1072,6 +1074,35 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           messageId: command.messageId,
           cancelledAt: command.createdAt,
+        },
+      };
+    }
+
+    case "thread.queued-turn.steer": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const message = thread.messages.find((entry) => entry.id === command.messageId);
+      if (message?.role !== "user" || message.deliveryState !== "queued") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Queued user message '${command.messageId}' does not exist on thread '${command.threadId}'.`,
+        });
+      }
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.queued-turn-steer-requested",
+        payload: {
+          threadId: command.threadId,
+          messageId: command.messageId,
+          requestedAt: command.createdAt,
         },
       };
     }

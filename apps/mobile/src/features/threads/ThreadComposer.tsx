@@ -568,10 +568,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ],
   );
   const handleSend = useCallback(async () => sendWithDeliveryMode(), [sendWithDeliveryMode]);
-  const handleSteer = useCallback(
-    async () => sendWithDeliveryMode("immediate"),
-    [sendWithDeliveryMode],
-  );
   const handleCommandSelect = useCallback(
     (item: ComposerCommandItem) => {
       if (!composerTrigger) return;
@@ -905,14 +901,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               </ComposerToolbarScroller>
               {showStopAction ? (
                 <View className="flex-row gap-2">
-                  <ComposerToolbarButton
-                    accessibilityLabel="Steer active turn"
-                    icon="arrow.up.right"
-                    label="Steer"
-                    disabled={!canSend}
-                    onPress={handleSteer}
-                    showChevron={false}
-                  />
                   <ComposerToolbarButton
                     accessibilityLabel="Queue message"
                     icon="arrow.up"

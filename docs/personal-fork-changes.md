@@ -88,17 +88,20 @@ This file is both the current inventory and the retirement record used during up
 
 - Sending while a turn is active queues the message durably on the server by default. Queued
   messages are projected into the thread, survive client disconnects, run in order, and can be
-  cancelled before provider handoff.
-- **Steer** is a separate per-message action on web, desktop, and mobile. It sends immediately to
-  the active Codex turn without creating a phantom turn. There is intentionally no global
-  Queue/Steer preference.
+  cancelled before provider handoff. The server also forces ordinary submissions into the queue
+  while a provider session is starting or running, so a stale client cannot bypass this rule.
+- Web and desktop show pending messages in a queue immediately above the composer instead of as
+  submitted timeline messages. Each item has exactly two queue controls: **Steer now** promotes
+  that queued message into the active Codex turn, while **Delete** removes it. Mobile exposes the
+  same two controls on its queued message row. There is intentionally no global Queue/Steer
+  preference and no direct Steer action on an unsent draft.
 - Source candidates: upstream [#7240](https://github.com/pingdotgg/t3code/pull/7240) for the durable
   server queue and [#5795](https://github.com/pingdotgg/t3code/pull/5795) for correct Codex
   `turn/steer` handling.
 - Fork implementation: [jln13x/t3code#28](https://github.com/jln13x/t3code/pull/28).
-- Sync boundary: `ThreadTurnDeliveryMode` and queued-turn projections form the cross-client wire
-  contract. Web and mobile must continue to send `after-current` for the primary action during
-  active work and `immediate` only for explicit Steer. Codex's active-turn state and serialized
+- Sync boundary: `ThreadTurnDeliveryMode`, `thread.queued-turn.steer`, and queued-turn projections
+  form the cross-client wire contract. Ordinary starts during active work must remain queue-only;
+  only the per-item steer command can promote queued work. Codex's active-turn state and serialized
   submission path in `CodexSessionRuntime` must remain aligned with orchestration receipts so a
   steer never projects a second turn or retries an ambiguously delivered message.
 

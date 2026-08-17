@@ -16,7 +16,10 @@ const NOW = "2026-08-16T12:00:00.000Z";
 const THREAD_ID = ThreadId.make("thread-queue-test");
 const MESSAGE_ID = MessageId.make("message-queue-test");
 
-function makeReadModel(deliveryState?: "queued"): OrchestrationReadModel {
+function makeReadModel(
+  deliveryState?: "queued",
+  sessionStatus?: "starting" | "running",
+): OrchestrationReadModel {
   return {
     snapshotSequence: 0,
     projects: [],
@@ -60,7 +63,19 @@ function makeReadModel(deliveryState?: "queued"): OrchestrationReadModel {
         proposedPlans: [],
         activities: [],
         checkpoints: [],
-        session: null,
+        session:
+          sessionStatus === undefined
+            ? null
+            : {
+                threadId: THREAD_ID,
+                status: sessionStatus,
+                providerName: "codex",
+                providerInstanceId: ProviderInstanceId.make("codex"),
+                runtimeMode: "full-access",
+                activeTurnId: null,
+                lastError: null,
+                updatedAt: NOW,
+              },
       },
     ],
     updatedAt: NOW,
@@ -94,6 +109,66 @@ it.layer(NodeServices.layer)("queued turn decider", (it) => {
         "thread.message-sent",
         "thread.turn-queued",
       ]);
+    }),
+  );
+
+  it.effect("queues every normal submission while the provider is working", () =>
+    Effect.gen(function* () {
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-queue-active-turn"),
+          threadId: THREAD_ID,
+          message: {
+            messageId: MESSAGE_ID,
+            role: "user",
+            text: "Do not interrupt the current turn",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          deliveryMode: "immediate",
+          createdAt: NOW,
+        },
+        readModel: makeReadModel(undefined, "running"),
+      });
+
+      const events = Array.isArray(result) ? result : [result];
+      expect(events.map((event) => event.type)).toEqual([
+        "thread.message-sent",
+        "thread.turn-queued",
+      ]);
+    }),
+  );
+
+  it.effect("requests steering only for a message that is still queued", () =>
+    Effect.gen(function* () {
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.queued-turn.steer",
+          commandId: CommandId.make("cmd-steer-queued-turn"),
+          threadId: THREAD_ID,
+          messageId: MESSAGE_ID,
+          createdAt: NOW,
+        },
+        readModel: makeReadModel("queued", "running"),
+      });
+      const events = Array.isArray(result) ? result : [result];
+      expect(events.map((event) => event.type)).toEqual(["thread.queued-turn-steer-requested"]);
+
+      const failure = yield* Effect.result(
+        decideOrchestrationCommand({
+          command: {
+            type: "thread.queued-turn.steer",
+            commandId: CommandId.make("cmd-steer-delivered-turn"),
+            threadId: THREAD_ID,
+            messageId: MESSAGE_ID,
+            createdAt: NOW,
+          },
+          readModel: makeReadModel(),
+        }),
+      );
+      expect(failure._tag).toBe("Failure");
     }),
   );
 

@@ -5,9 +5,10 @@ composer and shows how many characters need to be removed. Shorten the draft or 
 multiple messages, then send again in the same thread.
 
 While an agent is working, the primary send action queues the message to run after the active turn.
-Use **Steer** when the message should reach the active Codex turn immediately instead. On mobile,
-expand the composer to see both actions. Server-queued messages remain visible in the thread and
-can be cancelled before they start, even if the client disconnects.
+Pending messages appear in a queue above the composer. Use the arrow button on a queued message to
+**Steer now**, sending that message to the active Codex turn immediately, or use the trash button to
+delete it. Server-queued messages survive client disconnects and remain available until they start
+or you delete them. Mobile offers the same controls on each queued message.
 
 If the server restarts during the narrow handoff to a provider, T3 Code reports the delivery as
 interrupted instead of replaying it automatically, because the provider may already have received
