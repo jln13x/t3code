@@ -588,7 +588,6 @@ function runStackedAction(
     actionId?: string;
     commitMessage?: string;
     featureBranch?: boolean;
-    pushRemoteName?: string;
     filePaths?: readonly string[];
   },
   options?: Parameters<GitManager.GitManager["Service"]["runStackedAction"]>[1],
@@ -2165,49 +2164,6 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           Effect.map((output) => output.stdout.trim()),
         ),
       ).toBe("origin/feature/push-only");
-    }),
-  );
-
-  it.effect("pushes to an explicitly requested remote instead of the existing upstream", () =>
-    Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
-      yield* initRepo(repoDir);
-      yield* runGit(repoDir, ["checkout", "-b", "feature/handoff"]);
-      const originDir = yield* createBareRemote();
-      const upstreamDir = yield* createBareRemote();
-      yield* runGit(repoDir, ["remote", "add", "origin", originDir]);
-      yield* runGit(repoDir, ["remote", "add", "upstream", upstreamDir]);
-      yield* runGit(repoDir, ["push", "-u", "upstream", "feature/handoff"]);
-      const upstreamHead = yield* runGit(repoDir, ["rev-parse", "HEAD"]).pipe(
-        Effect.map((output) => output.stdout.trim()),
-      );
-      NodeFS.writeFileSync(NodePath.join(repoDir, "handoff.txt"), "handoff\n");
-      yield* runGit(repoDir, ["add", "handoff.txt"]);
-      yield* runGit(repoDir, ["commit", "-m", "Prepare handoff"]);
-
-      const { manager } = yield* makeManager();
-      const result = yield* runStackedAction(manager, {
-        cwd: repoDir,
-        action: "push",
-        pushRemoteName: "origin",
-      });
-
-      expect(result.push.status).toBe("pushed");
-      expect(result.push.upstreamBranch).toBe("origin/feature/handoff");
-      expect(
-        yield* runGit(originDir, ["rev-parse", "refs/heads/feature/handoff"]).pipe(
-          Effect.map((output) => output.stdout.trim()),
-        ),
-      ).toBe(
-        yield* runGit(repoDir, ["rev-parse", "HEAD"]).pipe(
-          Effect.map((output) => output.stdout.trim()),
-        ),
-      );
-      expect(
-        yield* runGit(upstreamDir, ["rev-parse", "refs/heads/feature/handoff"]).pipe(
-          Effect.map((output) => output.stdout.trim()),
-        ),
-      ).toBe(upstreamHead);
     }),
   );
 

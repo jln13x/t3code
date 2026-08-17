@@ -74,7 +74,6 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
-import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
 import {
@@ -108,6 +107,7 @@ import { useShortcutModifierState } from "../shortcutModifierState";
 import { ensureLocalApi, readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { useContinueBranch } from "../hooks/useContinueBranch";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -200,6 +200,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import type { SidebarThreadSummary } from "../types";
+import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import {
   buildPhysicalToLogicalProjectKeyMap,
   buildSidebarProjectSnapshots,
@@ -1124,8 +1125,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     (settings) => settings.confirmThreadArchive,
   );
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const allProjects = useProjects();
-  const { environments } = useEnvironments();
   const deleteProject = useAtomCommand(projectEnvironment.delete, {
     reportFailure: false,
   });
@@ -1136,6 +1135,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     reportFailure: false,
   });
   const updateSettings = useUpdateClientSettings();
+  const allProjects = useProjects();
+  const { environments } = useEnvironments();
+  const continueBranch = useContinueBranch();
   const sidebarThreadPreviewCount = useClientSettings<SidebarThreadPreviewCount>(
     (settings) => settings.sidebarThreadPreviewCount,
   );
@@ -2174,28 +2176,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       );
 
       const continueTargetIndex = clicked ? continueBranchTargetIndex(clicked) : null;
-      if (continueTargetIndex !== null && thread.branch) {
+      if (continueTargetIndex !== null && thread.branch && threadWorkspacePath) {
         const target = continueBranchTargets[continueTargetIndex];
         if (!target) return;
-        const result = await settlePromise(() =>
-          handleNewThread(target.projectRef, {
-            branch: thread.branch,
-            worktreePath: null,
-            envMode: "worktree",
-            startFromOrigin: true,
-            continueBranch: true,
-          }),
-        );
-        if (result._tag === "Failure") {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not continue branch",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
+        await continueBranch({
+          sourceEnvironmentId: thread.environmentId,
+          sourceCwd: threadWorkspacePath,
+          branch: thread.branch,
+          target,
+        });
         return;
       }
 
@@ -2278,6 +2267,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [
       appSettingsConfirmThreadDelete,
       allProjects,
+      continueBranch,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,

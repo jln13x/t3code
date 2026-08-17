@@ -823,7 +823,7 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
-  it("remints a failed bootstrap thread id without losing branch handoff context", () => {
+  it("remints a failed bootstrap thread id without losing workspace context", () => {
     const store = useComposerDraftStore.getState();
     const replacementThreadId = ThreadId.make("thread-retry");
     store.setProjectDraftThreadId(remoteProjectRef, remoteDraftId, {
@@ -831,7 +831,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       branch: "feature/continue-me",
       envMode: "worktree",
       startFromOrigin: true,
-      continueBranch: true,
     });
     store.setPrompt(remoteDraftId, "keep this prompt");
     store.markDraftThreadPromoting(remoteDraftId);
@@ -846,7 +845,6 @@ describe("composerDraftStore project draft thread mapping", () => {
       branch: "feature/continue-me",
       envMode: "worktree",
       startFromOrigin: true,
-      continueBranch: true,
       promotedTo: null,
     });
     expect(draftByKey(remoteDraftId)?.prompt).toBe("keep this prompt");
@@ -1162,22 +1160,19 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
-  it("stores worktree bootstrap choices with the draft thread", () => {
+  it("stores the start-from-origin choice with the draft thread", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {
       threadId,
       envMode: "worktree",
       startFromOrigin: true,
-      continueBranch: true,
     });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(true);
-    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.continueBranch).toBe(true);
 
-    store.setDraftThreadContext(draftId, { startFromOrigin: false, continueBranch: false });
+    store.setDraftThreadContext(draftId, { startFromOrigin: false });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(false);
-    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.continueBranch).toBe(false);
   });
 
   it("preserves existing branch and worktree when setProjectDraftThreadId receives undefined", () => {

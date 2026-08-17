@@ -39,14 +39,13 @@ describe("buildThreadActionMenuItems", () => {
     expect(ids(baseState)).not.toContain("copy-branch");
   });
 
-  it("offers connected handoff targets as a branch submenu", () => {
-    const item = buildThreadActionMenuItems({
+  it("offers connected handoff destinations below the branch action", () => {
+    const items = buildThreadActionMenuItems({
       ...baseState,
-      branch: "feat/handoff",
+      branch: "feat/menu",
       continueBranchTargetLabels: ["My Mac", "VPS 2"],
-    }).find((candidate) => candidate.id === "continue-branch-on");
-
-    expect(item?.children).toEqual([
+    });
+    expect(items.find((item) => item.id === "continue-branch-on")?.children).toEqual([
       { id: "continue-branch-on:0", label: "My Mac" },
       { id: "continue-branch-on:1", label: "VPS 2" },
     ]);

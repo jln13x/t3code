@@ -2955,20 +2955,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   const fetchRemoteTrackingBranch: GitVcsDriver.GitVcsDriver["Service"]["fetchRemoteTrackingBranch"] =
     Effect.fn("fetchRemoteTrackingBranch")(function* (input) {
-      yield* runGit(
-        "GitVcsDriver.fetchRemoteTrackingBranch",
-        input.cwd,
-        [
-          "fetch",
-          "--quiet",
-          "--no-tags",
-          input.remoteName,
-          `+refs/heads/${input.remoteBranch}:refs/remotes/${input.remoteName}/${input.remoteBranch}`,
-        ],
-        {
-          fallbackErrorDetail: `Remote branch '${input.remoteName}/${input.remoteBranch}' was not found or could not be fetched. Push it from the source machine before continuing.`,
-        },
-      );
+      yield* runGit("GitVcsDriver.fetchRemoteTrackingBranch", input.cwd, [
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        input.remoteName,
+        `+refs/heads/${input.remoteBranch}:refs/remotes/${input.remoteName}/${input.remoteBranch}`,
+      ]);
     });
 
   const setBranchUpstream: GitVcsDriver.GitVcsDriver["Service"]["setBranchUpstream"] = (input) =>

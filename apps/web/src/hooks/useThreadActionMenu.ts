@@ -35,6 +35,7 @@ import { useEnvironments } from "../state/environments";
 import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
+import { useContinueBranch } from "./useContinueBranch";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
@@ -82,6 +83,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const continueBranch = useContinueBranch();
   const projects = useProjects();
   const { environments } = useEnvironments();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
@@ -162,19 +164,14 @@ export function useThreadActionMenu(input: {
         const continueTargetIndex = continueBranchTargetIndex(action);
         if (continueTargetIndex !== null && thread.branch) {
           const target = continueBranchTargets[continueTargetIndex];
-          if (!target) return;
-          const result = await settlePromise(() =>
-            handleNewThread(target.projectRef, {
-              branch: thread.branch,
-              worktreePath: null,
-              envMode: "worktree",
-              startFromOrigin: true,
-              continueBranch: true,
-            }),
-          );
-          if (result._tag === "Failure") {
-            failureToast("Could not continue branch", squashAtomCommandFailure(result));
-          }
+          const sourceCwd = thread.worktreePath ?? projectCwd;
+          if (!target || !sourceCwd) return;
+          await continueBranch({
+            sourceEnvironmentId: threadRef.environmentId,
+            sourceCwd,
+            branch: thread.branch,
+            target,
+          });
           return;
         }
         if (action.startsWith("snooze:")) {
@@ -342,9 +339,9 @@ export function useThreadActionMenu(input: {
       autoSettleAfterDays,
       autoSettleOnMerge,
       changeRequestState,
-      environments,
       confirmThreadArchive,
       confirmThreadDelete,
+      continueBranch,
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -352,9 +349,10 @@ export function useThreadActionMenu(input: {
       handleNewThread,
       markThreadUnread,
       onStartRename,
-      projects,
       pinThread,
       projectCwd,
+      projects,
+      environments,
       settleThread,
       snoozeThread,
       threadRef,
