@@ -12,16 +12,6 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
-## Continue a branch on another environment
-
-When the same repository project is available on two connected environments, open a thread's
-menu and choose **Continue branch on…**, then choose the destination environment. T3 Code opens a
-new thread draft there. On the first send, it fetches `origin` and checks out the same branch in a
-worktree. The source thread and its conversation stay where they are.
-
-Push the branch before continuing it so the destination can fetch it. If the branch already has a
-checkout on the destination, T3 Code reuses that checkout instead of creating a duplicate.
-
 ## Environment artwork
 
 Dev and Nightly environments can identify themselves with artwork at the top of the sidebar and in

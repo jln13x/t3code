@@ -74,7 +74,6 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { isElectron } from "../env";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
-import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
 import {
@@ -1124,8 +1123,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     (settings) => settings.confirmThreadArchive,
   );
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const allProjects = useProjects();
-  const { environments } = useEnvironments();
   const deleteProject = useAtomCommand(projectEnvironment.delete, {
     reportFailure: false,
   });
@@ -2140,29 +2137,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       );
       const threadWorkspacePath =
         thread.worktreePath ?? threadProject?.workspaceRoot ?? project.workspaceRoot ?? null;
-      const continueBranchTargets = resolveContinueBranchTargets({
-        sourceProjectRef: scopeProjectRef(thread.environmentId, thread.projectId),
-        projects: allProjects,
-        environments,
-      });
       const clicked = await api.contextMenu.show(
         [
           ...(thread.branch
-            ? [
-                { id: "new-thread-on-branch", label: `New thread on ${thread.branch}` },
-                ...(continueBranchTargets.length > 0
-                  ? [
-                      {
-                        id: "continue-branch-on",
-                        label: "Continue branch on…",
-                        children: continueBranchTargets.map((target, index) => ({
-                          id: `continue-branch-on:${index}`,
-                          label: target.label,
-                        })),
-                      },
-                    ]
-                  : []),
-              ]
+            ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
@@ -2172,32 +2150,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ],
         position,
       );
-
-      const continueTargetIndex = clicked ? continueBranchTargetIndex(clicked) : null;
-      if (continueTargetIndex !== null && thread.branch) {
-        const target = continueBranchTargets[continueTargetIndex];
-        if (!target) return;
-        const result = await settlePromise(() =>
-          handleNewThread(target.projectRef, {
-            branch: thread.branch,
-            worktreePath: null,
-            envMode: "worktree",
-            startFromOrigin: true,
-            continueBranch: true,
-          }),
-        );
-        if (result._tag === "Failure") {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not continue branch",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-        }
-        return;
-      }
 
       if (clicked === "new-thread-on-branch") {
         // Explicit branch carry-over: reuse the thread's worktree when it
@@ -2277,11 +2229,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
     [
       appSettingsConfirmThreadDelete,
-      allProjects,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
-      environments,
       handleNewThread,
       markThreadUnread,
       memberProjectByScopedKey,

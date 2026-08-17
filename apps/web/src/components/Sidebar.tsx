@@ -120,7 +120,6 @@ import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat"
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
-import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import {
   buildBulkTitleRegenerationContextMenuItem,
   formatWorkingDurationLabel,
@@ -3051,16 +3050,10 @@ export default function Sidebar() {
         const isPinned = thread.pinnedAt != null;
         // Presets resolve at menu-open time (same as the popover).
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
-        const continueBranchTargets = resolveContinueBranchTargets({
-          sourceProjectRef: scopeProjectRef(thread.environmentId, thread.projectId),
-          projects,
-          environments,
-        });
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
               branch: thread.branch ?? null,
-              continueBranchTargetLabels: continueBranchTargets.map((target) => target.label),
               isPinned,
               isSettled,
               isSnoozed,
@@ -3080,31 +3073,6 @@ export default function Sidebar() {
           ),
         );
         if (clicked._tag === "Failure") return;
-        const continueTargetIndex = clicked.value ? continueBranchTargetIndex(clicked.value) : null;
-        if (continueTargetIndex !== null && thread.branch) {
-          const target = continueBranchTargets[continueTargetIndex];
-          if (!target) return;
-          const result = await settlePromise(() =>
-            handleNewThreadRef.current(target.projectRef, {
-              branch: thread.branch,
-              worktreePath: null,
-              envMode: "worktree",
-              startFromOrigin: true,
-              continueBranch: true,
-            }),
-          );
-          if (result._tag === "Failure") {
-            const error = squashAtomCommandFailure(result);
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Could not continue branch",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-          }
-          return;
-        }
         if (clicked.value?.startsWith("snooze:")) {
           const preset = snoozePresets.find(
             (candidate) => `snooze:${candidate.id}` === clicked.value,
@@ -3270,11 +3238,9 @@ export default function Sidebar() {
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
-      environments,
       handleMultiSelectContextMenu,
       markThreadUnread,
       projectCwdByKey,
-      projects,
       serverConfigs,
       startThreadRename,
       updateThreadMetadata,

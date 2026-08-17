@@ -4,7 +4,6 @@ import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./thread
 
 const baseState: ThreadActionMenuState = {
   branch: null,
-  continueBranchTargetLabels: [],
   isPinned: false,
   isSettled: false,
   isSnoozed: false,
@@ -37,19 +36,6 @@ describe("buildThreadActionMenuItems", () => {
     expect(withBranch).toContain("copy-branch");
     expect(ids(baseState)).not.toContain("new-thread-on-branch");
     expect(ids(baseState)).not.toContain("copy-branch");
-  });
-
-  it("offers connected handoff targets as a branch submenu", () => {
-    const item = buildThreadActionMenuItems({
-      ...baseState,
-      branch: "feat/handoff",
-      continueBranchTargetLabels: ["My Mac", "VPS 2"],
-    }).find((candidate) => candidate.id === "continue-branch-on");
-
-    expect(item?.children).toEqual([
-      { id: "continue-branch-on:0", label: "My Mac" },
-      { id: "continue-branch-on:1", label: "VPS 2" },
-    ]);
   });
 
   it("flips lifecycle labels with thread state", () => {

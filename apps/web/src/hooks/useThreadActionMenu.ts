@@ -19,7 +19,6 @@ import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
-import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -29,9 +28,7 @@ import {
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
-  useProjects,
 } from "../state/entities";
-import { useEnvironments } from "../state/environments";
 import { readLocalApi } from "../localApi";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
@@ -82,8 +79,6 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
-  const projects = useProjects();
-  const { environments } = useEnvironments();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
   const autoSettleOnMerge = useClientSettings((s) => s.sidebarAutoSettleOnMerge);
@@ -129,14 +124,8 @@ export function useThreadActionMenu(input: {
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
-        const continueBranchTargets = resolveContinueBranchTargets({
-          sourceProjectRef: scopeProjectRef(threadRef.environmentId, thread.projectId),
-          projects,
-          environments,
-        });
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
-          continueBranchTargetLabels: continueBranchTargets.map((target) => target.label),
           isPinned: thread.pinnedAt != null,
           isSettled:
             supports.settlement &&
@@ -159,24 +148,6 @@ export function useThreadActionMenu(input: {
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
-        const continueTargetIndex = continueBranchTargetIndex(action);
-        if (continueTargetIndex !== null && thread.branch) {
-          const target = continueBranchTargets[continueTargetIndex];
-          if (!target) return;
-          const result = await settlePromise(() =>
-            handleNewThread(target.projectRef, {
-              branch: thread.branch,
-              worktreePath: null,
-              envMode: "worktree",
-              startFromOrigin: true,
-              continueBranch: true,
-            }),
-          );
-          if (result._tag === "Failure") {
-            failureToast("Could not continue branch", squashAtomCommandFailure(result));
-          }
-          return;
-        }
         if (action.startsWith("snooze:")) {
           const preset = snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
           if (!preset) return;
@@ -342,7 +313,6 @@ export function useThreadActionMenu(input: {
       autoSettleAfterDays,
       autoSettleOnMerge,
       changeRequestState,
-      environments,
       confirmThreadArchive,
       confirmThreadDelete,
       copyBranchToClipboard,
@@ -352,7 +322,6 @@ export function useThreadActionMenu(input: {
       handleNewThread,
       markThreadUnread,
       onStartRename,
-      projects,
       pinThread,
       projectCwd,
       settleThread,

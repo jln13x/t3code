@@ -1123,22 +1123,19 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
-  it("stores worktree bootstrap choices with the draft thread", () => {
+  it("stores the start-from-origin choice with the draft thread", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {
       threadId,
       envMode: "worktree",
       startFromOrigin: true,
-      continueBranch: true,
     });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(true);
-    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.continueBranch).toBe(true);
 
-    store.setDraftThreadContext(draftId, { startFromOrigin: false, continueBranch: false });
+    store.setDraftThreadContext(draftId, { startFromOrigin: false });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)?.startFromOrigin).toBe(false);
-    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.continueBranch).toBe(false);
   });
 
   it("preserves existing branch and worktree when setProjectDraftThreadId receives undefined", () => {
