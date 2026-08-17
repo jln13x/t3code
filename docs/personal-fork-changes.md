@@ -1,9 +1,9 @@
 # Personal Fork Changes
 
-The personal fork intentionally maintains six product differences from `upstream/main`: desktop
+The personal fork intentionally maintains seven product differences from `upstream/main`: desktop
 fork identity, completion/attention sounds, native macOS completion notifications,
-worktree-grouped web/desktop threads, Codex skill handling, and queue-first active-turn delivery.
-Everything else follows upstream directly.
+worktree-grouped web/desktop threads, cross-environment branch continuation, Codex skill handling,
+and queue-first active-turn delivery. Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
@@ -84,6 +84,18 @@ This file is both the current inventory and the retirement record used during up
   registry, client runtime, and composer queries. In `CodexSessionRuntime`, skill binding must stay
   shared by `turn/start` and `turn/steer`; future upstream changes to either path need both cases
   rechecked.
+
+### Cross-environment branch continuation
+
+- A web/desktop thread can start a new draft for the same logical project on another connected
+  environment while carrying only its Git branch, not its conversation.
+- The destination fetches `origin` and checks out that exact branch on first send. An existing
+  checkout of the branch is reused, including the project's primary checkout.
+- If destination bootstrap fails after consuming its event-sourced thread identity, retry keeps the
+  draft and branch intent but mints a fresh thread identity.
+- Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31).
+- Sync boundary: the menu and destination resolution stay in the upstream sidebar, while the draft
+  handoff context and bootstrap behavior remain narrow additions to composer state and turn start.
 
 ### Queue-first active-turn delivery and explicit Codex steering
 

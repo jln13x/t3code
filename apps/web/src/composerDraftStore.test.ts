@@ -823,6 +823,45 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
+  it("remints a failed bootstrap thread id without losing branch handoff context", () => {
+    const store = useComposerDraftStore.getState();
+    const replacementThreadId = ThreadId.make("thread-retry");
+    store.setProjectDraftThreadId(remoteProjectRef, remoteDraftId, {
+      threadId,
+      branch: "feature/continue-me",
+      envMode: "worktree",
+      startFromOrigin: true,
+      continueBranch: true,
+    });
+    store.setPrompt(remoteDraftId, "keep this prompt");
+    store.markDraftThreadPromoting(remoteDraftId);
+
+    expect(store.remintDraftThreadForRetry(remoteDraftId, threadId, replacementThreadId)).toBe(
+      true,
+    );
+    expect(useComposerDraftStore.getState().getDraftThread(remoteDraftId)).toMatchObject({
+      threadId: replacementThreadId,
+      environmentId: OTHER_TEST_ENVIRONMENT_ID,
+      projectId,
+      branch: "feature/continue-me",
+      envMode: "worktree",
+      startFromOrigin: true,
+      continueBranch: true,
+      promotedTo: null,
+    });
+    expect(draftByKey(remoteDraftId)?.prompt).toBe("keep this prompt");
+  });
+
+  it("does not remint a draft that moved to a different thread", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId: otherThreadId });
+
+    expect(store.remintDraftThreadForRetry(draftId, threadId, ThreadId.make("thread-retry"))).toBe(
+      false,
+    );
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.threadId).toBe(otherThreadId);
+  });
+
   it("clears only matching project draft mapping entries", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });
