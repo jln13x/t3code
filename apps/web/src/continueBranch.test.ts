@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   continueBranchPushCommand,
+  continueBranchTerminalCommand,
   continueBranchTargetIndex,
   resolveContinueBranchPushPlan,
   resolveContinueBranchRef,
@@ -124,31 +125,11 @@ describe("resolveContinueBranchPushPlan", () => {
     isRepo: true,
     hasPrimaryRemote: true,
     refName: "feat/catalog",
-    hasUpstream: true,
-    aheadCount: 0,
   };
 
-  it("pushes an unpublished branch and skips a fully published branch", () => {
-    expect(
-      resolveContinueBranchPushPlan({
-        branch: "feat/catalog",
-        status: { ...baseStatus, hasUpstream: false },
-      }),
-    ).toEqual({ kind: "push" });
+  it("always pushes the local branch under its own name", () => {
     expect(resolveContinueBranchPushPlan({ branch: "feat/catalog", status: baseStatus })).toEqual({
-      kind: "skip",
-    });
-  });
-
-  it("requires an exact manual push when an opaque upstream has unpublished commits", () => {
-    expect(
-      resolveContinueBranchPushPlan({
-        branch: "feat/catalog",
-        status: { ...baseStatus, aheadCount: 19 },
-      }),
-    ).toEqual({
-      kind: "manual",
-      command: "git push -u origin 'HEAD:refs/heads/feat/catalog'",
+      kind: "push",
     });
   });
 
@@ -167,6 +148,25 @@ describe("resolveContinueBranchPushPlan", () => {
   it("quotes the refspec for shell-safe manual instructions", () => {
     expect(continueBranchPushCommand("feat/$catalog")).toBe(
       "git push -u origin 'HEAD:refs/heads/feat/$catalog'",
+    );
+  });
+
+  it("reports the push exit code in the source platform's shell", () => {
+    expect(
+      continueBranchTerminalCommand({
+        branch: "feat/catalog",
+        marker: "__DONE__:",
+        platform: "linux",
+      }),
+    ).toBe("git push -u origin 'HEAD:refs/heads/feat/catalog'; printf '\\n__DONE__:%s\\n' \"$?\"");
+    expect(
+      continueBranchTerminalCommand({
+        branch: "feat/catalog",
+        marker: "__DONE__:",
+        platform: "windows",
+      }),
+    ).toBe(
+      `git push -u origin 'HEAD:refs/heads/feat/catalog'; Write-Output "__DONE__:$LASTEXITCODE"`,
     );
   });
 });

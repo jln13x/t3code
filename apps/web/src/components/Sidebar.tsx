@@ -4014,6 +4014,7 @@ export default function Sidebar() {
           if (!target || !threadWorkspacePath) return;
           await continueBranch({
             sourceEnvironmentId: thread.environmentId,
+            sourceThreadId: thread.id,
             sourceCwd: threadWorkspacePath,
             branch: thread.branch,
             target,
