@@ -102,7 +102,8 @@ This file is both the current inventory and the retirement record used during up
 - The client refreshes destination refs and creates or reuses the exact branch checkout before it
   opens the draft. No handoff state is stored in composer drafts or sent during turn bootstrap.
 - Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
-  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38).
+  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
+  publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39).
 - Sync boundary: the menu, safety planning, and handoff orchestration stay in the web client.
   Preserve upstream contracts, server bootstrap, Git manager, and client-runtime VCS action inputs.
 
