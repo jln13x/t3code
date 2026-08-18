@@ -1932,9 +1932,6 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         }
       >
         {title}
-        {thread.pinnedAt !== null ? (
-          <PinIcon aria-label="Pinned" className="size-3 shrink-0" />
-        ) : null}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         <span className="relative ml-auto flex size-5 shrink-0 items-center justify-center">
           <span className="inline-flex items-center justify-center transition-opacity group-hover/worktree-thread:opacity-0 group-focus-within/worktree-thread:opacity-0">
