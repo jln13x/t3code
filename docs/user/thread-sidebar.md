@@ -16,11 +16,11 @@ their pinned threads keep the default newest-first order below the ones you have
 
 When the same repository project is available on two connected environments, open a thread's
 menu and choose **Continue branch on…**, then choose the destination environment. T3 Code pushes an
-exactly as `origin/<branch>`, refreshes the destination's Git refs, and opens a new thread draft in
-a matching checkout. The source branch's configured upstream is ignored, so a feature branch that
-still tracks its merged base branch cannot be pushed to that base by mistake. The source thread and
-its conversation stay where they are. Only committed Git changes move; uncommitted changes remain
-in the source checkout.
+exactly as `origin/<branch>`, fetches that exact branch on the destination, and opens a new thread
+draft in a matching checkout. The source branch's configured upstream is ignored, so a feature
+branch that still tracks its merged base branch cannot be pushed to that base by mistake. The source
+thread and its conversation stay where they are. Only committed Git changes move; uncommitted
+changes remain in the source checkout.
 
 ## Environment artwork
 

@@ -12,6 +12,7 @@ import { useCallback, useContext } from "react";
 
 import type { ContinueBranchTarget } from "../continueBranch";
 import {
+  continueBranchFetchCommand,
   continueBranchPushCommand,
   continueBranchTerminalCommand,
   resolveContinueBranchPushPlan,
@@ -34,6 +35,11 @@ interface ContinueBranchInput {
   readonly target: ContinueBranchTarget;
 }
 
+type TerminalCommandResult =
+  | { readonly status: "success" }
+  | { readonly status: "interrupted" }
+  | { readonly status: "failure"; readonly message: string };
+
 function failureMessage<A, E>(result: AsyncResult.Failure<A, E>): string {
   const error = squashAtomCommandFailure(result);
   return error instanceof Error ? error.message : "An error occurred.";
@@ -55,6 +61,121 @@ export function useContinueBranch() {
   const closeTerminal = useAtomCommand(terminalEnvironment.close, { reportFailure: false });
   const handleNewThread = useNewThreadHandler();
   const { environments } = useEnvironments();
+
+  const runTerminalCommand = useCallback(
+    async (input: {
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+      readonly cwd: string;
+      readonly command: string;
+    }): Promise<TerminalCommandResult> => {
+      const operationId = randomUUID().replaceAll("-", "");
+      const terminalId = `branch-handoff-${operationId}`;
+      const marker = `__T3_BRANCH_HANDOFF_${operationId}__:`;
+      const openResult = await openTerminal({
+        environmentId: input.environmentId,
+        input: {
+          threadId: input.threadId,
+          terminalId,
+          cwd: input.cwd,
+          env: { GIT_TERMINAL_PROMPT: "0" },
+        },
+      });
+      if (openResult._tag === "Failure") {
+        return isAtomCommandInterrupted(openResult)
+          ? { status: "interrupted" }
+          : { status: "failure", message: failureMessage(openResult) };
+      }
+
+      const attachAtom = terminalEnvironment.attach({
+        environmentId: input.environmentId,
+        input: {
+          threadId: input.threadId,
+          terminalId,
+          cwd: input.cwd,
+        },
+      });
+      let unsubscribe = () => {};
+      const unmount = atomRegistry.mount(attachAtom);
+      let finishWait: (result: {
+        readonly exitCode: number | null;
+        readonly error: string | null;
+      }) => void = () => {};
+      const markerResult = new Promise<{
+        readonly exitCode: number | null;
+        readonly error: string | null;
+      }>((resolve) => {
+        let settled = false;
+        let timeoutId: number | null = null;
+        const finish = (result: {
+          readonly exitCode: number | null;
+          readonly error: string | null;
+        }) => {
+          if (settled) return;
+          settled = true;
+          if (timeoutId !== null) window.clearTimeout(timeoutId);
+          unsubscribe();
+          unmount();
+          resolve(result);
+        };
+        finishWait = finish;
+        const inspect = (result: AsyncResult.AsyncResult<TerminalBufferState, unknown>) => {
+          if (result._tag === "Failure") {
+            finish({ exitCode: null, error: failureMessage(result) });
+            return;
+          }
+          if (result._tag !== "Success") return;
+          if (result.value.error) {
+            finish({ exitCode: null, error: result.value.error });
+            return;
+          }
+          const markerOffset = result.value.buffer.lastIndexOf(marker);
+          if (markerOffset < 0) return;
+          const exitCode = Number.parseInt(
+            result.value.buffer.slice(markerOffset + marker.length),
+            10,
+          );
+          if (Number.isSafeInteger(exitCode)) finish({ exitCode, error: null });
+        };
+        timeoutId = window.setTimeout(
+          () => finish({ exitCode: null, error: "The Git command timed out." }),
+          120_000,
+        );
+        unsubscribe = atomRegistry.subscribe(attachAtom, inspect);
+        inspect(atomRegistry.get(attachAtom));
+      });
+
+      const platform =
+        environments.find((environment) => environment.environmentId === input.environmentId)
+          ?.serverConfig?.environment.platform.os ?? "unknown";
+      const command = continueBranchTerminalCommand({ command: input.command, marker, platform });
+      const writeResult = await writeTerminal({
+        environmentId: input.environmentId,
+        input: {
+          threadId: input.threadId,
+          terminalId,
+          data: `${command}\r`,
+        },
+      });
+      if (writeResult._tag === "Failure") {
+        finishWait({ exitCode: null, error: failureMessage(writeResult) });
+      }
+      const completed = await markerResult;
+      await closeTerminal({
+        environmentId: input.environmentId,
+        input: { threadId: input.threadId, terminalId, deleteHistory: true },
+      });
+      if (completed.error !== null || completed.exitCode !== 0) {
+        return {
+          status: "failure",
+          message:
+            completed.error ?? `Git command exited with status ${completed.exitCode ?? "unknown"}.`,
+        };
+      }
+      return { status: "success" };
+    },
+    [atomRegistry, closeTerminal, environments, openTerminal, writeTerminal],
+  );
 
   return useCallback(
     async (input: ContinueBranchInput): Promise<void> => {
@@ -96,118 +217,20 @@ export function useContinueBranch() {
           description: input.branch,
           timeout: 0,
         });
-        const operationId = randomUUID().replaceAll("-", "");
-        const terminalId = `branch-handoff-${operationId}`;
-        const marker = `__T3_BRANCH_HANDOFF_${operationId}__:`;
-        const openResult = await openTerminal({
+        const pushed = await runTerminalCommand({
           environmentId: input.sourceEnvironmentId,
-          input: {
-            threadId: input.sourceThreadId,
-            terminalId,
-            cwd: input.sourceCwd,
-            env: { GIT_TERMINAL_PROMPT: "0" },
-          },
+          threadId: input.sourceThreadId,
+          cwd: input.sourceCwd,
+          command: continueBranchPushCommand(input.branch),
         });
-        if (openResult._tag === "Failure") {
-          if (isAtomCommandInterrupted(openResult)) toastManager.close(progressToastId);
-          else fail("Could not start branch push", failureMessage(openResult));
+        if (pushed.status === "interrupted") {
+          toastManager.close(progressToastId);
           return;
         }
-
-        const attachAtom = terminalEnvironment.attach({
-          environmentId: input.sourceEnvironmentId,
-          input: {
-            threadId: input.sourceThreadId,
-            terminalId,
-            cwd: input.sourceCwd,
-          },
-        });
-        let unsubscribe = () => {};
-        const unmount = atomRegistry.mount(attachAtom);
-        let finishWait: (result: {
-          readonly exitCode: number | null;
-          readonly error: string | null;
-        }) => void = () => {};
-        const markerResult = new Promise<{
-          readonly exitCode: number | null;
-          readonly error: string | null;
-        }>((resolve) => {
-          let settled = false;
-          let timeoutId: number | null = null;
-          const finish = (result: {
-            readonly exitCode: number | null;
-            readonly error: string | null;
-          }) => {
-            if (settled) return;
-            settled = true;
-            if (timeoutId !== null) window.clearTimeout(timeoutId);
-            unsubscribe();
-            unmount();
-            resolve(result);
-          };
-          finishWait = finish;
-          const inspect = (result: AsyncResult.AsyncResult<TerminalBufferState, unknown>) => {
-            if (result._tag === "Failure") {
-              finish({ exitCode: null, error: failureMessage(result) });
-              return;
-            }
-            if (result._tag !== "Success") return;
-            if (result.value.error) {
-              finish({ exitCode: null, error: result.value.error });
-              return;
-            }
-            const markerOffset = result.value.buffer.lastIndexOf(marker);
-            if (markerOffset < 0) return;
-            const exitCode = Number.parseInt(
-              result.value.buffer.slice(markerOffset + marker.length),
-              10,
-            );
-            if (Number.isSafeInteger(exitCode)) finish({ exitCode, error: null });
-          };
-          timeoutId = window.setTimeout(
-            () => finish({ exitCode: null, error: "Timed out while pushing the branch." }),
-            120_000,
-          );
-          unsubscribe = atomRegistry.subscribe(attachAtom, inspect);
-          inspect(atomRegistry.get(attachAtom));
-        });
-
-        const platform =
-          environments.find(
-            (environment) => environment.environmentId === input.sourceEnvironmentId,
-          )?.serverConfig?.environment.platform.os ?? "unknown";
-        const command = continueBranchTerminalCommand({
-          branch: input.branch,
-          marker,
-          platform,
-        });
-        const writeResult = await writeTerminal({
-          environmentId: input.sourceEnvironmentId,
-          input: {
-            threadId: input.sourceThreadId,
-            terminalId,
-            data: `${command}\r`,
-          },
-        });
-        if (writeResult._tag === "Failure") {
-          finishWait({ exitCode: null, error: failureMessage(writeResult) });
-        }
-        const pushed = await markerResult;
-        await closeTerminal({
-          environmentId: input.sourceEnvironmentId,
-          input: { threadId: input.sourceThreadId, terminalId, deleteHistory: true },
-        });
-        if (pushed.error !== null || pushed.exitCode !== 0) {
-          fail(
-            "Could not push branch",
-            pushed.error ?? `Git push exited with status ${pushed.exitCode ?? "unknown"}.`,
-          );
+        if (pushed.status === "failure") {
+          fail("Could not push branch", pushed.message);
           return;
         }
-        await refreshStatus({
-          environmentId: input.sourceEnvironmentId,
-          input: { cwd: input.sourceCwd },
-        });
       }
 
       toastManager.update(progressToastId, {
@@ -216,15 +239,27 @@ export function useContinueBranch() {
         description: input.branch,
         timeout: 0,
       });
-      const refreshResult = await refreshStatus({
+      const fetched = await runTerminalCommand({
         environmentId: input.target.projectRef.environmentId,
-        input: { cwd: input.target.workspaceRoot },
+        threadId: input.sourceThreadId,
+        cwd: input.target.workspaceRoot,
+        command: continueBranchFetchCommand(input.branch),
       });
-      if (refreshResult._tag === "Failure") {
-        if (isAtomCommandInterrupted(refreshResult)) toastManager.close(progressToastId);
-        else fail("Could not refresh destination", failureMessage(refreshResult));
+      if (fetched.status === "interrupted") {
+        toastManager.close(progressToastId);
         return;
       }
+      if (fetched.status === "failure") {
+        fail("Could not fetch branch on destination", fetched.message);
+        return;
+      }
+
+      toastManager.update(progressToastId, {
+        type: "loading",
+        title: "Preparing destination checkout...",
+        description: input.branch,
+        timeout: 0,
+      });
 
       const refsResult = await listRefs({
         environmentId: input.target.projectRef.environmentId,
@@ -288,16 +323,6 @@ export function useContinueBranch() {
       }
       toastManager.close(progressToastId);
     },
-    [
-      atomRegistry,
-      closeTerminal,
-      createWorktree,
-      environments,
-      handleNewThread,
-      listRefs,
-      openTerminal,
-      refreshStatus,
-      writeTerminal,
-    ],
+    [createWorktree, handleNewThread, listRefs, refreshStatus, runTerminalCommand],
   );
 }
