@@ -19,6 +19,17 @@ This file is both the current inventory and the retirement record used during up
   directory, so both applications can coexist.
 - Identity is a build-time distinction, not a runtime feature flag. A runtime switch would not
   safely change OS registration, package identity, or storage paths.
+- Personal-fork maintainers can create one persistent self-signed Keychain certificate and use the
+  explicit local signing mode. Its fingerprints and first validated designated requirement are
+  pinned in machine-local state outside the repository; missing, changed, and ambiguous identities
+  fail instead of falling back to ad-hoc signing.
+- `install:desktop:arm64` builds a production ZIP, verifies the stable bundle/signing identity of
+  the app and all nested native code, and uses a rollback-safe `/Applications` replacement. It
+  remains local maintainer tooling: release signing, unsigned artifacts, wire contracts, and app
+  runtime behavior are unchanged.
+- Sync boundary: preserve the three signing modes and the local setup/validation/install scripts.
+  Never commit the local certificate or its fingerprint state, and never turn the local identity
+  into a distribution credential.
 
 ### Completion and attention sounds
 

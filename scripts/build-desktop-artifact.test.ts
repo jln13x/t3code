@@ -61,6 +61,7 @@ import {
   WINDOWS_SERVER_RESOURCE_SOURCE_DIR,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+import { LOCAL_DESKTOP_SIGNING_COMMON_NAME } from "./lib/local-desktop-signing.ts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 function mockProcess(exitCode: number) {
@@ -414,7 +415,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "mac",
         "dmg",
         "1.2.3",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -423,7 +424,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "linux",
         "AppImage",
         "1.2.3",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -432,7 +433,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "win",
         "nsis",
         "1.2.3",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -985,7 +986,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
   it.effect("adds passkey entitlements and both renderer protocols to signed macOS builds", () =>
     Effect.gen(function* () {
-      const config = yield* createBuildConfig("mac", "dmg", "1.2.3", true, false, undefined, {
+      const config = yield* createBuildConfig("mac", "dmg", "1.2.3", "release", false, undefined, {
         entitlementsPath: "/tmp/entitlements.mac.plist",
         provisioningProfilePath: "/tmp/t3code.provisionprofile",
       });
@@ -1007,7 +1008,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "mac",
         "dmg",
         "1.2.3",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -1020,13 +1021,39 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
+  it.effect("forces pinned local signing for ZIP builds without notarization", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "zip",
+        "1.2.3",
+        "local",
+        false,
+        undefined,
+        undefined,
+      );
+
+      const mac = config.mac as Record<string, unknown>;
+      assert.equal(config.appId, "com.t3tools.t3code.fork");
+      assert.equal(config.forceCodeSigning, true);
+      assert.deepStrictEqual(mac.target, ["zip"]);
+      assert.equal(mac.identity, LOCAL_DESKTOP_SIGNING_COMMON_NAME);
+      assert.equal(mac.notarize, false);
+      assert.equal(mac.preAutoEntitlements, false);
+      assert.equal(mac.strictVerify, true);
+      assert.equal(mac.timestamp, "none");
+      assert.notProperty(mac, "sign");
+      assert.notProperty(config, "dmg");
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
   it.effect("uses the nightly DMG background for nightly macOS builds", () =>
     Effect.gen(function* () {
       const config = yield* createBuildConfig(
         "mac",
         "dmg",
         "1.2.3-nightly.20260815.1",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -1045,7 +1072,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "win",
         "nsis",
         "1.2.3",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -1181,6 +1208,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         skipBuild: Option.none(),
         keepStage: Option.none(),
         signed: Option.none(),
+        localSigned: Option.none(),
         verbose: Option.none(),
         mockUpdates: Option.none(),
         mockUpdateServerPort: Option.none(),
@@ -1208,6 +1236,43 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect("resolves local macOS signing to a ZIP-only build mode", () =>
+    Effect.gen(function* () {
+      const baseInput = {
+        platform: Option.some("mac" as const),
+        target: Option.none<string>(),
+        arch: Option.some("arm64" as const),
+        buildVersion: Option.none<string>(),
+        outputDir: Option.some("release-local"),
+        skipBuild: Option.some(true),
+        keepStage: Option.some(false),
+        signed: Option.some(false),
+        localSigned: Option.some(true),
+        verbose: Option.some(false),
+        mockUpdates: Option.some(false),
+        mockUpdateServerPort: Option.none<number>(),
+        wslPrebuild: Option.none<string>(),
+      };
+      const layer = Layer.mergeAll(
+        Layer.succeed(HostProcessPlatform, "darwin"),
+        Layer.succeed(HostProcessArchitecture, "arm64"),
+        ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+      );
+
+      const resolved = yield* resolveBuildOptions(baseInput).pipe(Effect.provide(layer));
+      assert.equal(resolved.signingMode, "local");
+      assert.equal(resolved.target, "zip");
+
+      const error = yield* resolveBuildOptions({
+        ...baseInput,
+        target: Option.some("dmg"),
+      }).pipe(Effect.provide(layer), Effect.flip);
+      assert.equal(error._tag, "UnsupportedLocalDesktopSigningBuildError");
+      if (error._tag !== "UnsupportedLocalDesktopSigningBuildError") return;
+      assert.equal(error.reason, "non-zip-target");
+    }),
+  );
+
   it.effect("rejects universal builds on Linux and Windows before staging binaries", () =>
     Effect.gen(function* () {
       for (const platform of ["linux", "win"] as const) {
@@ -1221,6 +1286,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             skipBuild: Option.none(),
             keepStage: Option.none(),
             signed: Option.none(),
+            localSigned: Option.none(),
             verbose: Option.none(),
             mockUpdates: Option.none(),
             mockUpdateServerPort: Option.none(),
@@ -1245,6 +1311,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         skipBuild: Option.some(false),
         keepStage: Option.some(false),
         signed: Option.some(false),
+        localSigned: Option.some(false),
         verbose: Option.some(false),
         mockUpdates: Option.some(false),
         mockUpdateServerPort: Option.none(),
@@ -1257,6 +1324,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
                 T3CODE_DESKTOP_SKIP_BUILD: "true",
                 T3CODE_DESKTOP_KEEP_STAGE: "true",
                 T3CODE_DESKTOP_SIGNED: "true",
+                T3CODE_DESKTOP_LOCAL_SIGNED: "true",
                 T3CODE_DESKTOP_VERBOSE: "true",
                 T3CODE_DESKTOP_MOCK_UPDATES: "true",
               },
@@ -1267,7 +1335,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       assert.equal(resolved.skipBuild, false);
       assert.equal(resolved.keepStage, false);
-      assert.equal(resolved.signed, false);
+      assert.equal(resolved.signingMode, "unsigned");
       assert.equal(resolved.verbose, false);
       assert.equal(resolved.mockUpdates, false);
     }),

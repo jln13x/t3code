@@ -7,7 +7,8 @@ When asked to sync or rebuild the personal fork, run this checklist end-to-end.
 - `origin/main` mirrors `upstream/main`; `personal` is the long-lived fork branch.
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before resolving conflicts.
   Preserve only the maintained desktop identity, completion/attention sounds, and native macOS
-  completion notifications, plus the documented worktree grouping and checkout-resource boundary.
+  completion notifications, plus the documented local signed-install workflow, worktree grouping,
+  and checkout-resource boundary.
 - If upstream replaces or makes a customization obsolete, update the inventory instead of silently
   dropping it.
 - Do not restore retired customizations or fork feature flags during conflict resolution.
@@ -39,23 +40,15 @@ notifications from a live completion transition.
 
 ## Rebuild the macOS app
 
-Only when requested; do not start a development server.
+Only when requested; do not start a development server. Run the setup command once on a new Mac.
+Do not run the install command for the first `/Applications` replacement until the maintainer has
+explicitly approved that replacement.
 
 ```bash
-set -euo pipefail
-ARCH=$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64)
-bun run "dist:desktop:dmg:$ARCH"
-
-DMG=$(ls -t release/T3-Code-*-$ARCH.dmg | head -1)
-VOL=$(hdiutil attach "$DMG" -nobrowse | sed -n 's|^.*	\(/Volumes/.*\)$|\1|p' | tail -1)
-SOURCE_APP="$VOL/T3 Code (Fork).app"
-test -d "$SOURCE_APP"
-
-rm -rf "/Applications/T3 Code (Fork).app"
-ditto "$SOURCE_APP" "/Applications/T3 Code (Fork).app"
-xattr -cr "/Applications/T3 Code (Fork).app"
-hdiutil detach "$VOL"
-open -a "T3 Code (Fork)"
+vp run setup:desktop:signing
+vp run install:desktop:arm64
 ```
 
-Report the DMG path and whether the app launched.
+Report the validated designated requirement, whether an existing app was replaced, and whether the
+new app launched. Follow the permission-continuity checklist in `docs/internals/scripts.md` for the
+first two separately built installs.
