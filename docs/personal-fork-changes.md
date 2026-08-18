@@ -67,8 +67,10 @@ This file is both the current inventory and the retirement record used during up
 - Each inner conversation row exposes its own archive action on hover or keyboard focus. It uses the
   existing archive confirmation preference and remains unavailable while that conversation runs.
   A temporary success toast offers Undo through the existing unarchive path.
-- A newly completed, unvisited conversation uses a brighter, stronger title until the conversation
-  opens; ordinary idle siblings recede slightly without adding a completion icon or row tint.
+- Running state and activity time appear only on the individual conversation row, not again on the
+  checkout header. Its right-edge blue indicator becomes an orange unread dot when the run
+  completes, and the newly completed conversation keeps its brighter, stronger title until it
+  opens. Ordinary idle siblings recede slightly without adding a row tint.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
   the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
   with a fork-specific group-order model.
