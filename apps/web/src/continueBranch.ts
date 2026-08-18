@@ -97,15 +97,18 @@ export function continueBranchPushCommand(branch: string): string {
   return `git push -u origin ${shellQuote(`HEAD:refs/heads/${branch}`)}`;
 }
 
+export function continueBranchFetchCommand(branch: string): string {
+  return `git fetch origin ${shellQuote(`refs/heads/${branch}:refs/remotes/origin/${branch}`)}`;
+}
+
 export function continueBranchTerminalCommand(input: {
-  readonly branch: string;
+  readonly command: string;
   readonly marker: string;
   readonly platform: ExecutionEnvironmentPlatformOs;
 }): string {
-  const push = continueBranchPushCommand(input.branch);
   return input.platform === "windows"
-    ? `${push}; Write-Output "${input.marker}$LASTEXITCODE"`
-    : `${push}; printf '\\n${input.marker}%s\\n' "$?"`;
+    ? `${input.command}; Write-Output "${input.marker}$LASTEXITCODE"`
+    : `${input.command}; printf '\\n${input.marker}%s\\n' "$?"`;
 }
 
 /**
