@@ -2181,6 +2181,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         if (!target) return;
         await continueBranch({
           sourceEnvironmentId: thread.environmentId,
+          sourceThreadId: thread.id,
           sourceCwd: threadWorkspacePath,
           branch: thread.branch,
           target,

@@ -168,6 +168,7 @@ export function useThreadActionMenu(input: {
           if (!target || !sourceCwd) return;
           await continueBranch({
             sourceEnvironmentId: threadRef.environmentId,
+            sourceThreadId: thread.id,
             sourceCwd,
             branch: thread.branch,
             target,

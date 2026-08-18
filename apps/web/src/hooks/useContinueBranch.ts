@@ -1,9 +1,9 @@
 import { RegistryContext } from "@effect/atom-react";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { TerminalBufferState } from "@t3tools/client-runtime/state/terminal";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import {
   isAtomCommandInterrupted,
-  runAtomCommand,
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -13,11 +13,14 @@ import { useCallback, useContext } from "react";
 import type { ContinueBranchTarget } from "../continueBranch";
 import {
   continueBranchPushCommand,
+  continueBranchTerminalCommand,
   resolveContinueBranchPushPlan,
   resolveContinueBranchRef,
 } from "../continueBranch";
 import { randomUUID } from "../lib/utils";
-import { vcsActionManager, vcsEnvironment } from "../state/vcs";
+import { terminalEnvironment } from "../state/terminal";
+import { vcsEnvironment } from "../state/vcs";
+import { useEnvironments } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -25,6 +28,7 @@ import { useNewThreadHandler } from "./useHandleNewThread";
 
 interface ContinueBranchInput {
   readonly sourceEnvironmentId: EnvironmentId;
+  readonly sourceThreadId: ThreadId;
   readonly sourceCwd: string;
   readonly branch: string;
   readonly target: ContinueBranchTarget;
@@ -46,7 +50,11 @@ export function useContinueBranch() {
   const createWorktree = useAtomCommand(vcsEnvironment.createWorktree, {
     reportFailure: false,
   });
+  const openTerminal = useAtomCommand(terminalEnvironment.open, { reportFailure: false });
+  const writeTerminal = useAtomCommand(terminalEnvironment.write, { reportFailure: false });
+  const closeTerminal = useAtomCommand(terminalEnvironment.close, { reportFailure: false });
   const handleNewThread = useNewThreadHandler();
+  const { environments } = useEnvironments();
 
   return useCallback(
     async (input: ContinueBranchInput): Promise<void> => {
@@ -81,13 +89,6 @@ export function useContinueBranch() {
         fail("Could not continue branch", pushPlan.message);
         return;
       }
-      if (pushPlan.kind === "manual") {
-        fail(
-          "Push this branch once, then retry",
-          `The server cannot safely identify this branch's upstream. Run: ${pushPlan.command}`,
-        );
-        return;
-      }
       if (pushPlan.kind === "push") {
         toastManager.update(progressToastId, {
           type: "loading",
@@ -95,20 +96,118 @@ export function useContinueBranch() {
           description: input.branch,
           timeout: 0,
         });
-        const pushResult = await runAtomCommand(
-          atomRegistry,
-          vcsActionManager.runStackedAction({
-            environmentId: input.sourceEnvironmentId,
+        const operationId = randomUUID().replaceAll("-", "");
+        const terminalId = `branch-handoff-${operationId}`;
+        const marker = `__T3_BRANCH_HANDOFF_${operationId}__:`;
+        const openResult = await openTerminal({
+          environmentId: input.sourceEnvironmentId,
+          input: {
+            threadId: input.sourceThreadId,
+            terminalId,
             cwd: input.sourceCwd,
-          }),
-          { actionId: randomUUID(), action: "push" },
-          { reportFailure: false },
-        );
-        if (pushResult._tag === "Failure") {
-          if (isAtomCommandInterrupted(pushResult)) toastManager.close(progressToastId);
-          else fail("Could not push branch", failureMessage(pushResult));
+            env: { GIT_TERMINAL_PROMPT: "0" },
+          },
+        });
+        if (openResult._tag === "Failure") {
+          if (isAtomCommandInterrupted(openResult)) toastManager.close(progressToastId);
+          else fail("Could not start branch push", failureMessage(openResult));
           return;
         }
+
+        const attachAtom = terminalEnvironment.attach({
+          environmentId: input.sourceEnvironmentId,
+          input: {
+            threadId: input.sourceThreadId,
+            terminalId,
+            cwd: input.sourceCwd,
+          },
+        });
+        let unsubscribe = () => {};
+        const unmount = atomRegistry.mount(attachAtom);
+        let finishWait: (result: {
+          readonly exitCode: number | null;
+          readonly error: string | null;
+        }) => void = () => {};
+        const markerResult = new Promise<{
+          readonly exitCode: number | null;
+          readonly error: string | null;
+        }>((resolve) => {
+          let settled = false;
+          let timeoutId: number | null = null;
+          const finish = (result: {
+            readonly exitCode: number | null;
+            readonly error: string | null;
+          }) => {
+            if (settled) return;
+            settled = true;
+            if (timeoutId !== null) window.clearTimeout(timeoutId);
+            unsubscribe();
+            unmount();
+            resolve(result);
+          };
+          finishWait = finish;
+          const inspect = (result: AsyncResult.AsyncResult<TerminalBufferState, unknown>) => {
+            if (result._tag === "Failure") {
+              finish({ exitCode: null, error: failureMessage(result) });
+              return;
+            }
+            if (result._tag !== "Success") return;
+            if (result.value.error) {
+              finish({ exitCode: null, error: result.value.error });
+              return;
+            }
+            const markerOffset = result.value.buffer.lastIndexOf(marker);
+            if (markerOffset < 0) return;
+            const exitCode = Number.parseInt(
+              result.value.buffer.slice(markerOffset + marker.length),
+              10,
+            );
+            if (Number.isSafeInteger(exitCode)) finish({ exitCode, error: null });
+          };
+          timeoutId = window.setTimeout(
+            () => finish({ exitCode: null, error: "Timed out while pushing the branch." }),
+            120_000,
+          );
+          unsubscribe = atomRegistry.subscribe(attachAtom, inspect);
+          inspect(atomRegistry.get(attachAtom));
+        });
+
+        const platform =
+          environments.find(
+            (environment) => environment.environmentId === input.sourceEnvironmentId,
+          )?.serverConfig?.environment.platform.os ?? "unknown";
+        const command = continueBranchTerminalCommand({
+          branch: input.branch,
+          marker,
+          platform,
+        });
+        const writeResult = await writeTerminal({
+          environmentId: input.sourceEnvironmentId,
+          input: {
+            threadId: input.sourceThreadId,
+            terminalId,
+            data: `${command}\r`,
+          },
+        });
+        if (writeResult._tag === "Failure") {
+          finishWait({ exitCode: null, error: failureMessage(writeResult) });
+        }
+        const pushed = await markerResult;
+        await closeTerminal({
+          environmentId: input.sourceEnvironmentId,
+          input: { threadId: input.sourceThreadId, terminalId, deleteHistory: true },
+        });
+        if (pushed.error !== null || pushed.exitCode !== 0) {
+          fail(
+            "Could not push branch",
+            pushed.error ?? `Git push exited with status ${pushed.exitCode ?? "unknown"}.`,
+          );
+          return;
+        }
+        await refreshStatus({
+          environmentId: input.sourceEnvironmentId,
+          input: { cwd: input.sourceCwd },
+        });
       }
 
       toastManager.update(progressToastId, {
@@ -147,7 +246,7 @@ export function useContinueBranch() {
       if (!destinationRef) {
         fail(
           "Branch is not visible on destination",
-          `Push with ${continueBranchPushCommand(input.branch)}, fetch origin on the destination, then retry.`,
+          `The push succeeded, but origin/${input.branch} is not visible there. Fetch origin on the destination, then retry.`,
         );
         return;
       }
@@ -189,6 +288,16 @@ export function useContinueBranch() {
       }
       toastManager.close(progressToastId);
     },
-    [atomRegistry, createWorktree, handleNewThread, listRefs, refreshStatus],
+    [
+      atomRegistry,
+      closeTerminal,
+      createWorktree,
+      environments,
+      handleNewThread,
+      listRefs,
+      openTerminal,
+      refreshStatus,
+      writeTerminal,
+    ],
   );
 }
