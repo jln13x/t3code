@@ -31,6 +31,13 @@ import {
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
+import {
+  assertPinnedLocalDesktopSigningIdentity,
+  DESKTOP_FORK_BUNDLE_ID,
+  type DesktopSigningMode,
+  LOCAL_DESKTOP_SIGNING_COMMON_NAME,
+  resolveDesktopSigningMode,
+} from "./lib/local-desktop-signing.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
@@ -51,7 +58,7 @@ import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code.fork";
+const DESKTOP_APP_ID = DESKTOP_FORK_BUNDLE_ID;
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -158,6 +165,7 @@ interface BuildCliInput {
   readonly skipBuild: Option.Option<boolean>;
   readonly keepStage: Option.Option<boolean>;
   readonly signed: Option.Option<boolean>;
+  readonly localSigned: Option.Option<boolean>;
   readonly verbose: Option.Option<boolean>;
   readonly mockUpdates: Option.Option<boolean>;
   readonly mockUpdateServerPort: Option.Option<number>;
@@ -236,6 +244,45 @@ export class UnsupportedDesktopBuildArchitectureError extends Schema.TaggedError
 ) {
   override get message(): string {
     return `Unsupported architecture '${this.arch}' for ${this.platform}.`;
+  }
+}
+
+const UnsupportedLocalDesktopSigningReason = Schema.Literals([
+  "non-macos-target",
+  "non-macos-host",
+  "non-zip-target",
+]);
+
+export class UnsupportedLocalDesktopSigningBuildError extends Schema.TaggedErrorClass<UnsupportedLocalDesktopSigningBuildError>()(
+  "UnsupportedLocalDesktopSigningBuildError",
+  {
+    reason: UnsupportedLocalDesktopSigningReason,
+    platform: BuildPlatform,
+    hostPlatform: Schema.String,
+    target: Schema.String,
+  },
+) {
+  override get message(): string {
+    if (this.reason === "non-zip-target") {
+      return `Local desktop signing produces a ZIP, not '${this.target}'.`;
+    }
+    return "Local desktop signing is supported only for macOS builds running on a macOS host.";
+  }
+}
+
+const LocalDesktopSigningBuildOperation = Schema.Literals(["resolve-mode", "preflight"]);
+
+export class LocalDesktopSigningBuildError extends Schema.TaggedErrorClass<LocalDesktopSigningBuildError>()(
+  "LocalDesktopSigningBuildError",
+  {
+    operation: LocalDesktopSigningBuildOperation,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return this.cause instanceof Error
+      ? this.cause.message
+      : `Local desktop signing failed during ${this.operation}.`;
   }
 }
 
@@ -759,7 +806,7 @@ interface ResolvedBuildOptions {
   readonly outputDir: string;
   readonly skipBuild: boolean;
   readonly keepStage: boolean;
-  readonly signed: boolean;
+  readonly signingMode: DesktopSigningMode;
   readonly verbose: boolean;
   readonly mockUpdates: boolean;
   readonly mockUpdateServerPort: number | undefined;
@@ -1231,6 +1278,7 @@ const BuildEnvConfig = Config.all({
   skipBuild: Config.boolean("T3CODE_DESKTOP_SKIP_BUILD").pipe(Config.withDefault(false)),
   keepStage: Config.boolean("T3CODE_DESKTOP_KEEP_STAGE").pipe(Config.withDefault(false)),
   signed: Config.boolean("T3CODE_DESKTOP_SIGNED").pipe(Config.withDefault(false)),
+  localSigned: Config.boolean("T3CODE_DESKTOP_LOCAL_SIGNED").pipe(Config.withDefault(false)),
   verbose: Config.boolean("T3CODE_DESKTOP_VERBOSE").pipe(Config.withDefault(false)),
   mockUpdates: Config.boolean("T3CODE_DESKTOP_MOCK_UPDATES").pipe(Config.withDefault(false)),
   mockUpdateServerPort: Config.string("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(Config.option),
@@ -1293,7 +1341,41 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     return yield* new UnsupportedHostBuildPlatformError({ hostPlatform });
   }
 
-  const target = mergeOptions(input.target, env.target, PLATFORM_CONFIG[platform].defaultTarget);
+  const releaseSigned = resolveBooleanFlag(input.signed, env.signed);
+  const localSigned = resolveBooleanFlag(input.localSigned, env.localSigned);
+  const signingMode = yield* Effect.try({
+    try: () => resolveDesktopSigningMode(releaseSigned, localSigned),
+    catch: (cause) => new LocalDesktopSigningBuildError({ operation: "resolve-mode", cause }),
+  });
+  const target = mergeOptions(
+    input.target,
+    env.target,
+    signingMode === "local" ? "zip" : PLATFORM_CONFIG[platform].defaultTarget,
+  );
+  if (signingMode === "local" && platform !== "mac") {
+    return yield* new UnsupportedLocalDesktopSigningBuildError({
+      reason: "non-macos-target",
+      platform,
+      hostPlatform,
+      target,
+    });
+  }
+  if (signingMode === "local" && hostPlatform !== "darwin") {
+    return yield* new UnsupportedLocalDesktopSigningBuildError({
+      reason: "non-macos-host",
+      platform,
+      hostPlatform,
+      target,
+    });
+  }
+  if (signingMode === "local" && target !== "zip") {
+    return yield* new UnsupportedLocalDesktopSigningBuildError({
+      reason: "non-zip-target",
+      platform,
+      hostPlatform,
+      target,
+    });
+  }
   const defaultArch = yield* getDefaultArch(platform);
   const arch = mergeOptions(input.arch, env.arch, defaultArch);
   const supportedArchitectures = PLATFORM_CONFIG[platform].archChoices;
@@ -1315,7 +1397,6 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
 
   const skipBuild = resolveBooleanFlag(input.skipBuild, env.skipBuild);
   const keepStage = resolveBooleanFlag(input.keepStage, env.keepStage);
-  const signed = resolveBooleanFlag(input.signed, env.signed);
   const verbose = resolveBooleanFlag(input.verbose, env.verbose);
 
   const mockUpdates = resolveBooleanFlag(input.mockUpdates, env.mockUpdates);
@@ -1341,7 +1422,7 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     outputDir,
     skipBuild,
     keepStage,
-    signed,
+    signingMode,
     verbose,
     mockUpdates,
     mockUpdateServerPort,
@@ -2021,7 +2102,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
   version: string,
-  signed: boolean,
+  signingMode: DesktopSigningMode,
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
   macPasskeySigning:
@@ -2072,7 +2153,16 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // Ad-hoc signing keeps local unsigned builds launchable without requiring
       // Apple Developer credentials. Release builds still use the configured
       // Developer ID identity and notarization flow.
-      ...(signed ? {} : { identity: "-" }),
+      ...(signingMode === "unsigned" ? { identity: "-" } : {}),
+      ...(signingMode === "local"
+        ? {
+            identity: LOCAL_DESKTOP_SIGNING_COMMON_NAME,
+            notarize: false,
+            preAutoEntitlements: false,
+            strictVerify: true,
+            timestamp: "none",
+          }
+        : {}),
       protocols: [
         {
           name: "T3 Code",
@@ -2086,6 +2176,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           }
         : {}),
     };
+    if (signingMode === "local") {
+      buildConfig.forceCodeSigning = true;
+    }
   }
 
   if (platform === "mac" && target === "dmg") {
@@ -2148,7 +2241,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // packaged executable with Electron's stock icon.
       signAndEditExecutable: true,
     };
-    if (signed) {
+    if (signingMode === "release") {
       winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;
     }
     buildConfig.win = winConfig;
@@ -2630,6 +2723,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcessPlatform;
+  const localSigning =
+    options.signingMode === "local"
+      ? yield* Effect.tryPromise({
+          try: () => assertPinnedLocalDesktopSigningIdentity(),
+          catch: (cause) => new LocalDesktopSigningBuildError({ operation: "preflight", cause }),
+        })
+      : undefined;
   const workspaceConfig = yield* readWorkspaceConfig();
   const workspaceCatalog = workspaceConfig.catalog ?? {};
   const workspaceOverrides = workspaceConfig.overrides ?? {};
@@ -2846,7 +2946,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    options.platform === "mac" && options.signingMode === "release"
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
@@ -2912,7 +3012,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.platform,
       options.target,
       appVersion,
-      options.signed,
+      options.signingMode,
       options.mockUpdates,
       options.mockUpdateServerPort,
       macPasskeySigning && macEntitlementsPath
@@ -2991,13 +3091,22 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       delete buildEnv[key];
     }
   }
-  if (!options.signed) {
+  if (options.signingMode !== "release") {
     buildEnv.CSC_IDENTITY_AUTO_DISCOVERY = "false";
     delete buildEnv.CSC_LINK;
     delete buildEnv.CSC_KEY_PASSWORD;
     delete buildEnv.APPLE_API_KEY;
     delete buildEnv.APPLE_API_KEY_ID;
     delete buildEnv.APPLE_API_ISSUER;
+  }
+  if (localSigning) {
+    buildEnv.CSC_KEYCHAIN = localSigning.state.keychainPath;
+    buildEnv.CSC_NAME = LOCAL_DESKTOP_SIGNING_COMMON_NAME;
+    delete buildEnv.APPLE_ID;
+    delete buildEnv.APPLE_APP_SPECIFIC_PASSWORD;
+    delete buildEnv.APPLE_TEAM_ID;
+    delete buildEnv.APPLE_KEYCHAIN;
+    delete buildEnv.APPLE_KEYCHAIN_PROFILE;
   }
 
   if (hostPlatform === "win32") {
@@ -3017,7 +3126,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   }
 
   yield* Effect.log(
-    `[desktop-artifact] Building ${options.platform}/${options.target} (arch=${options.arch}, version=${appVersion})...`,
+    `[desktop-artifact] Building ${options.platform}/${options.target} (arch=${options.arch}, version=${appVersion}, signing=${options.signingMode})...`,
   );
   const builderArgs = [
     "exec",
@@ -3138,6 +3247,12 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
   signed: Flag.boolean("signed").pipe(
     Flag.withDescription(
       "Enable signing/notarization discovery; Windows uses Azure Trusted Signing (env: T3CODE_DESKTOP_SIGNED).",
+    ),
+    Flag.optional,
+  ),
+  localSigned: Flag.boolean("local-signed").pipe(
+    Flag.withDescription(
+      "Use the pinned machine-local macOS identity and produce a ZIP (env: T3CODE_DESKTOP_LOCAL_SIGNED).",
     ),
     Flag.optional,
   ),
