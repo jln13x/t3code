@@ -25,8 +25,9 @@ This file is both the current inventory and the retirement record used during up
   fail instead of falling back to ad-hoc signing.
 - `install:desktop:arm64` builds a production ZIP, verifies the stable bundle/signing identity of
   the app and all nested native code, and uses a rollback-safe `/Applications` replacement. It
-  remains local maintainer tooling: release signing, unsigned artifacts, wire contracts, and app
-  runtime behavior are unchanged.
+  passes certificate extraction prefixes as attached `codesign` option values for compatibility
+  with the macOS command-line parser. It remains local maintainer tooling: release signing,
+  unsigned artifacts, wire contracts, and app runtime behavior are unchanged.
 - Sync boundary: preserve the three signing modes and the local setup/validation/install scripts.
   Never commit the local certificate or its fingerprint state, and never turn the local identity
   into a distribution credential.

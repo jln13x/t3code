@@ -6,7 +6,48 @@ import * as NodePath from "node:path";
 
 import { assert, it } from "@effect/vitest";
 
-import { DesktopInstallTransactionError, replaceInstalledDesktopApp } from "./install-desktop.ts";
+import {
+  DesktopInstallTransactionError,
+  extractSigningCertificate,
+  replaceInstalledDesktopApp,
+} from "./install-desktop.ts";
+
+it("passes the certificate prefix as an attached codesign option value", async () => {
+  const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "desktop-signature-test-"));
+  const certificatePrefix = NodePath.join(root, "app-");
+  const certificate = Buffer.from("leaf certificate fixture");
+  const calls: Array<{ executable: string; args: ReadonlyArray<string> }> = [];
+
+  try {
+    const fingerprints = await extractSigningCertificate(
+      "/tmp/T3 Code (Fork).app",
+      certificatePrefix,
+      async (executable, args) => {
+        calls.push({ executable, args });
+        await NodeFSP.writeFile(`${certificatePrefix}0`, certificate);
+        return { stdout: "", stderr: "" };
+      },
+    );
+
+    assert.deepStrictEqual(calls, [
+      {
+        executable: "/usr/bin/codesign",
+        args: [
+          "--display",
+          `--extract-certificates=${certificatePrefix}`,
+          "/tmp/T3 Code (Fork).app",
+        ],
+      },
+    ]);
+    assert.equal(fingerprints.certificateSha1, "94AB4C24F08601CD8CD88EE0FF44773748DAE456");
+    assert.equal(
+      fingerprints.certificateSha256,
+      "A7CEF11E6422CED475C9D93DC483A0AE61527A6FE8B79B8CDE36C67C13283311",
+    );
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
 
 async function writeAppFixture(appPath: string, version: string): Promise<void> {
   await NodeFSP.mkdir(appPath, { recursive: true });

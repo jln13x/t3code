@@ -131,15 +131,15 @@ async function pathExists(targetPath: string): Promise<boolean> {
   }
 }
 
-async function extractSigningCertificate(
+export async function extractSigningCertificate(
   codePath: string,
   certificatePrefix: string,
+  runCommand = runLocalDesktopCommand,
 ): Promise<{ readonly certificateSha1: string; readonly certificateSha256: string }> {
   try {
-    await runLocalDesktopCommand("/usr/bin/codesign", [
+    await runCommand("/usr/bin/codesign", [
       "--display",
-      "--extract-certificates",
-      certificatePrefix,
+      `--extract-certificates=${certificatePrefix}`,
       codePath,
     ]);
     return certificateFingerprints(await NodeFSP.readFile(`${certificatePrefix}0`));
