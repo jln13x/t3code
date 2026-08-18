@@ -249,7 +249,7 @@ describe("ComposerPrimaryActions", () => {
     const markup = renderRunningActions(true, true);
 
     expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).toContain('aria-label="Queue message"');
+    expect(markup).toContain('aria-label="Send message"');
     expect(markup).toContain('type="submit"');
     expect(markup).toContain("size-9 sm:size-8");
   });
