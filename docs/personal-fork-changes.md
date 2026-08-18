@@ -132,6 +132,8 @@ This file is both the current inventory and the retirement record used during up
   to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
   publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39) and fetch only the
   exact destination branch in [#40](https://github.com/jln13x/t3code/pull/40).
+  Destination checkout failures are made bounded and visible in
+  [#45](https://github.com/jln13x/t3code/pull/45).
 - Sync boundary: the menu, safety planning, and handoff orchestration stay in the web client.
   Preserve upstream contracts, server bootstrap, Git manager, and client-runtime VCS action inputs.
 
