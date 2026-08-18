@@ -1905,28 +1905,32 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         {title}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         <span className="relative ml-auto flex size-5 shrink-0 items-center justify-center">
-          <span className="inline-flex items-center justify-center transition-opacity group-hover/worktree-thread:opacity-0 group-focus-within/worktree-thread:opacity-0">
+          <span
+            className={cn(
+              "inline-flex items-center justify-center transition-opacity",
+              !isRunning && "group-hover/worktree-thread:opacity-0",
+            )}
+          >
             {statusGlyph}
           </span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`Archive thread: ${thread.title}`}
-                  disabled={isRunning}
-                  onClick={handleArchiveClick}
-                  onDoubleClick={(event) => event.stopPropagation()}
-                  className="pointer-events-none absolute inset-0 inline-flex cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none transition-colors hover:bg-sidebar-control-surface hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/worktree-thread:pointer-events-auto group-hover/worktree-thread:opacity-100 group-focus-within/worktree-thread:pointer-events-auto group-focus-within/worktree-thread:opacity-100 disabled:cursor-not-allowed disabled:opacity-35"
-                />
-              }
-            >
-              <ArchiveIcon aria-hidden className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {isRunning ? "Cannot archive a running thread" : "Archive thread"}
-            </TooltipPopup>
-          </Tooltip>
+          {!isRunning ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Archive thread: ${thread.title}`}
+                    onClick={handleArchiveClick}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className="pointer-events-none absolute inset-0 inline-flex cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none transition-colors hover:bg-sidebar-control-surface hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/worktree-thread:pointer-events-auto group-hover/worktree-thread:opacity-100"
+                  />
+                }
+              >
+                <ArchiveIcon aria-hidden className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Archive thread</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </span>
       </TooltipTrigger>
       <SidebarThreadTooltip
