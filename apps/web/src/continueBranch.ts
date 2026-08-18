@@ -1,6 +1,6 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ScopedProjectRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedProjectRef, VcsRef } from "@t3tools/contracts";
 
 import { deriveLogicalProjectKey } from "./logicalProject";
 
@@ -15,6 +15,7 @@ interface ContinueBranchEnvironment {
 export interface ContinueBranchTarget {
   readonly label: string;
   readonly projectRef: ScopedProjectRef;
+  readonly workspaceRoot: string;
 }
 
 /**
@@ -66,6 +67,7 @@ export function resolveContinueBranchTargets(input: {
             ? environmentLabel
             : `${environmentLabel} — ${project.workspaceRoot}`,
         projectRef: scopeProjectRef(project.environmentId, project.id),
+        workspaceRoot: project.workspaceRoot,
       };
     })
     .toSorted((left, right) => left.label.localeCompare(right.label));
@@ -76,4 +78,71 @@ export function continueBranchTargetIndex(action: string): number | null {
   if (!match) return null;
   const index = Number(match[1]);
   return Number.isSafeInteger(index) ? index : null;
+}
+
+export type ContinueBranchPushPlan =
+  | { readonly kind: "push" }
+  | { readonly kind: "skip" }
+  | { readonly kind: "manual"; readonly command: string }
+  | { readonly kind: "error"; readonly message: string };
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+export function continueBranchPushCommand(branch: string): string {
+  return `git push -u origin ${shellQuote(`HEAD:refs/heads/${branch}`)}`;
+}
+
+/**
+ * Stock servers expose whether an upstream exists, but not its ref name. A push
+ * is therefore automatic only when no upstream exists, or unnecessary when the
+ * branch is already fully published. An ahead branch needs one explicit push so
+ * a stale base-branch upstream can never receive the feature branch by mistake.
+ */
+export function resolveContinueBranchPushPlan(input: {
+  readonly branch: string;
+  readonly status: {
+    readonly isRepo: boolean;
+    readonly hasPrimaryRemote: boolean;
+    readonly refName: string | null;
+    readonly hasUpstream: boolean;
+    readonly aheadCount: number;
+  };
+}): ContinueBranchPushPlan {
+  if (!input.status.isRepo) {
+    return { kind: "error", message: "The source checkout is not a Git repository." };
+  }
+  if (input.status.refName !== input.branch) {
+    return {
+      kind: "error",
+      message: `The source checkout is on ${input.status.refName ?? "a detached HEAD"}, not ${input.branch}.`,
+    };
+  }
+  if (!input.status.hasPrimaryRemote) {
+    return { kind: "error", message: "The source repository does not have a Git remote." };
+  }
+  if (!input.status.hasUpstream) return { kind: "push" };
+  if (input.status.aheadCount === 0) return { kind: "skip" };
+  return { kind: "manual", command: continueBranchPushCommand(input.branch) };
+}
+
+export function resolveContinueBranchRef(
+  refs: ReadonlyArray<VcsRef>,
+  branch: string,
+): VcsRef | null {
+  const local = refs.find((ref) => ref.isRemote !== true && ref.name === branch);
+  if (local) return local;
+
+  const remotes = refs.filter((ref) => {
+    if (ref.isRemote !== true) return false;
+    if (ref.remoteName) return ref.name === `${ref.remoteName}/${branch}`;
+    const separator = ref.name.indexOf("/");
+    return separator > 0 && ref.name.slice(separator + 1) === branch;
+  });
+  return (
+    remotes.find((ref) => ref.remoteName === "origin" || ref.name.startsWith("origin/")) ??
+    remotes[0] ??
+    null
+  );
 }

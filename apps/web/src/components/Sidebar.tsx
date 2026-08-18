@@ -1,5 +1,5 @@
 import { autoAnimate } from "@formkit/auto-animate";
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   DndContext,
@@ -61,7 +61,6 @@ import {
 import {
   memo,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -74,7 +73,6 @@ import { useParams, useRouter } from "@tanstack/react-router";
 
 import {
   isAtomCommandInterrupted,
-  runAtomCommand,
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -91,7 +89,7 @@ import { useShortcutModifierState } from "../shortcutModifierState";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { isMacPlatform, randomUUID } from "~/lib/utils";
+import { isMacPlatform } from "~/lib/utils";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
@@ -102,6 +100,7 @@ import {
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
+import { useContinueBranch } from "../hooks/useContinueBranch";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -115,7 +114,7 @@ import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { useWorktreeCanonicalThreadRef } from "../worktreeScope";
 import { previewEnvironment } from "../state/preview";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { vcsActionManager, vcsEnvironment } from "../state/vcs";
+import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -2407,7 +2406,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
 });
 
 export default function Sidebar() {
-  const atomRegistry = useContext(RegistryContext);
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
@@ -2493,6 +2491,7 @@ export default function Sidebar() {
   });
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
   const newThreadContext = useHandleNewThread();
+  const continueBranch = useContinueBranch();
   const openAddProjectCommandPalette = useCallback(
     () => openCommandPalette({ open: "add-project" }),
     [],
@@ -4012,77 +4011,13 @@ export default function Sidebar() {
         const continueTargetIndex = clicked.value ? continueBranchTargetIndex(clicked.value) : null;
         if (continueTargetIndex !== null && thread.branch) {
           const target = continueBranchTargets[continueTargetIndex];
-          if (!target) return;
-          if (!threadWorkspacePath) {
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Could not continue branch",
-                description: "The source checkout is unavailable.",
-              }),
-            );
-            return;
-          }
-          const progressToastId = toastManager.add({
-            type: "loading",
-            title: "Pushing branch to origin...",
-            description: thread.branch,
-            timeout: 0,
+          if (!target || !threadWorkspacePath) return;
+          await continueBranch({
+            sourceEnvironmentId: thread.environmentId,
+            sourceCwd: threadWorkspacePath,
+            branch: thread.branch,
+            target,
           });
-          const pushResult = await runAtomCommand(
-            atomRegistry,
-            vcsActionManager.runStackedAction({
-              environmentId: thread.environmentId,
-              cwd: threadWorkspacePath,
-            }),
-            { actionId: randomUUID(), action: "push", pushRemoteName: "origin" },
-            { reportFailure: false },
-          );
-          if (pushResult._tag === "Failure") {
-            if (isAtomCommandInterrupted(pushResult)) {
-              toastManager.close(progressToastId);
-              return;
-            }
-            const error = squashAtomCommandFailure(pushResult);
-            toastManager.update(
-              progressToastId,
-              stackedThreadToast({
-                type: "error",
-                title: "Could not push branch",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-            return;
-          }
-          const pushedBranch = pushResult.value.push.branch ?? thread.branch;
-          toastManager.update(progressToastId, {
-            type: "loading",
-            title: "Opening branch on destination...",
-            description: pushedBranch,
-            timeout: 0,
-          });
-          const result = await settlePromise(() =>
-            handleNewThreadRef.current(target.projectRef, {
-              branch: pushedBranch,
-              worktreePath: null,
-              envMode: "worktree",
-              startFromOrigin: true,
-              continueBranch: true,
-            }),
-          );
-          if (result._tag === "Failure") {
-            const error = squashAtomCommandFailure(result);
-            toastManager.update(
-              progressToastId,
-              stackedThreadToast({
-                type: "error",
-                title: "Could not continue branch",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-          } else {
-            toastManager.close(progressToastId);
-          }
           return;
         }
         if (clicked.value?.startsWith("snooze:")) {
@@ -4220,7 +4155,6 @@ export default function Sidebar() {
     },
     [
       attemptArchive,
-      atomRegistry,
       attemptPin,
       attemptSettle,
       attemptSettleGroup,
@@ -4232,13 +4166,14 @@ export default function Sidebar() {
       attemptUnsnooze,
       attemptUnsnoozeGroup,
       confirmThreadDelete,
+      continueBranch,
       copyBranchToClipboard,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
-      environments,
       handleMultiSelectContextMenu,
       markThreadUnread,
+      environments,
       projectCwdByKey,
       projects,
       serverConfigs,

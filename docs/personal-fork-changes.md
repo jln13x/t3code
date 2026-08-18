@@ -96,16 +96,15 @@ This file is both the current inventory and the retirement record used during up
 
 - A web/desktop thread can start a new draft for the same logical project on another connected
   environment while carrying only its Git branch, not its conversation.
-- The source branch is pushed to `origin` before the destination draft opens, so the handoff waits
-  for its transport to succeed instead of creating a draft that cannot fetch the branch.
-- The destination reuses an existing local checkout of the branch, including the project's primary
-  checkout. Otherwise it explicitly fetches that branch from `origin` and checks it out on first
-  send, including in clones whose default fetch refspec does not include every branch.
-- If destination bootstrap fails after consuming its event-sourced thread identity, retry keeps the
-  draft and branch intent but mints a fresh thread identity.
-- Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31).
-- Sync boundary: the menu and destination resolution stay in the upstream sidebar, while the draft
-  handoff context and bootstrap behavior remain narrow additions to composer state and turn start.
+- The web client uses existing upstream VCS operations only. It safely pushes a branch with no
+  upstream, skips a push when the branch is fully published, and asks for one exact manual push when
+  unpublished commits have an upstream whose ref name the stock API does not expose.
+- The client refreshes destination refs and creates or reuses the exact branch checkout before it
+  opens the draft. No handoff state is stored in composer drafts or sent during turn bootstrap.
+- Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
+  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38).
+- Sync boundary: the menu, safety planning, and handoff orchestration stay in the web client.
+  Preserve upstream contracts, server bootstrap, Git manager, and client-runtime VCS action inputs.
 
 ### Client-local active-turn message queue
 

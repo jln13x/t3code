@@ -2261,13 +2261,7 @@ export const make = Effect.gen(function* () {
               })
               .pipe(
                 Effect.tap(() => Ref.set(currentPhase, Option.some("push"))),
-                Effect.flatMap(() =>
-                  gitCore.pushCurrentBranch(
-                    input.cwd,
-                    currentBranch,
-                    input.pushRemoteName ? { remoteName: input.pushRemoteName } : undefined,
-                  ),
-                ),
+                Effect.flatMap(() => gitCore.pushCurrentBranch(input.cwd, currentBranch)),
               )
           : { status: "skipped_not_requested" as const };
 
