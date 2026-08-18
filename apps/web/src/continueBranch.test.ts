@@ -2,6 +2,7 @@ import { EnvironmentId, ProjectId, type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  continueBranchFetchCommand,
   continueBranchPushCommand,
   continueBranchTerminalCommand,
   continueBranchTargetIndex,
@@ -151,23 +152,27 @@ describe("resolveContinueBranchPushPlan", () => {
     );
   });
 
-  it("reports the push exit code in the source platform's shell", () => {
+  it("fetches only the exact handoff branch into its origin tracking ref", () => {
+    expect(continueBranchFetchCommand("feat/catalog")).toBe(
+      "git fetch origin 'refs/heads/feat/catalog:refs/remotes/origin/feat/catalog'",
+    );
+  });
+
+  it("reports a command's exit code in the source platform's shell", () => {
     expect(
       continueBranchTerminalCommand({
-        branch: "feat/catalog",
+        command: "git push origin branch",
         marker: "__DONE__:",
         platform: "linux",
       }),
-    ).toBe("git push -u origin 'HEAD:refs/heads/feat/catalog'; printf '\\n__DONE__:%s\\n' \"$?\"");
+    ).toBe("git push origin branch; printf '\\n__DONE__:%s\\n' \"$?\"");
     expect(
       continueBranchTerminalCommand({
-        branch: "feat/catalog",
+        command: "git fetch origin branch",
         marker: "__DONE__:",
         platform: "windows",
       }),
-    ).toBe(
-      `git push -u origin 'HEAD:refs/heads/feat/catalog'; Write-Output "__DONE__:$LASTEXITCODE"`,
-    );
+    ).toBe(`git fetch origin branch; Write-Output "__DONE__:$LASTEXITCODE"`);
   });
 });
 
