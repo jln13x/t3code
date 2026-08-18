@@ -71,6 +71,10 @@ This file is both the current inventory and the retirement record used during up
   checkout header. Its right-edge blue indicator becomes an orange unread dot when the run
   completes, and the newly completed conversation keeps its brighter, stronger title until it
   opens. Ordinary idle siblings recede slightly without adding a row tint.
+- Conversation typography has two states: finished-unread, focused, and multi-selected titles are
+  semibold at full foreground; every other title is normal and muted. Working, monitoring, wake,
+  approval, input, and failure keep their status markers without changing title typography or
+  dimming the parent checkout.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
   the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
   with a fork-specific group-order model.

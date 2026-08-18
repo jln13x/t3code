@@ -826,6 +826,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // switching sidebars must not light up every historical thread as unread.
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
+  const isJustFinished = isUnread && status === "ready";
   // A woken thread reappears at its original position (the sort is
   // deliberately static), so the pill has to carry the weight. Snoozing is
   // an explicit act, so the pill clears only when the user re-engages:
@@ -839,17 +840,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     !changeRequestAutoSettles(prState, props.autoSettleOnMerge);
-  // In-flight rows (working, or waiting on approval/input) fade as a whole:
-  // there is nothing for the user to do yet, so prominence is reserved for
-  // rows that need a human — done (unread), read-but-unsettled, failed, and
-  // freshly woken. The status label keeps its hue, so waiting rows stay
-  // findable. In-flight rows recede the same as read-ready ones (inbox-zero:
-  // working threads aren't your problem yet) — only the colored status label
-  // stands out.
-  const isInFlight =
-    status === "working" || status === "monitoring" || status === "approval" || status === "input";
-  const shouldRecede =
-    (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
+  // Typography has one emphasis rule across thread states. Operational state
+  // belongs to the status marker; it must not make an unfocused title louder
+  // or dim the whole row.
+  const isEmphasized = isJustFinished || props.isActive || isSelected;
   // Status hues follow the system-wide convention set by sidebar v1 and the
   // mobile Live Activity/widgets (amber approval, indigo input, sky working)
   // so a thread reads the same color everywhere it surfaces.
@@ -1117,13 +1111,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       ? "bg-sidebar-row-active text-sidebar-foreground"
       : isSelected
         ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : shouldRecede
-          ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    isInFlight &&
-      !props.isActive &&
-      !isSelected &&
-      "opacity-70 transition-opacity hover:opacity-100",
+        : "bg-transparent text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
   );
 
   const title = isRenaming ? (
@@ -1143,25 +1131,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     <span
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
-        variant === "card"
-          ? cn(
-              "truncate",
-              isUnread || isWoke
-                ? "text-foreground"
-                : shouldRecede
-                  ? "text-secondary-label"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
+        isEmphasized
+          ? "font-semibold text-foreground"
           : cn(
-              "truncate group-hover/sidebar-row:text-foreground",
-              props.isActive || isWoke
-                ? "text-foreground"
-                : isUnread
-                  ? "text-muted-foreground"
-                  : "text-secondary-label/70",
+              "font-normal group-hover/sidebar-row:text-foreground",
+              variant === "card"
+                ? "truncate text-secondary-label"
+                : "truncate text-secondary-label/70",
             ),
         isRegeneratingTitle && "opacity-[0.55]",
       )}
@@ -1393,7 +1369,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
+                    isEmphasized ? "font-medium" : "font-normal",
                   )}
                 >
                   {props.projectTitle}
@@ -1748,13 +1724,12 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
   const isJustFinished = isUnread && status === "ready";
+  const isEmphasized = isJustFinished || props.isActive || isSelected;
   const threadIndicator = resolveWorktreeThreadIndicator({
     status,
     isUnread,
     isWoke: props.isWoke,
   });
-  const shouldRecede =
-    status === "ready" && !isUnread && !props.isWoke && !props.isActive && !isSelected;
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const showInstanceBadge =
@@ -1895,13 +1870,9 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
     <span
       className={cn(
         "min-w-0 flex-1 truncate text-sm",
-        isJustFinished
+        isEmphasized
           ? "font-semibold text-foreground"
-          : isUnread || props.isWoke || props.isActive
-            ? "font-medium text-foreground"
-            : shouldRecede
-              ? "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground"
-              : "font-medium text-foreground/90",
+          : "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground",
       )}
     >
       {thread.title}
@@ -2114,9 +2085,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
 
-  const anySelected = useThreadSelectionStore((state) =>
-    memberKeys.some((key) => state.selectedThreadKeys.has(key)),
-  );
   const visitedSignature = useUiStateStore((state) =>
     memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join("\u0000"),
   );
@@ -2141,13 +2109,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     return { anyUnread, anyWoke, wokeByKey };
   }, [memberKeys, prState, props.autoSettleOnMerge, props.snoozeNow, threads, visitedSignature]);
   const liveStatus = resolveWorktreeGroupLiveStatus(threads);
-  const isInFlight = liveStatus !== null && liveStatus.kind !== "failed";
-  const shouldRecede =
-    (liveStatus === null || isInFlight) &&
-    !anyUnread &&
-    !anyWoke &&
-    activeMember === null &&
-    !anySelected;
   const statusLabel =
     liveStatus?.kind === "approval"
       ? "Approval"
@@ -2244,8 +2205,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           activeMember !== null &&
             !activeMemberIsVisible &&
             "bg-sidebar-row-active text-sidebar-foreground",
-          shouldRecede && "text-sidebar-muted-foreground/75",
-          isInFlight && activeMember === null && !anySelected && "opacity-70 hover:opacity-100",
         )}
         onClick={handleCardClick}
         onKeyDown={handleCardKeyDown}
