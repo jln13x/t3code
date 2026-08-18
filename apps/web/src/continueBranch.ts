@@ -1,6 +1,11 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ScopedProjectRef, VcsRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ExecutionEnvironmentPlatformOs,
+  ScopedProjectRef,
+  VcsRef,
+} from "@t3tools/contracts";
 
 import { deriveLogicalProjectKey } from "./logicalProject";
 
@@ -82,8 +87,6 @@ export function continueBranchTargetIndex(action: string): number | null {
 
 export type ContinueBranchPushPlan =
   | { readonly kind: "push" }
-  | { readonly kind: "skip" }
-  | { readonly kind: "manual"; readonly command: string }
   | { readonly kind: "error"; readonly message: string };
 
 function shellQuote(value: string): string {
@@ -94,11 +97,21 @@ export function continueBranchPushCommand(branch: string): string {
   return `git push -u origin ${shellQuote(`HEAD:refs/heads/${branch}`)}`;
 }
 
+export function continueBranchTerminalCommand(input: {
+  readonly branch: string;
+  readonly marker: string;
+  readonly platform: ExecutionEnvironmentPlatformOs;
+}): string {
+  const push = continueBranchPushCommand(input.branch);
+  return input.platform === "windows"
+    ? `${push}; Write-Output "${input.marker}$LASTEXITCODE"`
+    : `${push}; printf '\\n${input.marker}%s\\n' "$?"`;
+}
+
 /**
- * Stock servers expose whether an upstream exists, but not its ref name. A push
- * is therefore automatic only when no upstream exists, or unnecessary when the
- * branch is already fully published. An ahead branch needs one explicit push so
- * a stale base-branch upstream can never receive the feature branch by mistake.
+ * The thread's local branch name is authoritative for a handoff. Its configured
+ * upstream is deliberately irrelevant: a feature branch may still track the
+ * base branch it was created from.
  */
 export function resolveContinueBranchPushPlan(input: {
   readonly branch: string;
@@ -106,8 +119,6 @@ export function resolveContinueBranchPushPlan(input: {
     readonly isRepo: boolean;
     readonly hasPrimaryRemote: boolean;
     readonly refName: string | null;
-    readonly hasUpstream: boolean;
-    readonly aheadCount: number;
   };
 }): ContinueBranchPushPlan {
   if (!input.status.isRepo) {
@@ -122,9 +133,7 @@ export function resolveContinueBranchPushPlan(input: {
   if (!input.status.hasPrimaryRemote) {
     return { kind: "error", message: "The source repository does not have a Git remote." };
   }
-  if (!input.status.hasUpstream) return { kind: "push" };
-  if (input.status.aheadCount === 0) return { kind: "skip" };
-  return { kind: "manual", command: continueBranchPushCommand(input.branch) };
+  return { kind: "push" };
 }
 
 export function resolveContinueBranchRef(

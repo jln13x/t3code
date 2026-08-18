@@ -96,13 +96,14 @@ This file is both the current inventory and the retirement record used during up
 
 - A web/desktop thread can start a new draft for the same logical project on another connected
   environment while carrying only its Git branch, not its conversation.
-- The web client uses existing upstream VCS operations only. It safely pushes a branch with no
-  upstream, skips a push when the branch is fully published, and asks for one exact manual push when
-  unpublished commits have an upstream whose ref name the stock API does not expose.
+- The web client uses the stock terminal operations to push the local branch explicitly as
+  `origin/<branch>`, regardless of its configured upstream. The short-lived terminal and its history
+  are removed when the push finishes.
 - The client refreshes destination refs and creates or reuses the exact branch checkout before it
   opens the draft. No handoff state is stored in composer drafts or sent during turn bootstrap.
 - Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
-  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38).
+  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
+  publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39).
 - Sync boundary: the menu, safety planning, and handoff orchestration stay in the web client.
   Preserve upstream contracts, server bootstrap, Git manager, and client-runtime VCS action inputs.
 
