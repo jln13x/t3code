@@ -64,8 +64,9 @@ This file is both the current inventory and the retirement record used during up
 - Opening or multi-selecting a conversation highlights only that conversation's inner row; the
   surrounding checkout card adds no selection or hover fill, so it stays visually neutral and does
   not imply checkout-wide scope.
-- Each inner conversation row exposes its own archive action on hover or keyboard focus. It uses the
-  existing archive confirmation preference and remains unavailable while that conversation runs.
+- Each settled inner conversation row exposes its own archive action on hover or keyboard focus. It
+  uses the existing archive confirmation preference; running rows keep their status indicator and
+  do not expose the archive action.
   A temporary success toast offers Undo through the existing unarchive path.
 - Running state and activity time appear only on the individual conversation row, not again on the
   checkout header. Its right-edge blue indicator becomes an orange unread dot when the run
