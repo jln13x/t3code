@@ -20,10 +20,9 @@ import {
 } from "../continueBranch";
 import { randomUUID } from "../lib/utils";
 import { terminalEnvironment } from "../state/terminal";
-import { vcsEnvironment } from "../state/vcs";
+import { listVcsRefsOnce, vcsEnvironment } from "../state/vcs";
 import { useEnvironments } from "../state/environments";
 import { useAtomCommand } from "../state/use-atom-command";
-import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useNewThreadHandler } from "./useHandleNewThread";
 
@@ -52,7 +51,7 @@ function failureMessage<A, E>(result: AsyncResult.Failure<A, E>): string {
 export function useContinueBranch() {
   const atomRegistry = useContext(RegistryContext);
   const refreshStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
-  const listRefs = useAtomQueryRunner(vcsEnvironment.listRefs, { reportFailure: false });
+  const listRefs = useAtomCommand(listVcsRefsOnce, { reportFailure: false });
   const createWorktree = useAtomCommand(vcsEnvironment.createWorktree, {
     reportFailure: false,
   });
@@ -288,6 +287,12 @@ export function useContinueBranch() {
 
       let checkoutPath = destinationRef.worktreePath;
       if (checkoutPath === null) {
+        toastManager.update(progressToastId, {
+          type: "loading",
+          title: "Creating destination worktree...",
+          description: input.branch,
+          timeout: 0,
+        });
         const createResult = await createWorktree({
           environmentId: input.target.projectRef.environmentId,
           input: {
