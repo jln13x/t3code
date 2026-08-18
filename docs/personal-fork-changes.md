@@ -74,7 +74,7 @@ This file is both the current inventory and the retirement record used during up
   completes, and the newly completed conversation keeps its brighter, stronger title until it
   opens. Ordinary idle siblings recede slightly without adding a row tint.
 - Conversation typography has two states: finished-unread, focused, and multi-selected titles are
-  semibold at full foreground; every other title is normal and muted. Working, monitoring, wake,
+  medium at full foreground; every other title is normal and muted. Working, monitoring, wake,
   approval, input, and failure keep their status markers without changing title typography or
   dimming the parent checkout.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is

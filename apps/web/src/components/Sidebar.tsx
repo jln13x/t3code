@@ -1132,7 +1132,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
         isEmphasized
-          ? "font-semibold text-foreground"
+          ? "font-medium text-foreground"
           : cn(
               "font-normal group-hover/sidebar-row:text-foreground",
               variant === "card"
@@ -1871,7 +1871,7 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
       className={cn(
         "min-w-0 flex-1 truncate text-sm",
         isEmphasized
-          ? "font-semibold text-foreground"
+          ? "font-medium text-foreground"
           : "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground",
       )}
     >
