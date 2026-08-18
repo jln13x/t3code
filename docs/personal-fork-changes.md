@@ -22,7 +22,8 @@ This file is both the current inventory and the retirement record used during up
 - Personal-fork maintainers can create one persistent self-signed Keychain certificate and use the
   explicit local signing mode. Its fingerprints and first validated designated requirement are
   pinned in machine-local state outside the repository; missing, changed, and ambiguous identities
-  fail instead of falling back to ad-hoc signing.
+  fail instead of falling back to ad-hoc signing. The requirement accepts macOS's equivalent
+  certificate-root and hash-anchor syntax only when it constrains the pinned certificate.
 - `install:desktop:arm64` builds a production ZIP, verifies the stable bundle/signing identity of
   the app and all nested native code, and uses a rollback-safe `/Applications` replacement. It
   passes certificate extraction prefixes as attached `codesign` option values for compatibility

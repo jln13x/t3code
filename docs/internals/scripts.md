@@ -105,8 +105,9 @@ After setup, `vp run install:desktop:arm64` performs this transaction:
    unchanged.
 3. Extracts the ZIP, rechecks the Keychain identity, and checks `com.t3tools.t3code.fork`, the
    complete deep signature, the leaf certificate on every Mach-O helper/framework/native binary,
-   and a non-`cdhash` designated requirement. The first valid requirement is pinned in the
-   machine-local state; later builds must match it exactly.
+   and a non-`cdhash` designated requirement constrained to the pinned certificate. macOS may emit
+   that constraint as either a certificate-root clause or a hash anchor. The first valid
+   requirement is pinned in the machine-local state; later builds must match it exactly.
 4. Copies the validated app to a hidden transaction directory on the `/Applications` filesystem,
    validates that copy, and only then asks the running fork to quit gracefully.
 5. Moves the previous app into the transaction directory, moves the new app into place, validates

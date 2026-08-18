@@ -22,6 +22,8 @@ const SHA1_B = "B".repeat(40);
 const SHA256_B = "B".repeat(64);
 const REQUIREMENT =
   'identifier "com.t3tools.t3code.fork" and anchor H"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"';
+const ROOT_REQUIREMENT =
+  'identifier "com.t3tools.t3code.fork" and certificate root = H"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"';
 
 const pinnedState: LocalDesktopSigningState = {
   version: 1,
@@ -113,9 +115,9 @@ it("requires the exact pinned Keychain certificate and warns on deletion or repl
 it("extracts and normalizes the designated requirement emitted by codesign", () => {
   assert.equal(
     parseDesignatedRequirement(`Executable=/tmp/T3 Code (Fork).app
-designated => identifier "com.t3tools.t3code.fork"   and anchor H"${SHA1_A}"
+designated => identifier "com.t3tools.t3code.fork"   and certificate root = H"${SHA1_A.toLowerCase()}"
 `),
-    REQUIREMENT,
+    ROOT_REQUIREMENT,
   );
 });
 
@@ -136,6 +138,17 @@ it("validates bundle identity, certificate pinning, nested code, and stable requ
       ],
     }),
     REQUIREMENT,
+  );
+  assert.equal(
+    validateLocalSignedAppMetadata({
+      state: pinnedState,
+      bundleId: "com.t3tools.t3code.fork",
+      certificateSha1: SHA1_A,
+      certificateSha256: SHA256_A,
+      designatedRequirement: ROOT_REQUIREMENT,
+      nestedCode: [],
+    }),
+    ROOT_REQUIREMENT,
   );
 
   const captureReason = (input: Parameters<typeof validateLocalSignedAppMetadata>[0]) => {
@@ -161,6 +174,13 @@ it("validates bundle identity, certificate pinning, nested code, and stable requ
       designatedRequirement: `identifier "com.t3tools.t3code.fork" and cdhash H"1234"`,
     }),
     "designated-requirement-cdhash",
+  );
+  assert.equal(
+    captureReason({
+      ...validInput,
+      designatedRequirement: `identifier "com.t3tools.t3code.fork" and certificate root = H"${SHA1_B}"`,
+    }),
+    "designated-requirement-certificate",
   );
   assert.equal(
     captureReason({

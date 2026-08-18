@@ -139,7 +139,7 @@ export type LocalSignedAppValidationReason =
   | "nested-certificate"
   | "designated-requirement-cdhash"
   | "designated-requirement-identifier"
-  | "designated-requirement-anchor"
+  | "designated-requirement-certificate"
   | "designated-requirement-changed";
 
 export class LocalSignedAppValidationError extends Error {
@@ -462,8 +462,13 @@ export function validateLocalSignedAppMetadata(input: {
   if (!designatedRequirement.includes(`identifier "${DESKTOP_FORK_BUNDLE_ID}"`)) {
     throw new LocalSignedAppValidationError("designated-requirement-identifier");
   }
-  if (!/\banchor\b/iu.test(designatedRequirement)) {
-    throw new LocalSignedAppValidationError("designated-requirement-anchor");
+  const normalizedRequirement = designatedRequirement.toLowerCase();
+  const certificateSha1 = input.state.certificateSha1.toLowerCase();
+  const pinsCertificate =
+    normalizedRequirement.includes(`anchor h"${certificateSha1}"`) ||
+    normalizedRequirement.includes(`certificate root = h"${certificateSha1}"`);
+  if (!pinsCertificate) {
+    throw new LocalSignedAppValidationError("designated-requirement-certificate");
   }
   if (
     input.state.designatedRequirement !== undefined &&
