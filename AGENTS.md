@@ -13,6 +13,11 @@ You can think of T3 Code as an open source "bring-your-own-subscription" alterna
 - Preserve only the documented desktop fork identity, completion/attention sounds, and native macOS completion notifications unless the developer explicitly expands the fork's scope.
 - Prefer upstream behavior for every other product surface; do not restore retired fork flags during syncs.
 - Keep the remaining differences at narrow boundaries. Sounds and notifications are always on in the fork and do not have app-level toggles.
+- Keep personal-fork changes primarily in the UI client and client-local state. In general, do not
+  modify `apps/server`, the server behavior run by the T3 CLI, or its wire contracts: the forked
+  client should remain compatible with unmodified upstream T3 servers, including servers on other
+  machines that may be running a different version. A personal-fork feature that requires server
+  changes needs explicit developer approval and a compatibility plan.
 - For fork syncs, `vp check` and `vp run typecheck` must pass. If native mobile code changed, `vp run lint:mobile` must also pass.
 
 ## What makes T3 Code special?
