@@ -70,9 +70,80 @@ authenticated.
 - `vp run dist:desktop:dmg`: Builds a shareable macOS `.dmg` into `./release`. Architecture defaults
   to the host, so this produces an arm64 DMG on Apple Silicon. Use `dist:desktop:dmg:arm64` or
   `dist:desktop:dmg:x64`, or pass `--arch <arm64|x64|universal>`, to force one.
+- `vp run setup:desktop:signing`: On macOS, creates or verifies the personal fork's persistent,
+  machine-local signing identity. Run it once per machine; it never writes certificate material to
+  the repository.
+- `vp run install:desktop:arm64`: Builds a production arm64 ZIP with that identity, validates and
+  installs the app in `/Applications`, and launches it. This is a standalone packaged application;
+  it does not leave a development server or build process running.
 - `vp run dist:desktop:linux`: Builds a Linux AppImage into `./release`.
 - `vp run dist:desktop:win`: Builds a Windows NSIS installer into `./release`. `:arm64` and `:x64`
   variants exist.
+
+### Personal-fork local signed install
+
+The one-time setup command creates the self-signed Keychain identity
+`T3 Code Fork Local Signing`. The certificate and private key remain in
+the default user Keychain. Its pinned SHA-1/SHA-256 fingerprints live outside the checkout at:
+
+```text
+~/Library/Application Support/T3 Code Fork Local Signing/identity.json
+```
+
+That state file is not a credential, but it is intentionally machine-local and must not be copied
+between machines. Setup is idempotent when the pinned certificate is still present. If the
+certificate or private key is deleted, replaced, expired, or duplicated as a valid identity under
+the same name, setup, build, and install stop with a warning. There is deliberately no automatic rotation: a new key
+changes the designated requirement and causes macOS to treat the fork as a new application,
+invalidating permission continuity.
+
+After setup, `vp run install:desktop:arm64` performs this transaction:
+
+1. Preflights the pinned Keychain certificate before doing build work.
+2. Builds the production client/server/desktop app in explicit `local` signing mode and emits only
+   an arm64 ZIP into a disposable directory. Release `--signed` and normal ad-hoc builds are
+   unchanged.
+3. Extracts the ZIP, rechecks the Keychain identity, and checks `com.t3tools.t3code.fork`, the
+   complete deep signature, the leaf certificate on every Mach-O helper/framework/native binary,
+   and a non-`cdhash` designated requirement constrained to the pinned certificate. macOS may emit
+   that constraint as either a certificate-root clause or a hash anchor. The first valid
+   requirement is pinned in the machine-local state; later builds must match it exactly.
+4. Copies the validated app to a hidden transaction directory on the `/Applications` filesystem,
+   validates that copy, and only then asks the running fork to quit gracefully.
+5. Moves the previous app into the transaction directory, moves the new app into place, validates
+   it again, and launches it. A validation or launch failure moves the new app aside, restores the
+   previous app, and attempts to relaunch the previous version. If filesystem rollback itself
+   fails, the transaction directory is retained and reported instead of deleting the backup.
+
+The installer never removes signature metadata with `xattr`, never falls back to ad-hoc signing,
+and never force-kills the app. A self-signed local certificate is not suitable for distribution or
+Gatekeeper trust on other Macs.
+
+To create a local-signed ZIP without installing it, run:
+
+```bash
+vp run dist:desktop:artifact --platform mac --arch arm64 --local-signed
+```
+
+Local signing accepts only the macOS ZIP target on a macOS host. `--signed` and `--local-signed`
+are mutually exclusive; the environment equivalent is `T3CODE_DESKTOP_LOCAL_SIGNED=true`.
+
+#### Permission-continuity verification
+
+The first real `/Applications` replacement requires explicit maintainer approval. On that approved
+pass:
+
+1. Run setup, then `vp run install:desktop:arm64`, and save
+   `codesign --display --requirements - "/Applications/T3 Code (Fork).app" 2>&1`.
+2. Grant notification permission and exercise a protected file/folder access that appears under
+   **System Settings → Privacy & Security** for `T3 Code (Fork)`.
+3. Change the build input (or rebuild from a different commit), run the install command again, and
+   save the designated requirement a second time.
+4. Confirm the two requirements are identical and contain no `cdhash`; confirm notifications and
+   the protected file/folder access still work without another prompt.
+5. Use the focused tests for deletion/replacement warnings. Do not delete or replace the real
+   certificate merely to test the warning, because doing so is the identity reset the workflow is
+   designed to prevent.
 
 ### Desktop `.dmg` packaging notes
 

@@ -6,8 +6,8 @@ import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
 import {
   buildSidebarWorktreeGroups,
   pickWorktreeGroupRepresentative,
-  pickWorktreeGroupTimeLabelThread,
   resolveWorktreeGroupLiveStatus,
+  resolveWorktreeThreadIndicator,
   sidebarThreadKey,
   type SidebarThreadClassification,
   visibleWorktreeGroupMemberIndexes,
@@ -255,7 +255,7 @@ describe("resolveWorktreeGroupLiveStatus", () => {
     expect(resolveWorktreeGroupLiveStatus([makeShell(), makeShell()])).toBeNull();
   });
 
-  it("ranks approval above working", () => {
+  it("surfaces approval while another member is working", () => {
     const status = resolveWorktreeGroupLiveStatus([
       running("2026-03-09T10:00:00.000Z"),
       makeShell({ id: ThreadId.make("thread-approval"), hasPendingApprovals: true }),
@@ -263,26 +263,32 @@ describe("resolveWorktreeGroupLiveStatus", () => {
     expect(status?.kind).toBe("approval");
   });
 
-  it("counts working from the earliest in-flight member", () => {
-    const status = resolveWorktreeGroupLiveStatus([
-      running("2026-03-09T11:00:00.000Z"),
-      running("2026-03-09T10:00:00.000Z"),
-    ]);
-    expect(status?.kind).toBe("working");
-    expect(status?.workingStartedAt).toBe("2026-03-09T10:00:00.000Z");
+  it("leaves working state on the individual thread rows", () => {
+    expect(
+      resolveWorktreeGroupLiveStatus([
+        running("2026-03-09T11:00:00.000Z"),
+        running("2026-03-09T10:00:00.000Z"),
+      ]),
+    ).toBeNull();
   });
 });
 
-describe("pickWorktreeGroupTimeLabelThread", () => {
-  it("returns the member with the latest activity", () => {
-    const stale = makeShell({
-      id: ThreadId.make("thread-stale"),
-      updatedAt: "2026-03-09T10:00:00.000Z",
-    });
-    const fresh = makeShell({
-      id: ThreadId.make("thread-fresh"),
-      latestUserMessageAt: "2026-03-09T12:00:00.000Z",
-    });
-    expect(pickWorktreeGroupTimeLabelThread([stale, fresh]).id).toBe(fresh.id);
+describe("resolveWorktreeThreadIndicator", () => {
+  it("uses the working indicator while a thread is running", () => {
+    expect(
+      resolveWorktreeThreadIndicator({ status: "working", isUnread: false, isWoke: false }),
+    ).toBe("working");
+  });
+
+  it("uses an unread marker after a thread finishes", () => {
+    expect(resolveWorktreeThreadIndicator({ status: "ready", isUnread: true, isWoke: false })).toBe(
+      "unread",
+    );
+  });
+
+  it("prefers a new completion over an older wake marker", () => {
+    expect(resolveWorktreeThreadIndicator({ status: "ready", isUnread: true, isWoke: true })).toBe(
+      "unread",
+    );
   });
 });

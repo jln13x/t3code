@@ -12,7 +12,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   ApprovalRequestId,
-  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -1108,6 +1107,55 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(startPayload.providerInstanceId, claudeAgentInstanceId);
         assert.equal(startPayload.cwd, "/tmp/project-claude");
       }
+    }),
+  );
+
+  it.effect("does not persist a model selection a steered turn never applied", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-steer-model-selection");
+      const runningModel = createModelSelection(codexInstanceId, "gpt-5.3-codex");
+
+      yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/project-steer-model-selection",
+        modelSelection: runningModel,
+        runtimeMode: "full-access",
+      });
+      yield* provider.sendTurn({
+        threadId,
+        input: "start working",
+        attachments: [],
+        modelSelection: runningModel,
+      });
+
+      // The adapter folded this one into the turn already running: its model
+      // selection never reached the model.
+      routing.codex.sendTurn.mockImplementationOnce((input: ProviderSendTurnInput) =>
+        Effect.succeed({
+          threadId: input.threadId,
+          turnId: asTurnId("turn-running"),
+          steered: true,
+        }),
+      );
+      yield* provider.sendTurn({
+        threadId,
+        input: "one more thing",
+        attachments: [],
+        modelSelection: createModelSelection(codexInstanceId, "gpt-5.4"),
+      });
+
+      const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      const runtimePayload = binding?.runtimePayload as
+        | { readonly modelSelection?: { readonly model?: string }; readonly activeTurnId?: string }
+        | undefined;
+      // Persisting it would make the UI claim a switch that never happened
+      // after a reconnect.
+      assert.equal(runtimePayload?.modelSelection?.model, "gpt-5.3-codex");
+      assert.equal(runtimePayload?.activeTurnId, "turn-running");
     }),
   );
 

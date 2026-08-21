@@ -578,7 +578,6 @@ export interface ChatComposerProps {
   composerTerminalContextsRef: React.RefObject<TerminalContextDraft[]>;
   composerElementContextsRef: React.RefObject<ElementContextDraft[]>;
   composerRef: React.RefObject<ChatComposerHandle | null>;
-  connectedTop?: boolean;
 
   // Callbacks
   onSend: (e?: { preventDefault: () => void }) => void;
@@ -1279,8 +1278,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired ||
     environmentUnavailable !== null ||
     !composerSendState.hasSendableContent;
-  const collapsedComposerPrimaryActionLabel =
-    phase === "running" ? "Queue message" : "Send message";
+  const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -2718,10 +2716,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     >
       <div
         className={cn(
-          "group transition-colors duration-200",
-          props.connectedTop
-            ? "rounded-b-[22px] rounded-t-none px-px pb-px"
-            : "rounded-[22px] p-px",
+          "group rounded-[22px] p-px transition-colors duration-200",
           composerProviderState.composerFrameClassName,
         )}
         onDragEnterCapture={composerMentionDragHandlers.onDragEnter}
@@ -2733,8 +2728,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "transition-[background-color] duration-200",
-            props.connectedTop ? "rounded-b-[20px] rounded-t-none" : "rounded-[20px]",
+            "rounded-[20px] transition-[background-color] duration-200",
             isDragOverComposer ? "bg-accent/45 ring-1 ring-primary/70" : null,
             projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,

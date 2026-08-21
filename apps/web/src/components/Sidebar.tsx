@@ -153,8 +153,8 @@ import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
   buildSidebarWorktreeGroups,
   pickWorktreeGroupRepresentative,
-  pickWorktreeGroupTimeLabelThread,
   resolveWorktreeGroupLiveStatus,
+  resolveWorktreeThreadIndicator,
   sidebarThreadKey,
   type SidebarThreadClassification,
   type SidebarWorktreeGroup,
@@ -826,6 +826,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // switching sidebars must not light up every historical thread as unread.
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
+  const isJustFinished = isUnread && status === "ready";
   // A woken thread reappears at its original position (the sort is
   // deliberately static), so the pill has to carry the weight. Snoozing is
   // an explicit act, so the pill clears only when the user re-engages:
@@ -839,17 +840,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     !changeRequestAutoSettles(prState, props.autoSettleOnMerge);
-  // In-flight rows (working, or waiting on approval/input) fade as a whole:
-  // there is nothing for the user to do yet, so prominence is reserved for
-  // rows that need a human — done (unread), read-but-unsettled, failed, and
-  // freshly woken. The status label keeps its hue, so waiting rows stay
-  // findable. In-flight rows recede the same as read-ready ones (inbox-zero:
-  // working threads aren't your problem yet) — only the colored status label
-  // stands out.
-  const isInFlight =
-    status === "working" || status === "monitoring" || status === "approval" || status === "input";
-  const shouldRecede =
-    (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
+  // Typography has one emphasis rule across thread states. Operational state
+  // belongs to the status marker; it must not make an unfocused title louder
+  // or dim the whole row.
+  const isEmphasized = isJustFinished || props.isActive || isSelected;
   // Status hues follow the system-wide convention set by sidebar v1 and the
   // mobile Live Activity/widgets (amber approval, indigo input, sky working)
   // so a thread reads the same color everywhere it surfaces.
@@ -1117,13 +1111,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       ? "bg-sidebar-row-active text-sidebar-foreground"
       : isSelected
         ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : shouldRecede
-          ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    isInFlight &&
-      !props.isActive &&
-      !isSelected &&
-      "opacity-70 transition-opacity hover:opacity-100",
+        : "bg-transparent text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
   );
 
   const title = isRenaming ? (
@@ -1143,25 +1131,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     <span
       className={cn(
         "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
-        shouldRecede ? "font-normal" : "font-medium",
-        variant === "card"
-          ? cn(
-              "truncate",
-              isUnread || isWoke
-                ? "text-foreground"
-                : shouldRecede
-                  ? "text-secondary-label"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
+        isEmphasized
+          ? "font-medium text-foreground"
           : cn(
-              "truncate group-hover/sidebar-row:text-foreground",
-              props.isActive || isWoke
-                ? "text-foreground"
-                : isUnread
-                  ? "text-muted-foreground"
-                  : "text-secondary-label/70",
+              "font-normal group-hover/sidebar-row:text-foreground",
+              variant === "card"
+                ? "truncate text-secondary-label"
+                : "truncate text-secondary-label/70",
             ),
         isRegeneratingTitle && "opacity-[0.55]",
       )}
@@ -1393,7 +1369,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
+                    isEmphasized ? "font-medium" : "font-normal",
                   )}
                 >
                   {props.projectTitle}
@@ -1748,8 +1724,12 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
   const isJustFinished = isUnread && status === "ready";
-  const shouldRecede =
-    status === "ready" && !isUnread && !props.isWoke && !props.isActive && !isSelected;
+  const isEmphasized = isJustFinished || props.isActive || isSelected;
+  const threadIndicator = resolveWorktreeThreadIndicator({
+    status,
+    isUnread,
+    isWoke: props.isWoke,
+  });
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
   const showInstanceBadge =
@@ -1836,31 +1816,37 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   }, [props.onCommitRename, props.renamingTitle, thread.title, threadRef]);
 
   const statusGlyph =
-    status === "approval" ? (
+    threadIndicator === "approval" ? (
       <span
         role="status"
         aria-label="Pending approval"
         className="size-1.5 rounded-full bg-amber-500"
       />
-    ) : status === "input" ? (
+    ) : threadIndicator === "input" ? (
       <span
         role="status"
         aria-label="Awaiting input"
         className="size-1.5 rounded-full bg-indigo-500"
       />
-    ) : status === "working" || status === "monitoring" ? (
+    ) : threadIndicator === "working" || threadIndicator === "monitoring" ? (
       <CircleDashedIcon
         role="status"
-        aria-label={status === "monitoring" ? "Monitoring" : "Working"}
+        aria-label={threadIndicator === "monitoring" ? "Monitoring" : "Working"}
         className="size-3 shrink-0 text-sky-600 dark:text-sky-400"
       />
-    ) : status === "failed" ? (
+    ) : threadIndicator === "failed" ? (
       <CircleAlertIcon
         role="status"
         aria-label="Failed"
         className="size-3 shrink-0 text-red-600 dark:text-red-400"
       />
-    ) : props.isWoke ? (
+    ) : threadIndicator === "unread" ? (
+      <span
+        role="status"
+        aria-label="Unread completion"
+        className="size-1.5 rounded-full bg-orange-500"
+      />
+    ) : threadIndicator === "woke" ? (
       <AlarmClockIcon
         role="status"
         aria-label="Woke from snooze"
@@ -1884,13 +1870,9 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
     <span
       className={cn(
         "min-w-0 flex-1 truncate text-sm",
-        isJustFinished
-          ? "font-semibold text-foreground"
-          : isUnread || props.isWoke || props.isActive
-            ? "font-medium text-foreground"
-            : shouldRecede
-              ? "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground"
-              : "font-medium text-foreground/90",
+        isEmphasized
+          ? "font-medium text-foreground"
+          : "font-normal text-muted-foreground/75 group-hover/worktree-thread:text-foreground",
       )}
     >
       {thread.title}
@@ -1921,30 +1903,35 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         }
       >
         {title}
-        {thread.pinnedAt !== null ? (
-          <PinIcon aria-label="Pinned" className="size-3 shrink-0" />
-        ) : null}
-        {statusGlyph}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Archive thread: ${thread.title}`}
-                disabled={isRunning}
-                onClick={handleArchiveClick}
-                onDoubleClick={(event) => event.stopPropagation()}
-                className="pointer-events-none invisible -mr-0.5 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-sidebar-control-surface hover:text-foreground focus-visible:pointer-events-auto focus-visible:visible focus-visible:ring-2 focus-visible:ring-ring group-hover/worktree-thread:pointer-events-auto group-hover/worktree-thread:visible group-focus-within/worktree-thread:pointer-events-auto group-focus-within/worktree-thread:visible disabled:cursor-not-allowed disabled:opacity-35"
-              />
-            }
+        <span className="relative ml-auto flex size-5 shrink-0 items-center justify-center">
+          <span
+            className={cn(
+              "inline-flex items-center justify-center transition-opacity",
+              !isRunning && "group-hover/worktree-thread:opacity-0",
+            )}
           >
-            <ArchiveIcon aria-hidden className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {isRunning ? "Cannot archive a running thread" : "Archive thread"}
-          </TooltipPopup>
-        </Tooltip>
+            {statusGlyph}
+          </span>
+          {!isRunning ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Archive thread: ${thread.title}`}
+                    onClick={handleArchiveClick}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className="pointer-events-none absolute inset-0 inline-flex cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 outline-none transition-colors hover:bg-sidebar-control-surface hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/worktree-thread:pointer-events-auto group-hover/worktree-thread:opacity-100"
+                  />
+                }
+              >
+                <ArchiveIcon aria-hidden className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="top">Archive thread</TooltipPopup>
+            </Tooltip>
+          ) : null}
+        </span>
       </TooltipTrigger>
       <SidebarThreadTooltip
         thread={thread}
@@ -2102,9 +2089,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
 
-  const anySelected = useThreadSelectionStore((state) =>
-    memberKeys.some((key) => state.selectedThreadKeys.has(key)),
-  );
   const visitedSignature = useUiStateStore((state) =>
     memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join("\u0000"),
   );
@@ -2129,27 +2113,18 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     return { anyUnread, anyWoke, wokeByKey };
   }, [memberKeys, prState, props.autoSettleOnMerge, props.snoozeNow, threads, visitedSignature]);
   const liveStatus = resolveWorktreeGroupLiveStatus(threads);
-  const isInFlight = liveStatus !== null && liveStatus.kind !== "failed";
-  const shouldRecede =
-    (liveStatus === null || isInFlight) &&
-    !anyUnread &&
-    !anyWoke &&
-    activeMember === null &&
-    !anySelected;
   const statusLabel =
-    liveStatus?.kind === "working"
-      ? "Working"
-      : liveStatus?.kind === "approval"
-        ? "Approval"
-        : liveStatus?.kind === "input"
-          ? "Input"
-          : liveStatus?.kind === "failed"
-            ? "Failed"
-            : anyWoke
-              ? "Woke"
-              : anyUnread
-                ? "Done"
-                : null;
+    liveStatus?.kind === "approval"
+      ? "Approval"
+      : liveStatus?.kind === "input"
+        ? "Input"
+        : liveStatus?.kind === "failed"
+          ? "Failed"
+          : anyWoke
+            ? "Woke"
+            : anyUnread
+              ? "Done"
+              : null;
   const statusClass =
     liveStatus?.kind === "approval"
       ? "text-amber-700 dark:text-amber-300"
@@ -2157,11 +2132,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         ? "text-indigo-600 dark:text-indigo-300"
         : liveStatus?.kind === "failed"
           ? "text-red-700 dark:text-red-300"
-          : liveStatus?.kind === "working"
-            ? "text-sky-600 dark:text-sky-400"
-            : anyWoke
-              ? "text-amber-700 dark:text-amber-300"
-              : "text-emerald-700 dark:text-emerald-300";
+          : anyWoke
+            ? "text-amber-700 dark:text-amber-300"
+            : "text-emerald-700 dark:text-emerald-300";
   const canSettleGroup =
     props.settlementSupported &&
     threads.every((thread) => canSettle(thread, { now: props.snoozeNow }));
@@ -2217,7 +2190,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     },
     [newestRef, props.onContextMenu],
   );
-  const timeLabelThread = pickWorktreeGroupTimeLabelThread(threads);
   const isRemote =
     props.currentEnvironmentId !== null && environmentId !== props.currentEnvironmentId;
 
@@ -2237,8 +2209,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           activeMember !== null &&
             !activeMemberIsVisible &&
             "bg-sidebar-row-active text-sidebar-foreground",
-          shouldRecede && "text-sidebar-muted-foreground/75",
-          isInFlight && activeMember === null && !anySelected && "opacity-70 hover:opacity-100",
         )}
         onClick={handleCardClick}
         onKeyDown={handleCardKeyDown}
@@ -2297,18 +2267,8 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
               )}
             >
               {statusLabel ? (
-                <span className="inline-flex items-center gap-1 font-medium">
-                  {liveStatus?.kind === "working" ? (
-                    <CircleDashedIcon className="size-3.5" />
-                  ) : null}
-                  {statusLabel}
-                  {liveStatus?.kind === "working" ? (
-                    <WorkingDuration startedAt={liveStatus.workingStartedAt} />
-                  ) : null}
-                </span>
-              ) : (
-                threadTimeLabel(timeLabelThread)
-              )}
+                <span className="inline-flex items-center gap-1 font-medium">{statusLabel}</span>
+              ) : null}
             </span>
             {canSettleGroup || canSnoozeGroup ? (
               <span
