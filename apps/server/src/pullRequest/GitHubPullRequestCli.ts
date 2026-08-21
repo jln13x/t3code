@@ -662,8 +662,8 @@ function matchesFilters(
   viewer: string,
 ): boolean {
   if (filters === undefined) return true;
-  const labels = item.labels.map((label) => label.name.trim().toLowerCase());
-  const holds = (label: string) => labels.includes(label.trim().toLowerCase());
+  const labels = new Set(item.labels.map((label) => label.name.trim().toLowerCase()));
+  const holds = (label: string) => labels.has(label.trim().toLowerCase());
   return (
     (filters.draft === undefined || item.isDraft === (filters.draft === "only")) &&
     (filters.review === undefined ||
@@ -1451,8 +1451,7 @@ export const make = Effect.gen(function* () {
           // the page. Narrowed to a command that ran and was refused: a missing `gh` or a
           // signed-out one fails the same way for every request.
           Effect.catchTags({
-            GitHubCliCommandError: (error) =>
-              filesPage(1).pipe(Effect.catch(() => Effect.fail(error))),
+            GitHubCliCommandError: (error) => filesPage(1).pipe(Effect.mapError(() => error)),
           }),
         );
     },
