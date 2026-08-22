@@ -8,12 +8,14 @@ import type * as Electron from "electron";
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
+import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronNotification from "../../electron/ElectronNotification.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import { THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL } from "../channels.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
+  pickProjectFavicon,
   showThreadCompletionNotification,
 } from "./window.ts";
 
@@ -205,5 +207,40 @@ describe("showThreadCompletionNotification", () => {
         ),
       );
     },
+  );
+});
+
+describe("pickProjectFavicon", () => {
+  it.effect("opens a single-image picker from the project directory", () =>
+    Effect.gen(function* () {
+      const pickFiles = vi.fn(() => Effect.succeed(["/pictures/icon.png"]));
+      const result = yield* pickProjectFavicon.handler("/project").pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.mock(ElectronDialog.ElectronDialog)({ pickFiles }),
+            Layer.mock(ElectronWindow.ElectronWindow)({
+              focusedMainOrFirst: Effect.succeed(Option.none()),
+            }),
+          ),
+        ),
+      );
+
+      assert.strictEqual(result, "/pictures/icon.png");
+      assert.deepEqual(pickFiles.mock.calls, [
+        [
+          {
+            owner: Option.none(),
+            defaultPath: Option.some("/project"),
+            multiple: false,
+            filters: [
+              {
+                name: "Images",
+                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"],
+              },
+            ],
+          },
+        ],
+      ]);
+    }),
   );
 });
