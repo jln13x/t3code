@@ -1,4 +1,4 @@
-import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -43,7 +43,7 @@ import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
-import { shellEnvironment } from "../state/shell";
+import { environmentSnapshotAtom, environmentShell, shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
@@ -64,6 +64,14 @@ import {
   deriveThreadFeedbackEvents,
   type ThreadSoundStateByKey,
 } from "../interactionSounds";
+import {
+  initializeThreadCompletionNotificationState,
+  readThreadCompletionNotificationState,
+  reduceThreadCompletionNotificationState,
+  removeDeliveredThreadCompletionNotification,
+  writeThreadCompletionNotificationState,
+  type ThreadCompletionNotificationState,
+} from "../threadCompletionNotifications";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -153,7 +161,8 @@ function RootRouteView() {
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
-        {primaryEnvironmentAuthenticated ? <ThreadCompletionFeedbackCoordinator /> : null}
+        {primaryEnvironmentAuthenticated ? <ThreadCompletionSoundCoordinator /> : null}
+        <ThreadCompletionNotificationCoordinator />
         {primaryEnvironmentAuthenticated ? <PlanAgentSelectionHeal /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
         {appShell}
@@ -165,10 +174,26 @@ function RootRouteView() {
   );
 }
 
-function ThreadCompletionFeedbackCoordinator() {
+function ThreadCompletionSoundCoordinator() {
   const threads = useThreadShells();
-  const navigate = useNavigate();
   const previousStateRef = useRef<ThreadSoundStateByKey | null>(null);
+
+  useEffect(() => {
+    const previous = previousStateRef.current;
+    if (previous !== null) {
+      for (const event of deriveThreadFeedbackEvents(previous, threads)) {
+        play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
+      }
+    }
+    previousStateRef.current = captureThreadSoundState(threads);
+  }, [threads]);
+
+  return null;
+}
+
+function ThreadCompletionNotificationCoordinator() {
+  const navigate = useNavigate();
+  const { environments } = useEnvironments();
 
   useEffect(() => {
     const subscribe = window.desktopBridge?.onThreadCompletionNotificationClick;
@@ -185,27 +210,111 @@ function ThreadCompletionFeedbackCoordinator() {
     });
   }, [navigate]);
 
+  if (typeof window.desktopBridge?.showThreadCompletionNotification !== "function") {
+    return null;
+  }
+
+  return environments.map((environment) => (
+    <EnvironmentThreadCompletionNotificationCoordinator
+      key={environment.environmentId}
+      environmentId={environment.environmentId}
+    />
+  ));
+}
+
+function EnvironmentThreadCompletionNotificationCoordinator({
+  environmentId,
+}: {
+  readonly environmentId: EnvironmentId;
+}) {
+  const snapshot = useAtomValue(environmentSnapshotAtom(environmentId));
+  const shellState = useAtomValue(environmentShell.stateValueAtom(environmentId));
+  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
+  const memoryStateRef = useRef<ThreadCompletionNotificationState | null>(null);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    const previous = previousStateRef.current;
-    if (previous !== null) {
-      for (const event of deriveThreadFeedbackEvents(previous, threads)) {
-        play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
-        if (event.cue === "success") {
-          const showNotification = window.desktopBridge?.showThreadCompletionNotification;
-          if (typeof showNotification === "function") {
-            void showNotification({
-              threadRef: {
-                environmentId: event.thread.environmentId,
-                threadId: event.thread.id,
-              },
-              threadTitle: event.thread.title,
-            }).catch(() => undefined);
-          }
+    const show = window.desktopBridge?.showThreadCompletionNotification;
+    if (snapshot === null || shellState.status !== "live" || typeof show !== "function") {
+      return;
+    }
+
+    const synchronize = async () => {
+      const readState = (): ThreadCompletionNotificationState | null => {
+        try {
+          return (
+            readThreadCompletionNotificationState(window.localStorage, environmentId) ??
+            memoryStateRef.current
+          );
+        } catch {
+          return memoryStateRef.current;
+        }
+      };
+      const persistState = (state: ThreadCompletionNotificationState) => {
+        memoryStateRef.current = state;
+        try {
+          writeThreadCompletionNotificationState(window.localStorage, environmentId, state);
+        } catch {
+          // The in-memory state still prevents duplicate delivery for this renderer session.
+        }
+      };
+
+      let state = readState();
+      if (state === null) {
+        persistState(initializeThreadCompletionNotificationState(snapshot.threads));
+        return;
+      }
+
+      state = reduceThreadCompletionNotificationState(state, snapshot.threads);
+      persistState(state);
+
+      for (const notification of state.pending) {
+        let shown = false;
+        try {
+          shown = await show({
+            threadRef: { environmentId, threadId: notification.threadId },
+            threadTitle: notification.threadTitle,
+          });
+        } catch {
+          shown = false;
+        }
+        if (!shown) break;
+        state = removeDeliveredThreadCompletionNotification(state, notification.id);
+        persistState(state);
+      }
+
+      if (state.pending.length > 0) {
+        const retryDelaysMs = [1_000, 5_000, 15_000] as const;
+        const retryDelayMs = retryDelaysMs[retryAttemptRef.current];
+        if (retryDelayMs !== undefined && retryTimerRef.current === null) {
+          retryAttemptRef.current += 1;
+          retryTimerRef.current = window.setTimeout(() => {
+            retryTimerRef.current = null;
+            setRetryGeneration((generation) => generation + 1);
+          }, retryDelayMs);
+        }
+      } else {
+        retryAttemptRef.current = 0;
+        if (retryTimerRef.current !== null) {
+          window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
         }
       }
-    }
-    previousStateRef.current = captureThreadSoundState(threads);
-  }, [threads]);
+    };
+
+    syncChainRef.current = syncChainRef.current.then(synchronize, synchronize);
+  }, [environmentId, retryGeneration, shellState.status, snapshot]);
 
   return null;
 }
