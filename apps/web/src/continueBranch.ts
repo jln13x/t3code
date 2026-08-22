@@ -25,6 +25,67 @@ export interface ContinueBranchTarget {
   readonly defaultModelSelection: ModelSelection | null;
 }
 
+/** Extends the stock server's background Git settings with PTY-safe SSH limits. */
+export const CONTINUE_BRANCH_GIT_ENV = Object.freeze({
+  GCM_INTERACTIVE: "never",
+  GIT_ASKPASS: "",
+  GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=1",
+  GIT_TERMINAL_PROMPT: "0",
+  SSH_ASKPASS: "",
+  SSH_ASKPASS_REQUIRE: "never",
+});
+
+function stripTerminalControlSequences(value: string): string {
+  let output = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 27) {
+      const kind = value.charCodeAt(index + 1);
+      if (kind === 91) {
+        index += 2;
+        while (index < value.length) {
+          const sequenceCode = value.charCodeAt(index);
+          if (sequenceCode >= 64 && sequenceCode <= 126) break;
+          index += 1;
+        }
+      } else if (kind === 93) {
+        index += 2;
+        while (index < value.length) {
+          if (value.charCodeAt(index) === 7) break;
+          if (value.charCodeAt(index) === 27 && value.charCodeAt(index + 1) === 92) {
+            index += 1;
+            break;
+          }
+          index += 1;
+        }
+      }
+      continue;
+    }
+    if (code === 9 || code === 10 || code === 13 || code >= 32) output += value[index];
+  }
+  return output;
+}
+
+export function continueBranchTerminalFailureMessage(input: {
+  readonly buffer: string;
+  readonly marker: string;
+  readonly fallback: string;
+}): string {
+  const lines = stripTerminalControlSequences(input.buffer)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.includes(input.marker));
+  const usefulLine = lines
+    .toReversed()
+    .find((line) =>
+      /fatal:|error:|permission denied|authentication|passphrase|password|host key|could not (?:read|resolve)|unable to access|repository not found|connection (?:refused|timed out)|timed out/i.test(
+        line,
+      ),
+    );
+  const message = usefulLine ?? input.fallback;
+  return message.length > 600 ? `${message.slice(0, 597)}...` : message;
+}
+
 /**
  * Finds connected copies of the same repository project on other environments.
  * Project grouping is intentional here even when the sidebar is configured to

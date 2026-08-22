@@ -20,10 +20,12 @@ import { useRouter } from "@tanstack/react-router";
 
 import type { ContinueBranchTarget } from "../continueBranch";
 import {
+  CONTINUE_BRANCH_GIT_ENV,
   continueBranchApplySnapshotCommand,
   continueBranchCleanupCommand,
   continueBranchPrepareHistoryStorageCommand,
   continueBranchSnapshotPushCommand,
+  continueBranchTerminalFailureMessage,
   continueBranchTerminalCommand,
   continueBranchTransferFetchCommand,
   continueBranchTransferRefs,
@@ -116,7 +118,7 @@ export function useContinueBranch() {
           threadId: input.threadId,
           terminalId,
           cwd: input.cwd,
-          env: { GIT_TERMINAL_PROMPT: "0" },
+          env: CONTINUE_BRANCH_GIT_ENV,
         },
       });
       if (openResult._tag === "Failure") {
@@ -138,16 +140,20 @@ export function useContinueBranch() {
       let finishWait: (result: {
         readonly exitCode: number | null;
         readonly error: string | null;
+        readonly output: string;
       }) => void = () => {};
       const markerResult = new Promise<{
         readonly exitCode: number | null;
         readonly error: string | null;
+        readonly output: string;
       }>((resolve) => {
         let settled = false;
         let timeoutId: number | null = null;
+        let latestBuffer = "";
         const finish = (result: {
           readonly exitCode: number | null;
           readonly error: string | null;
+          readonly output: string;
         }) => {
           if (settled) return;
           settled = true;
@@ -159,12 +165,13 @@ export function useContinueBranch() {
         finishWait = finish;
         const inspect = (result: AsyncResult.AsyncResult<TerminalBufferState, unknown>) => {
           if (result._tag === "Failure") {
-            finish({ exitCode: null, error: failureMessage(result) });
+            finish({ exitCode: null, error: failureMessage(result), output: latestBuffer });
             return;
           }
           if (result._tag !== "Success") return;
+          latestBuffer = result.value.buffer;
           if (result.value.error) {
-            finish({ exitCode: null, error: result.value.error });
+            finish({ exitCode: null, error: result.value.error, output: latestBuffer });
             return;
           }
           const markerOffset = result.value.buffer.lastIndexOf(marker);
@@ -173,10 +180,17 @@ export function useContinueBranch() {
             result.value.buffer.slice(markerOffset + marker.length),
             10,
           );
-          if (Number.isSafeInteger(exitCode)) finish({ exitCode, error: null });
+          if (Number.isSafeInteger(exitCode)) {
+            finish({ exitCode, error: null, output: latestBuffer });
+          }
         };
         timeoutId = window.setTimeout(
-          () => finish({ exitCode: null, error: "The Git command timed out." }),
+          () =>
+            finish({
+              exitCode: null,
+              error: "The Git command timed out.",
+              output: latestBuffer,
+            }),
           120_000,
         );
         unsubscribe = atomRegistry.subscribe(attachAtom, inspect);
@@ -194,7 +208,7 @@ export function useContinueBranch() {
         },
       });
       if (writeResult._tag === "Failure") {
-        finishWait({ exitCode: null, error: failureMessage(writeResult) });
+        finishWait({ exitCode: null, error: failureMessage(writeResult), output: "" });
       }
       const completed = await markerResult;
       await closeTerminal({
@@ -202,10 +216,15 @@ export function useContinueBranch() {
         input: { threadId: input.threadId, terminalId, deleteHistory: true },
       });
       if (completed.error !== null || completed.exitCode !== 0) {
+        const fallback =
+          completed.error ?? `Git command exited with status ${completed.exitCode ?? "unknown"}.`;
         return {
           status: "failure",
-          message:
-            completed.error ?? `Git command exited with status ${completed.exitCode ?? "unknown"}.`,
+          message: continueBranchTerminalFailureMessage({
+            buffer: completed.output,
+            marker,
+            fallback,
+          }),
         };
       }
       return { status: "success" };
