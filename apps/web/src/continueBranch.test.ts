@@ -1,15 +1,32 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { EnvironmentId, ProjectId, type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   continueBranchFetchCommand,
+  continueBranchApplySnapshotCommand,
+  continueBranchCleanupCommand,
+  continueBranchPrepareHistoryStorageCommand,
+  continueBranchSnapshotPushCommand,
   continueBranchPushCommand,
   continueBranchTerminalCommand,
   continueBranchTargetIndex,
+  continueBranchTransferFetchCommand,
+  continueBranchTransferRefs,
+  continueBranchVerifySourceCommand,
   resolveContinueBranchPushPlan,
   resolveContinueBranchRef,
   resolveContinueBranchTargets,
 } from "./continueBranch";
+
+const { execFileSync } = NodeChildProcess;
+const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = NodeFS;
+const { tmpdir } = NodeOS;
+const { join } = NodePath;
 
 function project(environmentId: string, id: string, root: string, canonicalKey: string) {
   return {
@@ -44,6 +61,14 @@ function ref(input: Partial<VcsRef> & Pick<VcsRef, "name">): VcsRef {
   };
 }
 
+function environment(environmentId: string, label: string, phase = "connected") {
+  return {
+    environmentId: EnvironmentId.make(environmentId),
+    label,
+    connection: { phase },
+  };
+}
+
 describe("resolveContinueBranchTargets", () => {
   it("offers connected copies of the same project on other environments", () => {
     const projects = [
@@ -60,21 +85,9 @@ describe("resolveContinueBranchTargets", () => {
         },
         projects,
         environments: [
-          {
-            environmentId: EnvironmentId.make("vps"),
-            label: "VPS",
-            connection: { phase: "connected" },
-          },
-          {
-            environmentId: EnvironmentId.make("local"),
-            label: "My Mac",
-            connection: { phase: "connected" },
-          },
-          {
-            environmentId: EnvironmentId.make("other"),
-            label: "Other",
-            connection: { phase: "connected" },
-          },
+          environment("vps", "VPS"),
+          environment("local", "My Mac"),
+          environment("other", "Other"),
         ],
       }),
     ).toEqual([
@@ -85,6 +98,7 @@ describe("resolveContinueBranchTargets", () => {
           projectId: ProjectId.make("local-project"),
         },
         workspaceRoot: "/Users/me/t3code",
+        defaultModelSelection: null,
       },
     ]);
   });
@@ -98,13 +112,7 @@ describe("resolveContinueBranchTargets", () => {
           projectId: ProjectId.make("vps-project"),
         },
         projects: [source, project("local", "local-project", "/code/t3", "repo")],
-        environments: [
-          {
-            environmentId: EnvironmentId.make("local"),
-            label: "Local",
-            connection: { phase: "offline" },
-          },
-        ],
+        environments: [environment("vps", "VPS"), environment("local", "Local", "offline")],
       }),
     ).toEqual([]);
 
@@ -172,7 +180,154 @@ describe("resolveContinueBranchPushPlan", () => {
         marker: "__DONE__:",
         platform: "windows",
       }),
-    ).toBe(`git fetch origin branch; Write-Output "__DONE__:$LASTEXITCODE"`);
+    ).toBe(
+      `& { $global:LASTEXITCODE = 0; try { git fetch origin branch; $t3Status = $LASTEXITCODE } catch { Write-Error $_; $t3Status = 1 }; Write-Output "__DONE__:$t3Status" }`,
+    );
+  });
+});
+
+describe("complete Git transfer", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  const bash = (cwd: string, command: string) =>
+    execFileSync("bash", ["-c", command], { cwd, encoding: "utf8" });
+
+  it("restores committed, staged, unstaged, and untracked work without changing the source", () => {
+    const root = mkdtempSync(join(tmpdir(), "t3-chat-transfer-"));
+    const remote = join(root, "remote.git");
+    const source = join(root, "source");
+    const destination = join(root, "destination");
+    execFileSync("git", ["init", "--bare", remote]);
+    execFileSync("git", ["init", "-b", "feat/move", source]);
+    git(source, "config", "user.name", "Test");
+    git(source, "config", "user.email", "test@example.com");
+    writeFileSync(join(source, "tracked.txt"), "base\n");
+    git(source, "add", "tracked.txt");
+    git(source, "commit", "-m", "base");
+    git(source, "remote", "add", "origin", remote);
+    git(source, "push", "-u", "origin", "feat/move");
+    const checkpointRef = "refs/t3/checkpoints/thread-transfer/1";
+    git(source, "update-ref", checkpointRef, "HEAD");
+    execFileSync("git", ["clone", "--branch", "feat/move", remote, destination]);
+
+    writeFileSync(join(source, "tracked.txt"), "staged\n");
+    git(source, "add", "tracked.txt");
+    writeFileSync(join(source, "tracked.txt"), "unstaged\n");
+    writeFileSync(join(source, "untracked.txt"), "untracked\n");
+    const sourceHead = git(source, "rev-parse", "HEAD");
+    const sourceCachedDiff = git(source, "diff", "--cached");
+    const sourceWorktreeDiff = git(source, "diff");
+
+    const refs = continueBranchTransferRefs("abc123", [checkpointRef]);
+    bash(
+      source,
+      continueBranchSnapshotPushCommand({ branch: "feat/move", refs, platform: "linux" }),
+    );
+    bash(destination, continueBranchTransferFetchCommand({ branch: "feat/move", refs }));
+    bash(
+      destination,
+      continueBranchApplySnapshotCommand({ branch: "feat/move", refs, platform: "linux" }),
+    );
+
+    expect(git(destination, "rev-parse", "HEAD")).toBe(sourceHead);
+    expect(git(destination, "diff", "--cached")).toBe(sourceCachedDiff);
+    expect(git(destination, "diff")).toBe(sourceWorktreeDiff);
+    expect(readFileSync(join(destination, "untracked.txt"), "utf8")).toBe("untracked\n");
+    expect(git(destination, "rev-parse", checkpointRef)).toBe(sourceHead);
+    bash(destination, continueBranchPrepareHistoryStorageCommand("linux", "destination-thread"));
+    mkdirSync(join(destination, ".t3", "chat-transfers", "destination-thread"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(destination, ".t3", "chat-transfers", "destination-thread", "manifest.json"),
+      '{"version":1}',
+    );
+    expect(() =>
+      bash(destination, continueBranchPrepareHistoryStorageCommand("linux", "destination-thread")),
+    ).toThrow();
+    expect(
+      readFileSync(
+        join(destination, ".t3", "chat-transfers", "destination-thread", "manifest.json"),
+        "utf8",
+      ),
+    ).toBe('{"version":1}');
+    expect(git(destination, "status", "--porcelain", "--untracked-files=all")).toBe(
+      "MM tracked.txt\n?? untracked.txt",
+    );
+    expect(() =>
+      bash(
+        destination,
+        continueBranchVerifySourceCommand({ branch: "feat/move", refs, platform: "linux" }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      bash(
+        source,
+        continueBranchVerifySourceCommand({ branch: "feat/move", refs, platform: "linux" }),
+      ),
+    ).not.toThrow();
+    expect(git(source, "rev-parse", "HEAD")).toBe(sourceHead);
+    writeFileSync(join(source, "late-change.txt"), "do not delete\n");
+    expect(() =>
+      bash(
+        source,
+        continueBranchVerifySourceCommand({ branch: "feat/move", refs, platform: "linux" }),
+      ),
+    ).toThrow();
+    expect(readFileSync(join(source, "late-change.txt"), "utf8")).toBe("do not delete\n");
+
+    git(destination, "config", "user.name", "Test");
+    git(destination, "config", "user.email", "test@example.com");
+    const conflictingCheckpoint = git(
+      destination,
+      "commit-tree",
+      `${sourceHead}^{tree}`,
+      "-p",
+      sourceHead,
+      "-m",
+      "destination checkpoint",
+    );
+    git(destination, "update-ref", checkpointRef, conflictingCheckpoint);
+    expect(() =>
+      bash(
+        destination,
+        continueBranchApplySnapshotCommand({ branch: "feat/move", refs, platform: "linux" }),
+      ),
+    ).toThrow();
+    expect(git(destination, "rev-parse", checkpointRef)).toBe(conflictingCheckpoint);
+
+    bash(
+      destination,
+      continueBranchCleanupCommand({ refs, includeRemote: false, platform: "linux" }),
+    );
+    bash(source, continueBranchCleanupCommand({ refs, includeRemote: true, platform: "linux" }));
+    expect(git(source, "rev-parse", checkpointRef)).toBe(sourceHead);
+  });
+
+  it("builds guarded PowerShell transfer commands for Windows environments", () => {
+    const refs = continueBranchTransferRefs("abc123", ["refs/t3/checkpoints/thread-transfer/1"]);
+    const push = continueBranchSnapshotPushCommand({
+      branch: "feat/move",
+      refs,
+      platform: "windows",
+    });
+    const apply = continueBranchApplySnapshotCommand({
+      branch: "feat/move",
+      refs,
+      platform: "windows",
+    });
+    const verify = continueBranchVerifySourceCommand({
+      branch: "feat/move",
+      refs,
+      platform: "windows",
+    });
+    expect(push).toContain("t3-transfer-abc123-checkpoint-0");
+    expect(apply).toContain("Destination checkpoint contains unrelated work");
+    expect(apply).toContain("Destination checkout is on a different branch");
+    expect(verify).toContain("Source checkout changed branch during transfer");
+    expect(continueBranchPrepareHistoryStorageCommand("windows", "destination-thread")).toContain(
+      "Select-String",
+    );
   });
 });
 

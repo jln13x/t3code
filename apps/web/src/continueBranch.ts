@@ -3,6 +3,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import type {
   EnvironmentId,
   ExecutionEnvironmentPlatformOs,
+  ModelSelection,
   ScopedProjectRef,
   VcsRef,
 } from "@t3tools/contracts";
@@ -21,6 +22,7 @@ export interface ContinueBranchTarget {
   readonly label: string;
   readonly projectRef: ScopedProjectRef;
   readonly workspaceRoot: string;
+  readonly defaultModelSelection: ModelSelection | null;
 }
 
 /**
@@ -40,7 +42,6 @@ export function resolveContinueBranchTargets(input: {
       project.id === input.sourceProjectRef.projectId,
   );
   if (!sourceProject?.repositoryIdentity?.canonicalKey) return [];
-
   const sourceLogicalKey = deriveLogicalProjectKey(sourceProject, {
     groupingMode: "repository_path",
   });
@@ -73,9 +74,46 @@ export function resolveContinueBranchTargets(input: {
             : `${environmentLabel} — ${project.workspaceRoot}`,
         projectRef: scopeProjectRef(project.environmentId, project.id),
         workspaceRoot: project.workspaceRoot,
+        defaultModelSelection: project.defaultModelSelection,
       };
     })
     .toSorted((left, right) => left.label.localeCompare(right.label));
+}
+
+export function continueBranchPrepareHistoryStorageCommand(
+  platform: ExecutionEnvironmentPlatformOs,
+  destinationThreadId: string,
+): string {
+  if (!/^[a-z0-9-]+$/i.test(destinationThreadId)) {
+    throw new Error("Invalid destination thread id.");
+  }
+  const ignoredPath = "/.t3/chat-transfers/";
+  const historyPath = `.t3/chat-transfers/${destinationThreadId}`;
+  if (platform === "windows") {
+    return [
+      `$t3Exclude = git rev-parse --git-path info/exclude`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      `$t3ExcludeParent = Split-Path -Parent $t3Exclude`,
+      `New-Item -ItemType Directory -Force -Path $t3ExcludeParent | Out-Null`,
+      `if (-not (Test-Path $t3Exclude)) { New-Item -ItemType File -Force -Path $t3Exclude | Out-Null }`,
+      `$t3IgnorePattern = ${powershellQuote(ignoredPath)}`,
+      `if (-not (Select-String -SimpleMatch -Quiet -Path $t3Exclude -Pattern $t3IgnorePattern)) { Add-Content -Path $t3Exclude -Value $t3IgnorePattern }`,
+      `$t3HistoryPath = ${powershellQuote(historyPath)}`,
+      `$t3TrackedHistory = git ls-files -- $t3HistoryPath`,
+      `if ($LASTEXITCODE -ne 0 -or $t3TrackedHistory -or (Test-Path $t3HistoryPath)) { throw 'Destination history path already exists' }`,
+      `git check-ignore -q $t3HistoryPath`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Destination history path is not ignored' }`,
+    ].join("; ");
+  }
+  return [
+    `t3_exclude=$(git rev-parse --git-path info/exclude)`,
+    `mkdir -p "$(dirname "$t3_exclude")"`,
+    `touch "$t3_exclude"`,
+    `(grep -Fqx ${shellQuote(ignoredPath)} "$t3_exclude" || printf '\\n%s\\n' ${shellQuote(ignoredPath)} >> "$t3_exclude")`,
+    `test -z "$(git ls-files -- ${shellQuote(historyPath)})"`,
+    `test ! -e ${shellQuote(historyPath)}`,
+    `git check-ignore -q ${shellQuote(historyPath)}`,
+  ].join(" && ");
 }
 
 export function continueBranchTargetIndex(action: string): number | null {
@@ -93,6 +131,247 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function powershellQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+export interface ContinueBranchTransferRefs {
+  readonly localHead: string;
+  readonly localIndex: string;
+  readonly localWorktree: string;
+  readonly remoteIndex: string;
+  readonly remoteWorktree: string;
+  readonly checkpoints: ReadonlyArray<{
+    readonly local: string;
+    readonly transferLocal: string;
+    readonly remote: string;
+  }>;
+}
+
+export function continueBranchTransferRefs(
+  operationId: string,
+  checkpointRefs: ReadonlyArray<string>,
+): ContinueBranchTransferRefs {
+  if (!/^[a-z0-9]+$/i.test(operationId)) throw new Error("Invalid transfer operation id.");
+  const localBase = `refs/t3/transfers/${operationId}`;
+  const remoteBase = `refs/heads/t3-transfer-${operationId}`;
+  return {
+    localHead: `${localBase}/head`,
+    localIndex: `${localBase}/index`,
+    localWorktree: `${localBase}/worktree`,
+    remoteIndex: `${remoteBase}-index`,
+    remoteWorktree: `${remoteBase}-worktree`,
+    checkpoints: checkpointRefs.map((local, index) => ({
+      local,
+      transferLocal: `${localBase}/checkpoint-${index}`,
+      remote: `${remoteBase}-checkpoint-${index}`,
+    })),
+  };
+}
+
+function posixWorktreeTreeScript(tempVariable: string, outputVariable: string): string {
+  return [
+    `${tempVariable}=$(mktemp)`,
+    `GIT_INDEX_FILE="$${tempVariable}" git read-tree HEAD`,
+    `GIT_INDEX_FILE="$${tempVariable}" git add -A`,
+    `${outputVariable}=$(GIT_INDEX_FILE="$${tempVariable}" git write-tree)`,
+    `rm -f "$${tempVariable}"`,
+  ].join(" && ");
+}
+
+function powershellGit(command: string): string {
+  return `${command}; if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`;
+}
+
+function powershellWorktreeTreeScript(tempVariable: string, outputVariable: string): string {
+  return [
+    `$${tempVariable} = Join-Path $env:TEMP ('t3-transfer-' + [guid]::NewGuid())`,
+    `$t3PreviousIndex = $env:GIT_INDEX_FILE`,
+    `$env:GIT_INDEX_FILE = $${tempVariable}`,
+    powershellGit("git read-tree HEAD"),
+    powershellGit("git add -A"),
+    `$${outputVariable} = git write-tree`,
+    `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+    `$env:GIT_INDEX_FILE = $t3PreviousIndex`,
+    `Remove-Item -Force -ErrorAction SilentlyContinue $${tempVariable}`,
+  ].join("; ");
+}
+
+export function continueBranchSnapshotPushCommand(input: {
+  readonly branch: string;
+  readonly refs: ContinueBranchTransferRefs;
+  readonly platform: ExecutionEnvironmentPlatformOs;
+}): string {
+  const { refs } = input;
+  const pushRefspecs = [
+    `HEAD:refs/heads/${input.branch}`,
+    `${refs.localIndex}:${refs.remoteIndex}`,
+    `${refs.localWorktree}:${refs.remoteWorktree}`,
+    ...refs.checkpoints.map((checkpoint) => `${checkpoint.local}:${checkpoint.remote}`),
+  ];
+  if (input.platform === "windows") {
+    return [
+      `$t3Head = git rev-parse HEAD`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      `$t3IndexTree = git write-tree`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      `$t3IndexCommit = git -c user.name='T3 Code' -c user.email='noreply@t3.codes' commit-tree $t3IndexTree -p $t3Head -m 'T3 transfer index'`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      powershellWorktreeTreeScript("t3TransferIndex", "t3WorktreeTree"),
+      `$t3WorktreeCommit = git -c user.name='T3 Code' -c user.email='noreply@t3.codes' commit-tree $t3WorktreeTree -p $t3Head -m 'T3 transfer worktree'`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      powershellGit(`git update-ref ${powershellQuote(refs.localHead)} $t3Head`),
+      powershellGit(`git update-ref ${powershellQuote(refs.localIndex)} $t3IndexCommit`),
+      powershellGit(`git update-ref ${powershellQuote(refs.localWorktree)} $t3WorktreeCommit`),
+      powershellGit(`git push origin ${pushRefspecs.map(powershellQuote).join(" ")}`),
+    ].join("; ");
+  }
+  return [
+    `t3_head=$(git rev-parse HEAD)`,
+    `t3_index_tree=$(git write-tree)`,
+    `t3_index_commit=$(git -c user.name='T3 Code' -c user.email='noreply@t3.codes' commit-tree "$t3_index_tree" -p "$t3_head" -m 'T3 transfer index')`,
+    posixWorktreeTreeScript("t3_transfer_index", "t3_worktree_tree"),
+    `t3_worktree_commit=$(git -c user.name='T3 Code' -c user.email='noreply@t3.codes' commit-tree "$t3_worktree_tree" -p "$t3_head" -m 'T3 transfer worktree')`,
+    `git update-ref ${shellQuote(refs.localHead)} "$t3_head"`,
+    `git update-ref ${shellQuote(refs.localIndex)} "$t3_index_commit"`,
+    `git update-ref ${shellQuote(refs.localWorktree)} "$t3_worktree_commit"`,
+    `git push origin ${pushRefspecs.map(shellQuote).join(" ")}`,
+  ].join(" && ");
+}
+
+export function continueBranchTransferFetchCommand(input: {
+  readonly branch: string;
+  readonly refs: ContinueBranchTransferRefs;
+}): string {
+  const refspecs = [
+    `+refs/heads/${input.branch}:refs/remotes/origin/${input.branch}`,
+    `+refs/heads/${input.branch}:${input.refs.localHead}`,
+    `+${input.refs.remoteIndex}:${input.refs.localIndex}`,
+    `+${input.refs.remoteWorktree}:${input.refs.localWorktree}`,
+    ...input.refs.checkpoints.map(
+      (checkpoint) => `+${checkpoint.remote}:${checkpoint.transferLocal}`,
+    ),
+  ];
+  return `git fetch origin ${refspecs.map(shellQuote).join(" ")}`;
+}
+
+export function continueBranchApplySnapshotCommand(input: {
+  readonly branch: string;
+  readonly refs: ContinueBranchTransferRefs;
+  readonly platform: ExecutionEnvironmentPlatformOs;
+}): string {
+  const expectedIndex = `${input.refs.localIndex}^{tree}`;
+  const expectedWorktree = `${input.refs.localWorktree}^{tree}`;
+  if (input.platform === "windows") {
+    const checkpointChecks = input.refs.checkpoints.flatMap((checkpoint, index) => [
+      `git show-ref --verify --quiet ${powershellQuote(checkpoint.local)}`,
+      `$t3CheckpointExists${index} = $LASTEXITCODE -eq 0`,
+      `if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) { throw 'Git command failed' }`,
+      `if ($t3CheckpointExists${index}) { $t3ExistingCheckpoint${index} = git rev-parse ${powershellQuote(checkpoint.local)}; $t3IncomingCheckpoint${index} = git rev-parse ${powershellQuote(checkpoint.transferLocal)}; if ($LASTEXITCODE -ne 0 -or $t3ExistingCheckpoint${index} -ne $t3IncomingCheckpoint${index}) { throw 'Destination checkpoint contains unrelated work' } }`,
+    ]);
+    const checkpointUpdates = input.refs.checkpoints.map((checkpoint) =>
+      powershellGit(
+        `git update-ref ${powershellQuote(checkpoint.local)} ${powershellQuote(checkpoint.transferLocal)}`,
+      ),
+    );
+    const exactCheck = [
+      `$t3CurrentHead = git rev-parse HEAD`,
+      `$t3CurrentIndex = git write-tree`,
+      powershellWorktreeTreeScript("t3VerifyIndex", "t3CurrentWorktree"),
+      `$t3ExpectedHead = git rev-parse ${powershellQuote(input.refs.localHead)}`,
+      `$t3ExpectedIndex = git rev-parse ${powershellQuote(expectedIndex)}`,
+      `$t3ExpectedWorktree = git rev-parse ${powershellQuote(expectedWorktree)}`,
+      `if ($t3CurrentHead -ne $t3ExpectedHead -or $t3CurrentIndex -ne $t3ExpectedIndex -or $t3CurrentWorktree -ne $t3ExpectedWorktree) { throw 'Destination checkout contains unrelated changes' }`,
+    ].join("; ");
+    return [
+      ...checkpointChecks,
+      `$t3CurrentBranch = git branch --show-current`,
+      `if ($LASTEXITCODE -ne 0 -or $t3CurrentBranch -ne ${powershellQuote(input.branch)}) { throw 'Destination checkout is on a different branch' }`,
+      `$t3Dirty = git status --porcelain --untracked-files=all`,
+      `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
+      `if ($t3Dirty) { ${exactCheck} } else { ${powershellGit(`git merge --ff-only ${powershellQuote(`refs/remotes/origin/${input.branch}`)}`)}; ${powershellGit(`git read-tree ${powershellQuote(expectedIndex)}`)}; ${powershellGit(`git restore --worktree --source=${powershellQuote(expectedWorktree)} -- .`)} }`,
+      ...checkpointUpdates,
+    ].join("; ");
+  }
+  const checkpointChecks = input.refs.checkpoints.map(
+    (checkpoint) =>
+      `if git show-ref --verify --quiet ${shellQuote(checkpoint.local)}; then test "$(git rev-parse ${shellQuote(checkpoint.local)})" = "$(git rev-parse ${shellQuote(checkpoint.transferLocal)})"; else test "$?" = 1; fi`,
+  );
+  const checkpointUpdates = input.refs.checkpoints.map(
+    (checkpoint) =>
+      `git update-ref ${shellQuote(checkpoint.local)} ${shellQuote(checkpoint.transferLocal)}`,
+  );
+  const exactCheck = [
+    `test "$(git rev-parse HEAD)" = "$(git rev-parse ${shellQuote(input.refs.localHead)})"`,
+    `test "$(git write-tree)" = "$(git rev-parse ${shellQuote(expectedIndex)})"`,
+    posixWorktreeTreeScript("t3_verify_index", "t3_current_worktree"),
+    `test "$t3_current_worktree" = "$(git rev-parse ${shellQuote(expectedWorktree)})"`,
+  ].join(" && ");
+  return [
+    ...checkpointChecks,
+    `test "$(git branch --show-current)" = ${shellQuote(input.branch)}`,
+    `if test -n "$(git status --porcelain --untracked-files=all)"; then ${exactCheck}; else git merge --ff-only ${shellQuote(`refs/remotes/origin/${input.branch}`)} && git read-tree ${shellQuote(expectedIndex)} && git restore --worktree --source=${shellQuote(expectedWorktree)} -- .; fi`,
+    ...checkpointUpdates,
+  ].join(" && ");
+}
+
+export function continueBranchVerifySourceCommand(input: {
+  readonly branch: string;
+  readonly refs: ContinueBranchTransferRefs;
+  readonly platform: ExecutionEnvironmentPlatformOs;
+}): string {
+  if (input.platform === "windows") {
+    return [
+      `$t3CurrentBranch = git branch --show-current`,
+      `if ($LASTEXITCODE -ne 0 -or $t3CurrentBranch -ne ${powershellQuote(input.branch)}) { throw 'Source checkout changed branch during transfer' }`,
+      `$t3CurrentHead = git rev-parse HEAD`,
+      `$t3CurrentIndex = git write-tree`,
+      powershellWorktreeTreeScript("t3VerifyIndex", "t3CurrentWorktree"),
+      `$t3ExpectedHead = git rev-parse ${powershellQuote(input.refs.localHead)}`,
+      `$t3ExpectedIndex = git rev-parse ${powershellQuote(`${input.refs.localIndex}^{tree}`)}`,
+      `$t3ExpectedWorktree = git rev-parse ${powershellQuote(`${input.refs.localWorktree}^{tree}`)}`,
+      `if ($t3CurrentHead -ne $t3ExpectedHead -or $t3CurrentIndex -ne $t3ExpectedIndex -or $t3CurrentWorktree -ne $t3ExpectedWorktree) { throw 'Source checkout changed during transfer' }`,
+    ].join("; ");
+  }
+  return [
+    `test "$(git branch --show-current)" = ${shellQuote(input.branch)}`,
+    `test "$(git rev-parse HEAD)" = "$(git rev-parse ${shellQuote(input.refs.localHead)})"`,
+    `test "$(git write-tree)" = "$(git rev-parse ${shellQuote(`${input.refs.localIndex}^{tree}`)})"`,
+    posixWorktreeTreeScript("t3_verify_index", "t3_current_worktree"),
+    `test "$t3_current_worktree" = "$(git rev-parse ${shellQuote(`${input.refs.localWorktree}^{tree}`)})"`,
+  ].join(" && ");
+}
+
+export function continueBranchCleanupCommand(input: {
+  readonly refs: ContinueBranchTransferRefs;
+  readonly includeRemote: boolean;
+  readonly platform: ExecutionEnvironmentPlatformOs;
+}): string {
+  const quote = input.platform === "windows" ? powershellQuote : shellQuote;
+  const separator = input.platform === "windows" ? "; " : "; ";
+  const remoteTrackingRefs = [
+    input.refs.remoteIndex,
+    input.refs.remoteWorktree,
+    ...input.refs.checkpoints.map((checkpoint) => checkpoint.remote),
+  ].map((ref) => ref.replace(/^refs\/heads\//, "refs/remotes/origin/"));
+  const local = [
+    input.refs.localHead,
+    input.refs.localIndex,
+    input.refs.localWorktree,
+    ...input.refs.checkpoints.map((checkpoint) => checkpoint.transferLocal),
+    ...remoteTrackingRefs,
+  ]
+    .map((ref) => `git update-ref -d ${quote(ref)}`)
+    .join(separator);
+  if (!input.includeRemote) return local;
+  const remoteBranches = [
+    input.refs.remoteIndex,
+    input.refs.remoteWorktree,
+    ...input.refs.checkpoints.map((checkpoint) => checkpoint.remote),
+  ].map((ref) => ref.replace(/^refs\/heads\//, ""));
+  return `${local}; git push origin --delete ${remoteBranches.map(quote).join(" ")}`;
+}
+
 export function continueBranchPushCommand(branch: string): string {
   return `git push -u origin ${shellQuote(`HEAD:refs/heads/${branch}`)}`;
 }
@@ -107,7 +386,7 @@ export function continueBranchTerminalCommand(input: {
   readonly platform: ExecutionEnvironmentPlatformOs;
 }): string {
   return input.platform === "windows"
-    ? `${input.command}; Write-Output "${input.marker}$LASTEXITCODE"`
+    ? `& { $global:LASTEXITCODE = 0; try { ${input.command}; $t3Status = $LASTEXITCODE } catch { Write-Error $_; $t3Status = 1 }; Write-Output "${input.marker}$t3Status" }`
     : `${input.command}; printf '\\n${input.marker}%s\\n' "$?"`;
 }
 

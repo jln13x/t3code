@@ -2157,7 +2157,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   ? [
                       {
                         id: "continue-branch-on",
-                        label: "Continue branch on…",
+                        label: "Move chat to…",
+                        disabled:
+                          thread.session?.status === "running" &&
+                          thread.session.activeTurnId != null,
                         children: continueBranchTargets.map((target, index) => ({
                           id: `continue-branch-on:${index}`,
                           label: target.label,
