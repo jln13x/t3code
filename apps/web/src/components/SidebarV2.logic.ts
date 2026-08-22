@@ -187,44 +187,23 @@ export function pickWorktreeGroupRepresentative(
   );
 }
 
-/** Card-level status is reserved for states that need attention at the
-    checkout boundary. Working stays on the individual member row so the
-    same activity is not repeated in both levels of the card. */
-export function resolveWorktreeGroupLiveStatus(
-  threads: ReadonlyArray<EnvironmentThreadShell>,
-): { kind: "approval" | "input" | "failed" } | null {
-  let hasApproval = false;
-  let hasInput = false;
-  let hasFailed = false;
-  for (const thread of threads) {
-    const status = resolveSidebarThreadStatus(thread);
-    if (status === "approval") hasApproval = true;
-    else if (status === "input") hasInput = true;
-    else if (status === "failed") hasFailed = true;
-  }
-  if (hasApproval) return { kind: "approval" };
-  if (hasInput) return { kind: "input" };
-  if (hasFailed) return { kind: "failed" };
-  return null;
-}
-
 export type SidebarWorktreeThreadIndicator =
   | "approval"
   | "input"
   | "working"
   | "monitoring"
   | "failed"
-  | "unread"
-  | "woke";
+  | "snoozed"
+  | "unread";
 
 /** Pick the one compact marker rendered at the right edge of a member row. */
 export function resolveWorktreeThreadIndicator(input: {
   status: SidebarThreadStatus;
   isUnread: boolean;
-  isWoke: boolean;
+  isSnoozed: boolean;
 }): SidebarWorktreeThreadIndicator | null {
   if (input.status !== "ready") return input.status;
+  if (input.isSnoozed) return "snoozed";
   if (input.isUnread) return "unread";
-  if (input.isWoke) return "woke";
   return null;
 }

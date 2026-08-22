@@ -69,12 +69,17 @@ This file is both the current inventory and the retirement record used during up
   uses the existing archive confirmation preference; running rows keep their status indicator and
   do not expose the archive action.
   A temporary success toast offers Undo through the existing unarchive path.
-- Running state and activity time appear only on the individual conversation row, not again on the
-  checkout header. Its right-edge blue indicator becomes an orange unread dot when the run
-  completes, and the newly completed conversation keeps its brighter, stronger title until it
-  opens. Ordinary idle siblings recede slightly without adding a row tint.
+- Checkout headers show identity and shared resource icons, not aggregate lifecycle labels such as
+  Done, Woke, Approval, Input, or Failed. The project name recedes behind the branch, and checkout
+  actions appear only while the header itself is hovered or keyboard-focused. Each conversation
+  owns one compact right-edge status slot: working and monitoring use blue activity, approval and
+  input share an amber attention icon, failure uses a red alert, a thread that is still snoozed uses
+  a blue clock, and a newly completed unread conversation uses an orange dot. Read completions and
+  threads returning from snooze have no persistent marker. The newly completed conversation keeps
+  its brighter, stronger title until it opens; ordinary idle siblings recede slightly without
+  adding a row tint.
 - Conversation typography has two states: finished-unread, focused, and multi-selected titles are
-  medium at full foreground; every other title is normal and muted. Working, monitoring, wake,
+  medium at full foreground; every other title is normal and muted. Working, monitoring, snoozed,
   approval, input, and failure keep their status markers without changing title typography or
   dimming the parent checkout.
 - Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is

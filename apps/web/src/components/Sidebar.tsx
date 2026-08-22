@@ -155,7 +155,6 @@ import { openDiscoveredPort } from "./preview/openDiscoveredPort";
 import {
   buildSidebarWorktreeGroups,
   pickWorktreeGroupRepresentative,
-  resolveWorktreeGroupLiveStatus,
   resolveWorktreeThreadIndicator,
   sidebarThreadKey,
   type SidebarThreadClassification,
@@ -735,6 +734,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   sortable?: SortablePinnedRowBag | undefined;
   // Compact wake countdown ("2h") for rows in the snoozed shelf.
   snoozeWakeLabelText: string | null;
+  // Collapsed worktree rows reserve their trailing slot for group actions.
+  // Individual pinned threads can still show the dismissible wake cue.
+  showWokeStatus: boolean;
   // When a snooze ended (timer or early wake); drives the Woke pill until
   // the user visits the thread.
   wokeAt: string | null;
@@ -840,6 +842,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
+    props.showWokeStatus &&
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     !changeRequestAutoSettles(pr, {
@@ -1705,7 +1708,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   thread: SidebarThreadSummary;
   isActive: boolean;
-  isWoke: boolean;
+  isSnoozed: boolean;
   jumpLabel: string | null;
   projectTitle: string | null;
   projectCwd: string | null;
@@ -1741,7 +1744,7 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const threadIndicator = resolveWorktreeThreadIndicator({
     status,
     isUnread,
-    isWoke: props.isWoke,
+    isSnoozed: props.isSnoozed,
   });
   const modelInstanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
   const providerEntry = props.providerEntryByInstanceId.get(modelInstanceId) ?? null;
@@ -1829,17 +1832,11 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   }, [props.onCommitRename, props.renamingTitle, thread.title, threadRef]);
 
   const statusGlyph =
-    threadIndicator === "approval" ? (
-      <span
+    threadIndicator === "approval" || threadIndicator === "input" ? (
+      <CircleAlertIcon
         role="status"
-        aria-label="Pending approval"
-        className="size-1.5 rounded-full bg-amber-500"
-      />
-    ) : threadIndicator === "input" ? (
-      <span
-        role="status"
-        aria-label="Awaiting input"
-        className="size-1.5 rounded-full bg-indigo-500"
+        aria-label={threadIndicator === "approval" ? "Pending approval" : "Awaiting input"}
+        className="size-3 shrink-0 text-amber-600 dark:text-amber-300"
       />
     ) : threadIndicator === "working" || threadIndicator === "monitoring" ? (
       <CircleDashedIcon
@@ -1853,17 +1850,17 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
         aria-label="Failed"
         className="size-3 shrink-0 text-red-600 dark:text-red-400"
       />
+    ) : threadIndicator === "snoozed" ? (
+      <ClockIcon
+        role="status"
+        aria-label="Snoozed"
+        className="size-3 shrink-0 text-blue-600 dark:text-blue-400"
+      />
     ) : threadIndicator === "unread" ? (
       <span
         role="status"
         aria-label="Unread completion"
         className="size-1.5 rounded-full bg-orange-500"
-      />
-    ) : threadIndicator === "woke" ? (
-      <AlarmClockIcon
-        role="status"
-        aria-label="Woke from snooze"
-        className="size-3 shrink-0 text-amber-700 dark:text-amber-300"
       />
     ) : null;
   const title = props.isRenaming ? (
@@ -1969,7 +1966,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   activeThreadKey: string | null;
   settlementSupported: boolean;
   snoozeSupported: boolean;
-  autoSettleOnMerge: boolean;
   snoozeNow: string;
   currentEnvironmentId: string | null;
   environmentLabel: string | null;
@@ -1995,7 +1991,11 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   onSnooze: (preset: SnoozePreset) => void;
 }) {
   const { group } = props;
-  const { memberKeys: allMemberKeys, threads: allThreads } = group;
+  const {
+    memberKeys: allMemberKeys,
+    threads: allThreads,
+    classifications: allClassifications,
+  } = group;
   const visibleMemberIndexes = useMemo(() => visibleWorktreeGroupMemberIndexes(group), [group]);
   const threads = useMemo(
     () => visibleMemberIndexes.map((index) => allThreads[index]!),
@@ -2004,6 +2004,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   const memberKeys = useMemo(
     () => visibleMemberIndexes.map((index) => allMemberKeys[index]!),
     [allMemberKeys, visibleMemberIndexes],
+  );
+  const classifications = useMemo(
+    () => visibleMemberIndexes.map((index) => allClassifications[index]!),
+    [allClassifications, visibleMemberIndexes],
   );
   const newest = threads[threads.length - 1]!;
   const newestRef = useMemo(
@@ -2101,55 +2105,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
 
-  const visitedSignature = useUiStateStore((state) =>
-    memberKeys.map((key) => state.threadLastVisitedAtById[key] ?? "").join("\u0000"),
-  );
-  const { anyUnread, anyWoke, wokeByKey } = useMemo(() => {
-    const visited = visitedSignature.split("\u0000");
-    let anyUnread = false;
-    let anyWoke = false;
-    const wokeByKey = new Map<string, boolean>();
-    threads.forEach((thread, index) => {
-      const lastVisitedAt = visited[index] === "" ? undefined : visited[index];
-      if (hasUnseenCompletion({ ...thread, lastVisitedAt })) anyUnread = true;
-      const wokeAt = threadWokeAt(thread, { now: props.snoozeNow });
-      const lastVisitedDate = lastVisitedAt == null ? null : parseTimestampDate(lastVisitedAt);
-      const wokeDate = wokeAt === null ? null : parseTimestampDate(wokeAt);
-      const woke =
-        wokeDate !== null &&
-        (lastVisitedDate === null || lastVisitedDate < wokeDate) &&
-        !changeRequestAutoSettles(pr, {
-          autoSettleOnMerge: props.autoSettleOnMerge,
-          thread,
-        });
-      wokeByKey.set(memberKeys[index]!, woke);
-      if (woke) anyWoke = true;
-    });
-    return { anyUnread, anyWoke, wokeByKey };
-  }, [memberKeys, pr, props.autoSettleOnMerge, props.snoozeNow, threads, visitedSignature]);
-  const liveStatus = resolveWorktreeGroupLiveStatus(threads);
-  const statusLabel =
-    liveStatus?.kind === "approval"
-      ? "Approval"
-      : liveStatus?.kind === "input"
-        ? "Input"
-        : liveStatus?.kind === "failed"
-          ? "Failed"
-          : anyWoke
-            ? "Woke"
-            : anyUnread
-              ? "Done"
-              : null;
-  const statusClass =
-    liveStatus?.kind === "approval"
-      ? "text-amber-700 dark:text-amber-300"
-      : liveStatus?.kind === "input"
-        ? "text-indigo-600 dark:text-indigo-300"
-        : liveStatus?.kind === "failed"
-          ? "text-red-700 dark:text-red-300"
-          : anyWoke
-            ? "text-amber-700 dark:text-amber-300"
-            : "text-emerald-700 dark:text-emerald-300";
   const canSettleGroup =
     props.settlementSupported &&
     threads.every((thread) => canSettle(thread, { now: props.snoozeNow }));
@@ -2229,7 +2184,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         onKeyDown={handleCardKeyDown}
         onContextMenu={handleCardContextMenu}
       >
-        <div className="flex h-5 min-w-0 items-center gap-1.5">
+        <div className="group/worktree-header flex h-5 min-w-0 items-center gap-1.5">
           <ProjectFavicon
             environmentId={environmentId}
             cwd={props.projectCwd ?? ""}
@@ -2237,7 +2192,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             className="size-4 shrink-0"
           />
           {props.projectTitle ? (
-            <span className="min-w-0 truncate text-xs font-medium text-muted-foreground/85">
+            <span className="min-w-0 truncate text-xs font-medium text-muted-foreground/60">
               {props.projectTitle}
             </span>
           ) : null}
@@ -2275,20 +2230,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             </Tooltip>
           ) : null}
           <span className="relative ml-auto flex h-5 min-w-8 items-center justify-end text-xs">
-            <span
-              className={cn(
-                "tabular-nums text-muted-foreground/65 group-hover/worktree-card:opacity-0",
-                statusClass,
-              )}
-            >
-              {statusLabel ? (
-                <span className="inline-flex items-center gap-1 font-medium">{statusLabel}</span>
-              ) : null}
-            </span>
             {canSettleGroup || canSnoozeGroup ? (
               <span
                 className={cn(
-                  "absolute inset-y-0 right-0 flex items-center opacity-0 focus-within:opacity-100 group-hover/worktree-card:opacity-100",
+                  "absolute inset-y-0 right-0 flex items-center opacity-0 focus-within:opacity-100 group-hover/worktree-header:opacity-100",
                   snoozeOpen && "opacity-100",
                 )}
               >
@@ -2301,25 +2246,31 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                   />
                 ) : null}
                 {canSettleGroup ? (
-                  <button
-                    type="button"
-                    aria-label="Settle worktree"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      props.onSettle();
-                    }}
-                    className="inline-flex h-full cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <CheckIcon className="size-3 shrink-0" />
-                    Settle
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label="Settle worktree"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            props.onSettle();
+                          }}
+                          className="inline-flex h-full cursor-pointer items-center rounded-md bg-transparent px-1.5 text-muted-foreground hover:text-foreground"
+                        />
+                      }
+                    >
+                      <CheckIcon className="size-3.5 shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">Settle worktree</TooltipPopup>
+                  </Tooltip>
                 ) : null}
               </span>
             ) : null}
           </span>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/55">
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/80">
           {checkoutBranch ? (
             <span className="flex min-w-0 flex-1 items-center gap-1">
               <GitBranchIcon aria-hidden className="size-3 shrink-0" />
@@ -2351,7 +2302,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
                 key={memberKey}
                 thread={thread}
                 isActive={props.activeThreadKey === memberKey}
-                isWoke={wokeByKey.get(memberKey) ?? false}
+                isSnoozed={classifications[index] === "snoozed"}
                 jumpLabel={props.jumpLabelByKey?.get(memberKey) ?? null}
                 projectTitle={props.projectTitle}
                 projectCwd={props.projectCwd}
@@ -4605,10 +4556,10 @@ export default function Sidebar() {
                               })
                             : null
                         }
-                        // All sections: a woken thread can classify straight
-                        // into the settled tail (PR merged while snoozed), and
-                        // the wake signal must survive the trip. Still-snoozed
-                        // rows resolve to null on their own.
+                        showWokeStatus={group === undefined}
+                        // Keep the wake timestamp for individual rows. Group
+                        // representatives suppress the marker above so their
+                        // trailing action never competes with lifecycle text.
                         wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                         isActive={routeThreadKey === threadKey}
                         openPullRequestsInRightPanel={routeThreadRef !== null}
@@ -4756,7 +4707,6 @@ export default function Sidebar() {
                           serverConfigs.get(newest.environmentId)?.environment.capabilities
                             .threadSnooze === true
                         }
-                        autoSettleOnMerge={autoSettleOnMerge}
                         snoozeNow={snoozeNow}
                         currentEnvironmentId={primaryEnvironmentId}
                         environmentLabel={environmentLabelById.get(newest.environmentId) ?? null}
