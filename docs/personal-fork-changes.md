@@ -2,7 +2,7 @@
 
 The personal fork intentionally maintains six product differences from `upstream/main`: desktop
 fork identity, completion/attention sounds, native macOS completion notifications,
-worktree-grouped web/desktop threads, cross-environment branch continuation, and Codex skill
+worktree-grouped web/desktop threads, cross-environment chat transfer, and Codex skill
 and active-turn handling. Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
@@ -122,26 +122,46 @@ This file is both the current inventory and the retirement record used during up
   shared by `turn/start` and `turn/steer`; the start-response ID handoff must remain available until
   the queued `turn/started` notification is projected.
 
-### Cross-environment branch continuation
+### Cross-environment chat transfer
 
-- A web/desktop thread can start a new draft for the same logical project on another connected
-  environment while carrying only its Git branch, not its conversation.
-- The web client uses the stock terminal operations to push the local branch explicitly as
-  `origin/<branch>`, regardless of its configured upstream. The short-lived terminal and its history
-  are removed when the push finishes.
-- The client fetches only that exact branch into the destination's `origin/<branch>` tracking ref,
-  then performs a bounded branch lookup and creates or reuses the checkout before opening the
-  draft. Lookup failures surface in the handoff toast instead of entering the retry loop used by
-  persistent branch pickers. No handoff state is stored in composer drafts or sent during turn
-  bootstrap.
+- On web/desktop, **Move chat to…** transfers an idle thread to a connected environment that has the
+  same canonical repository project. It creates an ordinary destination thread with the source
+  title, model (or a destination fallback), runtime/interaction modes, branch, and worktree. The
+  complete source snapshot remains visible ahead of future destination-native turns, including
+  message timestamps, image attachments, plans, activities, and checkpoint metadata.
+- The client captures the source HEAD, index, and non-ignored worktree as separate temporary Git
+  trees. It pushes those trees, the exact local branch as `origin/<branch>`, and checkpoint objects
+  through operation-scoped remote refs. The destination creates or reuses the branch's normal
+  worktree, rejects unrelated existing changes or checkpoint refs, and restores committed, staged,
+  unstaged, and non-ignored untracked state exactly. Source and destination Git state are verified
+  before the source lifecycle changes. Temporary local, tracking, and remote refs are cleaned on
+  success and bounded failure paths.
+- The implementation uses only unmodified upstream server operations. It pages the stock thread
+  snapshot API where supported, downloads every referenced image once, and writes a versioned
+  history capsule through the stock project-file RPC. Capsules live in the destination checkout at
+  `.t3/chat-transfers/<destination-thread-id>/`, are split below the upstream one-megabyte read
+  limit, SHA-256 verified after writing, and excluded through the repository's local Git exclude
+  file. The web client loads and verifies the capsule after reload, then overlays later native
+  destination events by ID.
+- A move never deletes the source. After the capsule, destination thread, and both Git states pass
+  integrity checks, the client archives the source as a recoverable backup. It reads the source
+  again after archiving and compares a content fingerprint that ignores only archive lifecycle
+  timestamps. A detected race restores the source and archives the destination copy.
+- Provider-native sessions are not portable across machines. The first destination-native turn gets
+  a provider-neutral, bounded recent transcript; the complete imported transcript remains stored and
+  visible in the client. The context envelope is retained by the ordinary destination thread for
+  future provider resumes but stripped from the rendered user message. Historical source approvals,
+  plan actions, and checkpoint reverts stay read-only because their database IDs are not present on
+  the destination server; new destination-native history remains fully interactive.
 - Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
   to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
   publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39) and fetch only the
   exact destination branch in [#40](https://github.com/jln13x/t3code/pull/40).
   Destination checkout failures are made bounded and visible in
   [#45](https://github.com/jln13x/t3code/pull/45).
-- Sync boundary: the menu, safety planning, and handoff orchestration stay in the web client.
-  Preserve upstream contracts, server bootstrap, Git manager, and client-runtime VCS action inputs.
+- Sync boundary: keep the action, history capsule, context overlay, integrity checks, and Git
+  transport in `apps/web`. Preserve upstream contracts, `apps/server`, client-runtime command
+  unions, and server databases unchanged.
 
 ## Retired on 2026-08-18
 

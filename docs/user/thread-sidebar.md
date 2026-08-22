@@ -12,15 +12,32 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
-## Continue a branch on another environment
+## Move a chat to another environment
 
-When the same repository project is available on two connected environments, open a thread's
-menu and choose **Continue branch on…**, then choose the destination environment. T3 Code pushes an
-exactly as `origin/<branch>`, fetches that exact branch on the destination, and opens a new thread
-draft in a matching checkout. The source branch's configured upstream is ignored, so a feature
-branch that still tracks its merged base branch cannot be pushed to that base by mistake. The source
-thread and its conversation stay where they are. Only committed Git changes move; uncommitted
-changes remain in the source checkout.
+When the same repository project is available on two connected environments, open a thread's menu,
+choose **Move chat to…**, and select the destination. T3 Code recreates the same branch and standard
+worktree name there, then moves the complete stored conversation: messages, image attachments,
+plans, activity history, and checkpoint history.
+
+Committed, staged, unstaged, and non-ignored untracked Git work is restored exactly on the other
+machine. The branch is always published as `origin/<branch>`; its configured upstream is ignored,
+so a feature branch cannot be pushed to its base branch by mistake. Ignored files stay in the source
+checkout. Local changes and checkpoint objects travel through short-lived refs on the repository's
+`origin`, which T3 Code removes after the move.
+
+The move uses the standard T3 server APIs. The complete conversation is stored as a verified,
+Git-ignored history capsule in the destination checkout and remains available after reconnecting or
+reloading the client. The destination thread stores new turns normally. Historical approvals, plan
+actions, and checkpoint reverts are read-only after the move; the exact current files and checkpoint
+Git objects still move, and new destination turns get normal checkpoints.
+
+The source chat is archived only after the destination history and both Git states have been
+verified. It remains available under Archive as a recovery copy. If the source changes during the
+move or the destination copy fails verification, the source stays active (or is restored) and the
+partial destination thread is archived, so no chat or work is discarded.
+
+Provider-native session IDs cannot move between machines. The first turn on the destination receives
+a bounded recent transcript as context, while the complete history remains visible in the chat.
 
 ## Environment artwork
 

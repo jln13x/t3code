@@ -66,7 +66,8 @@ export function buildThreadActionMenuItems(
             ? [
                 {
                   id: "continue-branch-on" as const,
-                  label: "Continue branch on…",
+                  label: "Move chat to…",
+                  disabled: state.isRunning,
                   children: state.continueBranchTargetLabels.map((label, index) => ({
                     id: `continue-branch-on:${index}` as const,
                     label,

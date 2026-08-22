@@ -197,6 +197,7 @@ import {
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { useTransferredThreadArchive } from "../hooks/useTransferredThreadArchive";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -212,6 +213,11 @@ import {
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
+import {
+  buildTransferredChatProviderInput,
+  mergeTransferredThreadHistory,
+  stripTransferredChatProviderContext,
+} from "../threadTransfer";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -1311,6 +1317,18 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const routeServerThreadShell = useThreadShell(routeKind === "server" ? routeThreadRef : null);
   const serverThread = useThread(routeThreadRef, { waitForShell: draftThread !== null });
+  const serverThreadProject = useProject(
+    serverThread === null
+      ? null
+      : scopeProjectRef(serverThread.environmentId, serverThread.projectId),
+  );
+  const transferredHistory = useTransferredThreadArchive({
+    environmentId: routeThreadRef.environmentId,
+    threadId: routeThreadRef.threadId,
+    cwd: serverThread?.worktreePath ?? serverThreadProject?.workspaceRoot ?? null,
+  });
+  const threadHistoryLoading = threadDetailLoading || transferredHistory.loading;
+  const threadHistoryUnavailable = threadHistoryLoading || transferredHistory.error !== null;
   const loadingServerThread = useMemo(
     () =>
       threadDetailLoading && routeServerThreadShell
@@ -1318,7 +1336,20 @@ function ChatViewContent(props: ChatViewProps) {
         : null,
     [routeServerThreadShell, threadDetailLoading],
   );
-  const activeServerThread = serverThread ?? loadingServerThread;
+  const activeServerThread = useMemo(() => {
+    const live = serverThread ?? loadingServerThread;
+    return live === null ? null : mergeTransferredThreadHistory(live, transferredHistory.archive);
+  }, [loadingServerThread, serverThread, transferredHistory.archive]);
+  useEffect(() => {
+    if (transferredHistory.error === null) return;
+    toastManager.add(
+      stackedThreadToast({
+        type: "error",
+        title: "Transferred history is unreadable",
+        description: transferredHistory.error,
+      }),
+    );
+  }, [transferredHistory.error]);
   // Pagination window state for the routed server thread: drives the
   // "load earlier turns" header when the loaded window has older history.
   const routeThreadState = useEnvironmentThread(
@@ -2309,6 +2340,10 @@ function ChatViewContent(props: ChatViewProps) {
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const interactiveThreadActivities =
+    transferredHistory.archive === null
+      ? threadActivities
+      : (serverThread?.activities ?? EMPTY_ACTIVITIES);
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
@@ -2324,12 +2359,12 @@ function ChatViewContent(props: ChatViewProps) {
     [agentSessionLive, threadActivities],
   );
   const pendingApprovals = useMemo(
-    () => derivePendingApprovals(threadActivities),
-    [threadActivities],
+    () => derivePendingApprovals(interactiveThreadActivities),
+    [interactiveThreadActivities],
   );
   const pendingUserInputs = useMemo(
-    () => derivePendingUserInputs(threadActivities),
-    [threadActivities],
+    () => derivePendingUserInputs(interactiveThreadActivities),
+    [interactiveThreadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
@@ -2368,14 +2403,28 @@ function ChatViewContent(props: ChatViewProps) {
     if (!latestTurnSettled) {
       return null;
     }
-    return findLatestProposedPlan(
+    const proposedPlan = findLatestProposedPlan(
       activeThread?.proposedPlans ?? [],
       activeLatestTurn?.turnId ?? null,
     );
-  }, [activeLatestTurn?.turnId, activeThread?.proposedPlans, latestTurnSettled]);
+    if (
+      proposedPlan !== null &&
+      transferredHistory.archive !== null &&
+      !serverThread?.proposedPlans.some((candidate) => candidate.id === proposedPlan.id)
+    ) {
+      return null;
+    }
+    return proposedPlan;
+  }, [
+    activeLatestTurn?.turnId,
+    activeThread?.proposedPlans,
+    latestTurnSettled,
+    serverThread?.proposedPlans,
+    transferredHistory.archive,
+  ]);
   const activePlan = useMemo(
-    () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
-    [activeLatestTurn?.turnId, threadActivities],
+    () => deriveActivePlanState(interactiveThreadActivities, activeLatestTurn?.turnId ?? undefined),
+    [activeLatestTurn?.turnId, interactiveThreadActivities],
   );
   // Current step for the in-chat working row: only for the running turn's own
   // plan (deriveActivePlanState falls back to older turns' plans, which must
@@ -2486,6 +2535,13 @@ function ChatViewContent(props: ChatViewProps) {
     const attachmentIds = new Set<string>();
     for (const message of serverMessages ?? []) {
       for (const attachment of message.attachments ?? []) {
+        if (
+          "previewUrl" in attachment &&
+          typeof attachment.previewUrl === "string" &&
+          attachment.previewUrl.length > 0
+        ) {
+          continue;
+        }
         attachmentIds.add(attachment.id);
       }
     }
@@ -2513,11 +2569,13 @@ function ChatViewContent(props: ChatViewProps) {
   const displayServerMessages = useMemo<ReadonlyArray<ChatMessage>>(() => {
     if (!serverMessages) return [];
     return serverMessages.map((message) => {
+      const displayText = stripTransferredChatProviderContext(message.text);
       if (!message.attachments || message.attachments.length === 0) {
-        return message;
+        return displayText === message.text ? message : { ...message, text: displayText };
       }
       return {
         ...message,
+        text: displayText,
         attachments: message.attachments.map((attachment) => {
           const previewUrl = serverAttachmentUrlById.get(attachment.id);
           return previewUrl ? { ...attachment, previewUrl } : attachment;
@@ -2698,9 +2756,13 @@ function ChatViewContent(props: ChatViewProps) {
   }, [turnDiffSummaries]);
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<MessageId, number>();
+    const liveMessageIds = new Set(serverThread?.messages.map((message) => message.id) ?? []);
     for (let index = 0; index < timelineEntries.length; index += 1) {
       const entry = timelineEntries[index];
       if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
+        continue;
+      }
+      if (transferredHistory.archive !== null && !liveMessageIds.has(entry.message.id)) {
         continue;
       }
 
@@ -2727,7 +2789,13 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     return byUserMessageId;
-  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+  }, [
+    inferredCheckpointTurnCountByTurnId,
+    serverThread?.messages,
+    timelineEntries,
+    transferredHistory.archive,
+    turnDiffSummaryByAssistantMessageId,
+  ]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -5133,7 +5201,7 @@ function ChatViewContent(props: ChatViewProps) {
       !activeThread ||
       isSendBusy ||
       isConnecting ||
-      threadDetailLoading ||
+      threadHistoryUnavailable ||
       sendInFlightRef.current
     ) {
       notifyDirectAnnotationAttached();
@@ -5317,6 +5385,13 @@ function ChatViewContent(props: ChatViewProps) {
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
     });
+    const providerMessageText =
+      transferredHistory.archive !== null && serverThread?.messages.length === 0
+        ? buildTransferredChatProviderInput({
+            archive: transferredHistory.archive,
+            userInput: outgoingMessageText,
+          })
+        : outgoingMessageText;
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
     }
@@ -5527,7 +5602,7 @@ function ChatViewContent(props: ChatViewProps) {
           message: {
             messageId: messageIdForSend,
             role: "user",
-            text: outgoingMessageText,
+            text: providerMessageText,
             attachments: turnAttachmentsResult.value,
           },
           modelSelection: ctxSelectedModelSelection,
@@ -6625,7 +6700,7 @@ function ChatViewContent(props: ChatViewProps) {
                 liveFollowEnabled={timelineLiveFollowEnabled}
                 onIsAtEndChange={onIsAtEndChange}
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
-                hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                hideEmptyPlaceholder={isDraftHeroState || threadHistoryUnavailable}
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
               />
@@ -6725,7 +6800,13 @@ function ChatViewContent(props: ChatViewProps) {
                             phase={phase}
                             isConnecting={isConnecting}
                             isSendBusy={isSendBusy}
-                            sendDisabledReason={threadDetailLoading ? "Messages loading" : null}
+                            sendDisabledReason={
+                              transferredHistory.error !== null
+                                ? "Transferred history unavailable"
+                                : threadHistoryLoading
+                                  ? "Messages loading"
+                                  : null
+                            }
                             isPreparingWorktree={isPreparingWorktree}
                             externalDrawerAttached={externalComposerDrawerAttached}
                             environmentUnavailable={activeEnvironmentUnavailableState}
