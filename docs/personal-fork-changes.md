@@ -137,7 +137,9 @@ This file is both the current inventory and the retirement record used during up
   worktree, rejects unrelated existing changes or checkpoint refs, and restores committed, staged,
   unstaged, and non-ignored untracked state exactly. Source and destination Git state are verified
   before the source lifecycle changes. Temporary local, tracking, and remote refs are cleaned on
-  success and bounded failure paths.
+  success and bounded failure paths. Hidden terminal Git commands disable Git, Credential Manager,
+  and SSH askpass prompts. A destination without usable credentials fails with its terminal error
+  instead of waiting on an invisible prompt.
 - The implementation uses only unmodified upstream server operations. It pages the stock thread
   snapshot API where supported, downloads every referenced image once, and writes a versioned
   history capsule through the stock project-file RPC. Capsules live in the destination checkout at

@@ -7,12 +7,14 @@ import { EnvironmentId, ProjectId, type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CONTINUE_BRANCH_GIT_ENV,
   continueBranchFetchCommand,
   continueBranchApplySnapshotCommand,
   continueBranchCleanupCommand,
   continueBranchPrepareHistoryStorageCommand,
   continueBranchSnapshotPushCommand,
   continueBranchPushCommand,
+  continueBranchTerminalFailureMessage,
   continueBranchTerminalCommand,
   continueBranchTargetIndex,
   continueBranchTransferFetchCommand,
@@ -183,6 +185,39 @@ describe("resolveContinueBranchPushPlan", () => {
     ).toBe(
       `& { $global:LASTEXITCODE = 0; try { git fetch origin branch; $t3Status = $LASTEXITCODE } catch { Write-Error $_; $t3Status = 1 }; Write-Output "__DONE__:$t3Status" }`,
     );
+  });
+
+  it("disables every prompt used by stock-server background Git commands", () => {
+    expect(CONTINUE_BRANCH_GIT_ENV).toEqual({
+      GCM_INTERACTIVE: "never",
+      GIT_ASKPASS: "",
+      GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=1",
+      GIT_TERMINAL_PROMPT: "0",
+      SSH_ASKPASS: "",
+      SSH_ASKPASS_REQUIRE: "never",
+    });
+  });
+
+  it("surfaces the useful terminal failure instead of the hidden command or exit code", () => {
+    const escape = String.fromCharCode(27);
+    expect(
+      continueBranchTerminalFailureMessage({
+        buffer: [
+          `git fetch origin branch; printf '__DONE__:%s' "$?"`,
+          `${escape}[31mfatal: Authentication failed for remote${escape}[0m`,
+          "__DONE__:128",
+        ].join("\r\n"),
+        marker: "__DONE__:",
+        fallback: "Git command exited with status 128.",
+      }),
+    ).toBe("fatal: Authentication failed for remote");
+    expect(
+      continueBranchTerminalFailureMessage({
+        buffer: "shell prompt without a Git error",
+        marker: "__DONE__:",
+        fallback: "The Git command timed out.",
+      }),
+    ).toBe("The Git command timed out.");
   });
 });
 

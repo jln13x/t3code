@@ -25,6 +25,9 @@ so a feature branch cannot be pushed to its base branch by mistake. Ignored file
 checkout. Local changes and checkpoint objects travel through short-lived refs on the repository's
 `origin`, which T3 Code removes after the move.
 
+Both machines need non-interactive access to that `origin`. If the destination cannot authenticate,
+the move stops with the Git error and leaves the source chat active.
+
 The move uses the standard T3 server APIs. The complete conversation is stored as a verified,
 Git-ignored history capsule in the destination checkout and remains available after reconnecting or
 reloading the client. The destination thread stores new turns normally. Historical approvals, plan
