@@ -84,9 +84,10 @@ This file is both the current inventory and the retirement record used during up
   medium at full foreground; every other title is normal and muted. Working, monitoring, snoozed,
   approval, input, and failure keep their status markers without changing title typography or
   dimming the parent checkout.
-- Pinned threads intentionally retain upstream's dedicated pinned block and drag ordering. This is
-  the compatibility boundary that keeps upstream pinning behavior intact instead of replacing it
-  with a fork-specific group-order model.
+- Active pinned threads retain upstream's dedicated pinned block and drag ordering. Settled and
+  snoozed pinned threads follow upstream into their lifecycle sections, keep a visible pin marker,
+  and participate in the fork's checkout grouping there. This compatibility boundary keeps
+  upstream pinning behavior intact instead of replacing it with a fork-specific group-order model.
 - Each conversation keeps independent messages and agent state, while terminal sessions, terminal
   layout, preview tabs, open-file state, and Git diff state use a canonical checkout identity.
 - Checkout-level terminal and dev-server indicators appear on the grouped card. Removing one thread
