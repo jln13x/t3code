@@ -260,21 +260,25 @@ export function buildThreadListV2ListItems(input: {
   readonly settledShelfHeaderIndex?: number | null;
   readonly snoozeLabelNow?: string;
 }): ThreadListV2ListItem[] {
-  const threadItems = input.items.map((item): ThreadListV2ListItem => ({
-    type: "v2-thread",
-    key: `v2-thread:${item.thread.environmentId}:${item.thread.id}`,
-    item,
-    snoozeWakeLabelText:
-      item.snoozed && item.thread.snoozedUntil != null && input.snoozeLabelNow !== undefined
-        ? snoozeWakeLabel(item.thread.snoozedUntil, { now: input.snoozeLabelNow })
-        : undefined,
-  }));
-  const pendingItems = input.pendingTasks.map((pendingTask, index): ThreadListV2ListItem => ({
-    type: "v2-pending",
-    key: `v2-pending:${pendingTask.message.messageId}`,
-    pendingTask,
-    showPendingDivider: index === 0,
-  }));
+  const threadItems = input.items.map(
+    (item): ThreadListV2ListItem => ({
+      type: "v2-thread",
+      key: `v2-thread:${item.thread.environmentId}:${item.thread.id}`,
+      item,
+      snoozeWakeLabelText:
+        item.snoozed && item.thread.snoozedUntil != null && input.snoozeLabelNow !== undefined
+          ? snoozeWakeLabel(item.thread.snoozedUntil, { now: input.snoozeLabelNow })
+          : undefined,
+    }),
+  );
+  const pendingItems = input.pendingTasks.map(
+    (pendingTask, index): ThreadListV2ListItem => ({
+      type: "v2-pending",
+      key: `v2-pending:${pendingTask.message.messageId}`,
+      pendingTask,
+      showPendingDivider: index === 0,
+    }),
+  );
   const snoozedCount = input.snoozedCount ?? 0;
   const snoozedShelfHeaderIndex = input.snoozedShelfHeaderIndex ?? null;
   const settledCount = input.settledCount ?? 0;
@@ -382,10 +386,7 @@ export function buildThreadListV2Items(input: {
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
     const changeRequest =
       input.changeRequestByKey?.get(`${thread.environmentId}:${thread.id}`) ?? null;
-    // Visibility parity with web: snooze outranks everything, including a
-    // pin — a snoozed thread leaves the list until it wakes (or raises its
-    // hand). The pin (and its pinOrderKey) survives underneath, so a woken
-    // thread reappears at its exact spot in the pinned block.
+    // Snooze outranks settlement and pinning until the thread wakes.
     if (supportsSnooze && effectiveSnoozed(thread, { now: snoozeNow })) {
       snoozed.push(thread);
       if (
@@ -395,12 +396,6 @@ export function buildThreadListV2Items(input: {
       ) {
         nextSnoozeWakeAt = thread.snoozedUntil;
       }
-      continue;
-    }
-    // A pin otherwise overrides the lifecycle: pinned threads render above
-    // the inbox and never auto-settle out of sight.
-    if (thread.pinnedAt != null) {
-      pinned.push(thread);
       continue;
     }
     if (
@@ -413,6 +408,8 @@ export function buildThreadListV2Items(input: {
       })
     ) {
       settled.push(thread);
+    } else if (thread.pinnedAt != null) {
+      pinned.push(thread);
     } else {
       active.push(thread);
     }
