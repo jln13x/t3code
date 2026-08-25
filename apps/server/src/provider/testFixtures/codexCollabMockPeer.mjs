@@ -26,6 +26,7 @@ let turnStartCount = 0;
  * precondition state: `turn/steer` is only accepted against this id. */
 let activeTurnId;
 let steerCount = 0;
+let activeTurn;
 
 const rl = NodeReadline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
@@ -36,6 +37,23 @@ rl.on("line", (line) => {
     return;
   }
   const { id, method } = message;
+  if (method === undefined && script.serverRequests?.some((request) => request.id === id)) {
+    NodeFS.appendFileSync(
+      `${process.env.T3_CODEX_COLLAB_SCRIPT}.responses`,
+      `${JSON.stringify({ id, result: message.result, error: message.error })}\n`,
+    );
+    if (script.completeTurnOnServerResponse && activeTurn) {
+      write({
+        jsonrpc: "2.0",
+        method: "turn/completed",
+        params: {
+          threadId: script.rootThreadId,
+          turn: { ...activeTurn, status: "completed" },
+        },
+      });
+    }
+    return;
+  }
   if (method === "initialize") {
     write({
       id,
@@ -57,6 +75,7 @@ rl.on("line", (line) => {
     const turn = turnId
       ? { ...fixture.responses.turnStart.turn, id: turnId }
       : fixture.responses.turnStart.turn;
+    activeTurn = turn;
     turnStartCount += 1;
     appendSidecar("starts", { turnId: turn.id, input: message.params?.input });
     const rootThreadId = script.rootThreadId;
@@ -107,6 +126,9 @@ rl.on("line", (line) => {
     }
     for (const notification of script.notifications) {
       write({ jsonrpc: "2.0", method: notification.method, params: notification.params });
+    }
+    for (const request of script.serverRequests ?? []) {
+      write({ jsonrpc: "2.0", id: request.id, method: request.method, params: request.params });
     }
     if (script.holdTurnOpen !== true) {
       activeTurnId = undefined;
