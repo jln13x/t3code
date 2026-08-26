@@ -230,6 +230,10 @@
     "./worktreeResource": {
       "types": "./src/worktreeResource.ts",
       "import": "./src/worktreeResource.ts"
+    },
+    "./claudeCompaction": {
+      "types": "./src/claudeCompaction.ts",
+      "import": "./src/claudeCompaction.ts"
     }
   },
   "scripts": {
