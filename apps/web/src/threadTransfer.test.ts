@@ -181,9 +181,50 @@ describe("thread transfer preparation", () => {
       name: "image.png",
       previewUrl: "data:image/png;base64,AQID",
     });
-    expect(prepared.thread.messages[1]?.attachments?.[0]?.previewUrl).toBe(
-      "data:image/png;base64,AQID",
-    );
+    expect(prepared.thread.messages[1]?.attachments?.[0]).toMatchObject({
+      previewUrl: "data:image/png;base64,AQID",
+    });
+  });
+
+  it("keeps generic file metadata visible without treating source assets as downloadable", async () => {
+    const source = thread();
+    const withFile = {
+      ...source,
+      messages: source.messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              attachments: [
+                ...(message.attachments ?? []),
+                {
+                  type: "file" as const,
+                  id: "thread-file-00000000-0000-4000-8000-000000000000",
+                  name: "report.pdf",
+                  mimeType: "application/pdf",
+                  sizeBytes: 42,
+                },
+              ],
+            }
+          : message,
+      ),
+    };
+    const loadAttachment = vi.fn(async () => "data:image/png;base64,AQID");
+
+    const prepared = await prepareTransferredThreadArchive({
+      sourceEnvironmentId,
+      thread: withFile,
+      modelSelection: sourceModel,
+      loadAttachment,
+    });
+
+    expect(loadAttachment).toHaveBeenCalledTimes(1);
+    expect(prepared.thread.messages[0]?.attachments).toHaveLength(2);
+    expect(prepared.thread.messages[0]?.attachments?.[0]?.type).toBe("image");
+    expect(prepared.thread.messages[0]?.attachments?.[1]).toMatchObject({
+      type: "file",
+      name: "report.pdf",
+      downloadable: false,
+    });
   });
 });
 
@@ -241,9 +282,9 @@ describe("destination history capsule", () => {
       },
     });
     expect(restored.thread.messages[0]?.text).toHaveLength(800_000);
-    expect(restored.thread.messages[1]?.attachments?.[0]?.previewUrl).toBe(
-      "data:image/png;base64,AQID",
-    );
+    expect(restored.thread.messages[1]?.attachments?.[0]).toMatchObject({
+      previewUrl: "data:image/png;base64,AQID",
+    });
   });
 
   it("rejects a corrupted destination chunk", async () => {

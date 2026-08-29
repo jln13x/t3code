@@ -1,5 +1,6 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { activeThreadAnchorTimestampMs } from "@t3tools/client-runtime/state/thread-sort";
 
 import { threadWorktreeScopeKey } from "../worktreeScope";
 import {
@@ -59,10 +60,10 @@ function groupSoonestWakeMs(group: SidebarWorktreeGroup): number {
   return soonest;
 }
 
-function groupNewestCreatedAtMs(group: SidebarWorktreeGroup): number {
+function groupNewestActiveAnchorTimestampMs(group: SidebarWorktreeGroup): number {
   let newest = 0;
   for (const thread of group.threads) {
-    newest = Math.max(newest, parseTimestampMs(thread.createdAt));
+    newest = Math.max(newest, activeThreadAnchorTimestampMs(thread));
   }
   return newest;
 }
@@ -72,9 +73,9 @@ function groupNewestCreatedAtMs(group: SidebarWorktreeGroup): number {
  * active member is a full card (settled/snoozed members ride along inside
  * it); with none active it collapses to the snoozed shelf when any member
  * is snoozed, else to the settled tail. Sorting mirrors the per-thread
- * rules: cards hold static creation order (newest worktree on top),
- * snoozed groups order by soonest wake, settled groups by most recent
- * wrap-up.
+ * rules: cards hold static anchor order (newest worktree on top, with an
+ * un-settled thread re-anchoring its card), snoozed groups order by soonest
+ * wake, settled groups by most recent wrap-up.
  */
 export function buildSidebarWorktreeGroups(
   classified: ReadonlyArray<{
@@ -126,7 +127,7 @@ export function buildSidebarWorktreeGroups(
 
   activeGroups.sort(
     (left, right) =>
-      groupNewestCreatedAtMs(right) - groupNewestCreatedAtMs(left) ||
+      groupNewestActiveAnchorTimestampMs(right) - groupNewestActiveAnchorTimestampMs(left) ||
       left.key.localeCompare(right.key),
   );
   snoozedGroups.sort(

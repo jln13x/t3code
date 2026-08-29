@@ -1,5 +1,7 @@
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
+  ChatUnknownAttachment,
   EnvironmentId,
   OrchestrationMessage,
   OrchestrationThread,
@@ -24,9 +26,23 @@ const ArchivedChatImageAttachment = Schema.Struct({
   ...ChatImageAttachment.fields,
   previewUrl: Schema.String,
 });
+const ArchivedChatFileAttachment = Schema.Struct({
+  ...ChatFileAttachment.fields,
+  downloadable: Schema.Literal(false),
+});
+const isChatImageAttachment = Schema.is(ChatImageAttachment);
+const isChatFileAttachment = Schema.is(ChatFileAttachment);
 const ArchivedOrchestrationMessage = Schema.Struct({
   ...OrchestrationMessage.fields,
-  attachments: Schema.optional(Schema.Array(ArchivedChatImageAttachment)),
+  attachments: Schema.optional(
+    Schema.Array(
+      Schema.Union([
+        ArchivedChatImageAttachment,
+        ArchivedChatFileAttachment,
+        ChatUnknownAttachment,
+      ]),
+    ),
+  ),
 });
 const ArchivedOrchestrationThread = Schema.Struct({
   ...OrchestrationThread.fields,
@@ -169,6 +185,7 @@ export async function prepareTransferredThreadArchive(input: {
   const previewUrlByAttachmentId = new Map<string, string>();
   for (const message of input.thread.messages) {
     for (const attachment of message.attachments ?? []) {
+      if (!isChatImageAttachment(attachment)) continue;
       if (!previewUrlByAttachmentId.has(attachment.id)) {
         previewUrlByAttachmentId.set(attachment.id, await input.loadAttachment(attachment));
       }
@@ -190,10 +207,16 @@ export async function prepareTransferredThreadArchive(input: {
           ? messageWithoutAttachments
           : {
               ...messageWithoutAttachments,
-              attachments: attachments.map((attachment) => ({
-                ...attachment,
-                previewUrl: previewUrlByAttachmentId.get(attachment.id)!,
-              })),
+              attachments: attachments.map((attachment) =>
+                isChatImageAttachment(attachment)
+                  ? {
+                      ...attachment,
+                      previewUrl: previewUrlByAttachmentId.get(attachment.id)!,
+                    }
+                  : isChatFileAttachment(attachment)
+                    ? { ...attachment, downloadable: false as const }
+                    : attachment,
+              ),
             };
       }),
     },

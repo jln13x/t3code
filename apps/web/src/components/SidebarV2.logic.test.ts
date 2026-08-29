@@ -160,6 +160,27 @@ describe("buildSidebarWorktreeGroups", () => {
       "/wt/old",
     ]);
   });
+
+  it("surfaces the checkout card for an un-settled thread via its re-entry stamp", () => {
+    const oldUnsettled = makeShell({
+      id: ThreadId.make("thread-old-unsettled"),
+      worktreePath: "/wt/old",
+      createdAt: "2026-03-09T08:00:00.000Z",
+      unsettledAt: "2026-03-09T13:00:00.000Z",
+    });
+    const newer = makeShell({
+      id: ThreadId.make("thread-newer"),
+      worktreePath: "/wt/newer",
+      createdAt: "2026-03-09T12:00:00.000Z",
+    });
+
+    const { activeGroups } = buildSidebarWorktreeGroups(classifyAll([oldUnsettled, newer]));
+
+    expect(activeGroups.map((group) => group.threads[0]!.worktreePath)).toEqual([
+      "/wt/old",
+      "/wt/newer",
+    ]);
+  });
 });
 
 describe("pickWorktreeGroupRepresentative", () => {

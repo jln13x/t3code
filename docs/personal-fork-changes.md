@@ -131,7 +131,9 @@ This file is both the current inventory and the retirement record used during up
   same canonical repository project. It creates an ordinary destination thread with the source
   title, model (or a destination fallback), runtime/interaction modes, branch, and worktree. The
   complete source snapshot remains visible ahead of future destination-native turns, including
-  message timestamps, image attachments, plans, activities, and checkpoint metadata.
+  message timestamps, image attachments, generic file-attachment metadata, plans, activities, and
+  checkpoint metadata. Imported generic files remain visible but non-downloadable because their
+  source-environment asset bytes are not part of the documented portable capsule; image bytes are.
 - The client captures the source HEAD, index, and non-ignored worktree as separate temporary Git
   trees. It pushes those trees, the exact local branch as `origin/<branch>`, and checkpoint objects
   through operation-scoped remote refs. The destination creates or reuses the branch's normal
