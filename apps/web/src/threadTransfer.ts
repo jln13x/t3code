@@ -1,5 +1,7 @@
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
+  ChatUnknownAttachment,
   EnvironmentId,
   OrchestrationMessage,
   OrchestrationThread,
@@ -24,10 +26,23 @@ const ArchivedChatImageAttachment = Schema.Struct({
   ...ChatImageAttachment.fields,
   previewUrl: Schema.String,
 });
+const ArchivedChatFileAttachment = Schema.Struct({
+  ...ChatFileAttachment.fields,
+  downloadable: Schema.Literal(false),
+});
 const isChatImageAttachment = Schema.is(ChatImageAttachment);
+const isChatFileAttachment = Schema.is(ChatFileAttachment);
 const ArchivedOrchestrationMessage = Schema.Struct({
   ...OrchestrationMessage.fields,
-  attachments: Schema.optional(Schema.Array(ArchivedChatImageAttachment)),
+  attachments: Schema.optional(
+    Schema.Array(
+      Schema.Union([
+        ArchivedChatImageAttachment,
+        ArchivedChatFileAttachment,
+        ChatUnknownAttachment,
+      ]),
+    ),
+  ),
 });
 const ArchivedOrchestrationThread = Schema.Struct({
   ...OrchestrationThread.fields,
@@ -188,15 +203,20 @@ export async function prepareTransferredThreadArchive(input: {
       modelSelection: input.modelSelection,
       messages: input.thread.messages.map((message) => {
         const { attachments, ...messageWithoutAttachments } = message;
-        const imageAttachments = attachments?.filter(isChatImageAttachment);
-        return imageAttachments === undefined || imageAttachments.length === 0
+        return attachments === undefined
           ? messageWithoutAttachments
           : {
               ...messageWithoutAttachments,
-              attachments: imageAttachments.map((attachment) => ({
-                ...attachment,
-                previewUrl: previewUrlByAttachmentId.get(attachment.id)!,
-              })),
+              attachments: attachments.map((attachment) =>
+                isChatImageAttachment(attachment)
+                  ? {
+                      ...attachment,
+                      previewUrl: previewUrlByAttachmentId.get(attachment.id)!,
+                    }
+                  : isChatFileAttachment(attachment)
+                    ? { ...attachment, downloadable: false as const }
+                    : attachment,
+              ),
             };
       }),
     },

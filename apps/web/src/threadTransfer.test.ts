@@ -181,12 +181,12 @@ describe("thread transfer preparation", () => {
       name: "image.png",
       previewUrl: "data:image/png;base64,AQID",
     });
-    expect(prepared.thread.messages[1]?.attachments?.[0]?.previewUrl).toBe(
-      "data:image/png;base64,AQID",
-    );
+    expect(prepared.thread.messages[1]?.attachments?.[0]).toMatchObject({
+      previewUrl: "data:image/png;base64,AQID",
+    });
   });
 
-  it("keeps generic files out of the portable image archive", async () => {
+  it("keeps generic file metadata visible without treating source assets as downloadable", async () => {
     const source = thread();
     const withFile = {
       ...source,
@@ -218,8 +218,13 @@ describe("thread transfer preparation", () => {
     });
 
     expect(loadAttachment).toHaveBeenCalledTimes(1);
-    expect(prepared.thread.messages[0]?.attachments).toHaveLength(1);
+    expect(prepared.thread.messages[0]?.attachments).toHaveLength(2);
     expect(prepared.thread.messages[0]?.attachments?.[0]?.type).toBe("image");
+    expect(prepared.thread.messages[0]?.attachments?.[1]).toMatchObject({
+      type: "file",
+      name: "report.pdf",
+      downloadable: false,
+    });
   });
 });
 
@@ -277,9 +282,9 @@ describe("destination history capsule", () => {
       },
     });
     expect(restored.thread.messages[0]?.text).toHaveLength(800_000);
-    expect(restored.thread.messages[1]?.attachments?.[0]?.previewUrl).toBe(
-      "data:image/png;base64,AQID",
-    );
+    expect(restored.thread.messages[1]?.attachments?.[0]).toMatchObject({
+      previewUrl: "data:image/png;base64,AQID",
+    });
   });
 
   it("rejects a corrupted destination chunk", async () => {
