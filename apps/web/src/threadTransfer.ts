@@ -24,6 +24,7 @@ const ArchivedChatImageAttachment = Schema.Struct({
   ...ChatImageAttachment.fields,
   previewUrl: Schema.String,
 });
+const isChatImageAttachment = Schema.is(ChatImageAttachment);
 const ArchivedOrchestrationMessage = Schema.Struct({
   ...OrchestrationMessage.fields,
   attachments: Schema.optional(Schema.Array(ArchivedChatImageAttachment)),
@@ -169,6 +170,7 @@ export async function prepareTransferredThreadArchive(input: {
   const previewUrlByAttachmentId = new Map<string, string>();
   for (const message of input.thread.messages) {
     for (const attachment of message.attachments ?? []) {
+      if (!isChatImageAttachment(attachment)) continue;
       if (!previewUrlByAttachmentId.has(attachment.id)) {
         previewUrlByAttachmentId.set(attachment.id, await input.loadAttachment(attachment));
       }
@@ -186,11 +188,12 @@ export async function prepareTransferredThreadArchive(input: {
       modelSelection: input.modelSelection,
       messages: input.thread.messages.map((message) => {
         const { attachments, ...messageWithoutAttachments } = message;
-        return attachments === undefined
+        const imageAttachments = attachments?.filter(isChatImageAttachment);
+        return imageAttachments === undefined || imageAttachments.length === 0
           ? messageWithoutAttachments
           : {
               ...messageWithoutAttachments,
-              attachments: attachments.map((attachment) => ({
+              attachments: imageAttachments.map((attachment) => ({
                 ...attachment,
                 previewUrl: previewUrlByAttachmentId.get(attachment.id)!,
               })),

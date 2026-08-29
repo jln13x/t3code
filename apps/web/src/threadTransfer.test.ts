@@ -185,6 +185,42 @@ describe("thread transfer preparation", () => {
       "data:image/png;base64,AQID",
     );
   });
+
+  it("keeps generic files out of the portable image archive", async () => {
+    const source = thread();
+    const withFile = {
+      ...source,
+      messages: source.messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              attachments: [
+                ...(message.attachments ?? []),
+                {
+                  type: "file" as const,
+                  id: "thread-file-00000000-0000-4000-8000-000000000000",
+                  name: "report.pdf",
+                  mimeType: "application/pdf",
+                  sizeBytes: 42,
+                },
+              ],
+            }
+          : message,
+      ),
+    };
+    const loadAttachment = vi.fn(async () => "data:image/png;base64,AQID");
+
+    const prepared = await prepareTransferredThreadArchive({
+      sourceEnvironmentId,
+      thread: withFile,
+      modelSelection: sourceModel,
+      loadAttachment,
+    });
+
+    expect(loadAttachment).toHaveBeenCalledTimes(1);
+    expect(prepared.thread.messages[0]?.attachments).toHaveLength(1);
+    expect(prepared.thread.messages[0]?.attachments?.[0]?.type).toBe("image");
+  });
 });
 
 describe("destination history capsule", () => {
