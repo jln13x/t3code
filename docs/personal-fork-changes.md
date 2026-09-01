@@ -198,6 +198,9 @@ tests were removed with them.
 
 ## Earlier retirements
 
+- Fork-specific draft retry ID reminting: retired after upstream added bootstrap-deletion-scoped
+  thread ID rotation that preserves the draft while avoiding unnecessary rotation for unrelated
+  failures.
 - Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
   working-tree-first diff selection and active-worktree scoping.
 - Periodic client-side branch-ref revalidation: retired after upstream added generation-aware

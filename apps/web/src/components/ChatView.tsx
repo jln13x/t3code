@@ -53,7 +53,6 @@ import {
   createModelSelection,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
-import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
 import {
@@ -108,7 +107,11 @@ import {
   isLatestTurnSettled,
 } from "../session-logic";
 import { type LegendListRef } from "@legendapp/list/react";
-import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timelineScrollAnchoring";
+import {
+  CHAT_TIMELINE_ANCHOR_OFFSET,
+  getAnchoredTurnMetrics,
+  type TimelineScrollMode,
+} from "./chat/timelineScrollAnchoring";
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
@@ -2532,21 +2535,6 @@ function ChatViewContent(props: ChatViewProps) {
     () => deriveActivePlanState(interactiveThreadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, interactiveThreadActivities],
   );
-  // Current step for the in-chat working row: only for the running turn's own
-  // plan (deriveActivePlanState falls back to older turns' plans, which must
-  // not label fresh work). Falls back to the first pending step so an
-  // all-pending freshly written plan labels the row, matching the composer and
-  // the server's planProgress.
-  const workingStepLabel = useMemo(() => {
-    if (!activePlan || activePlan.turnId !== (activeLatestTurn?.turnId ?? null)) {
-      return null;
-    }
-    return (
-      activePlan.steps.find((step) => step.status === "inProgress")?.step ??
-      activePlan.steps.find((step) => step.status === "pending")?.step ??
-      null
-    );
-  }, [activeLatestTurn?.turnId, activePlan]);
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -4265,7 +4253,7 @@ function ChatViewContent(props: ChatViewProps) {
         state,
         anchorIndex,
         composerOverlayHeight,
-        anchorOffset: CHAT_LIST_ANCHOR_OFFSET,
+        anchorOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
       });
     },
     [composerOverlayHeight],
@@ -4293,7 +4281,7 @@ function ChatViewContent(props: ChatViewProps) {
       const realContentBottom = lastRowTop + Math.max(1, lastRowHeight);
       const visibleScrollLength = Math.max(
         0,
-        (state.scrollLength ?? 0) - composerOverlayHeight - CHAT_LIST_ANCHOR_OFFSET,
+        (state.scrollLength ?? 0) - composerOverlayHeight - CHAT_TIMELINE_ANCHOR_OFFSET,
       );
       return realContentBottom > visibleScrollLength;
     },
@@ -4481,7 +4469,7 @@ function ChatViewContent(props: ChatViewProps) {
             index: anchorIndex,
             animated: true,
             viewPosition: 0,
-            viewOffset: CHAT_LIST_ANCHOR_OFFSET,
+            viewOffset: CHAT_TIMELINE_ANCHOR_OFFSET,
           })
           .then(() => {
             if (positionedTimelineAnchorRef.current !== messageId) {
@@ -6276,7 +6264,6 @@ function ChatViewContent(props: ChatViewProps) {
       failure = turnAttachmentsResult;
     }
 
-    let turnStartAttempted = false;
     let turnStartSucceeded = false;
     if (failure === null && turnAttachmentsResult._tag === "Success") {
       const bootstrap =
@@ -6309,8 +6296,6 @@ function ChatViewContent(props: ChatViewProps) {
                 : {}),
             }
           : undefined;
-      beginLocalDispatch({ preparingWorktree: false });
-      turnStartAttempted = true;
       const backgroundThreadRef =
         resolvedSubmissionIntent === "background"
           ? scopeThreadRef(activeThread.environmentId, threadIdForSend)
@@ -6436,15 +6421,7 @@ function ChatViewContent(props: ChatViewProps) {
           detectTrigger: true,
         });
       }
-      const interrupted = isAtomCommandInterrupted(failure);
-      if (!interrupted) {
-        // A failed bootstrap deletes its visible thread, but event-sourced ids remain consumed.
-        // Keep the stable draft identity and give its next attempt a fresh server thread id.
-        if (turnStartAttempted && isLocalDraftThread && draftId) {
-          useComposerDraftStore
-            .getState()
-            .remintDraftThreadForRetry(draftId, threadIdForSend, newThreadId());
-        }
+      if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
         if (isLocalDraftThread && draftId && wasBootstrapThreadDeleted(error)) {
           const failedDraftSession = getDraftSession(draftId);
@@ -7398,7 +7375,7 @@ function ChatViewContent(props: ChatViewProps) {
                 onOpenAgents={addAgentsSurface}
                 key={activeThread.id}
                 isWorking={isWorking}
-                workingStepLabel={workingStepLabel}
+                isPreparingWorktree={isPreparingWorktree}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}

@@ -149,7 +149,10 @@ import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
-import { searchSlashCommandItems } from "./composerSlashCommandSearch";
+import {
+  searchSlashCommandItems,
+  slashCommandItemsForPromptPosition,
+} from "./composerSlashCommandSearch";
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
@@ -536,9 +539,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
         />
-      ) : null}
-      {props.isPreparingWorktree ? (
-        <span className="text-secondary-label text-xs">Preparing worktree...</span>
       ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
@@ -1391,11 +1391,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           skill.description ??
           (skill.scope ? `${skill.scope} skill` : ""),
       }));
-      const slashCommandItems = [
-        ...builtInSlashCommandItems,
-        ...providerSlashCommandItems,
-        ...skillItems,
-      ];
+      const slashCommandItems = slashCommandItemsForPromptPosition(
+        [...builtInSlashCommandItems, ...providerSlashCommandItems, ...skillItems],
+        composerTrigger.rangeStart === 0,
+      );
       return searchSlashCommandItems(slashCommandItems, query);
     }
     if (composerTrigger.kind === "skill") {
@@ -3469,14 +3468,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           />
           {!activityStackItem && (props.threadSyncPhase || inlineTasksBadge) ? (
             <ComposerBanner.Attachment>
-              <ComposerBanner.Root
-                width={
-                  props.threadSyncPhase && !showComposerTopDrawer && !isComposerCollapsedMobile
-                    ? "content"
-                    : "fill"
-                }
-                data-chat-composer-activity-strip="true"
-              >
+              <ComposerBanner.Root data-chat-composer-activity-strip="true">
                 {props.threadSyncPhase ? (
                   <ComposerActivityRow phase={props.threadSyncPhase} />
                 ) : (
