@@ -7,7 +7,6 @@ import {
   firstValidTimestampMs,
   parseTimestampMs,
   resolveSettledTimestamp,
-  resolveSidebarThreadStatus,
   type SidebarThreadStatus,
 } from "./Sidebar.logic";
 
