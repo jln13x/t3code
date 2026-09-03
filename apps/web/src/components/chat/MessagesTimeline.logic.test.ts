@@ -99,13 +99,16 @@ describe("work entry labels", () => {
     );
   });
 
-  it("does not describe a finished call as still running while the turn continues", () => {
+  it("keeps the latest live activity in the present tense after the call completes", () => {
     const browserEntry = {
       ...entry,
       toolTitle: "T3-code.preview_click",
       toolLifecycleStatus: "completed" as const,
     };
     expect(liveWorkEntryLabel(browserEntry, undefined, true)).toBe(
+      "Clicking in the preview browser",
+    );
+    expect(liveWorkEntryLabel(browserEntry, undefined, false)).toBe(
       "Clicked in the preview browser",
     );
   });
@@ -134,48 +137,53 @@ describe("work entry labels", () => {
   });
 
   it.each([
-    ["inProgress", "Running vp"],
-    ["completed", "Ran vp"],
-    ["failed", "Failed vp"],
-    ["declined", "Declined vp"],
-    ["stopped", "Stopped vp"],
+    ["inProgress", "Running vp", "Running vp"],
+    ["completed", "Running vp", "Ran vp"],
+    ["failed", "Failed vp", "Failed vp"],
+    ["declined", "Declined vp", "Declined vp"],
+    ["stopped", "Stopped vp", "Stopped vp"],
   ] as const)(
-    "uses the command's %s outcome even while the turn continues",
-    (toolLifecycleStatus, label) => {
+    "uses present tense for a live %s command and the outcome once it is no longer live",
+    (toolLifecycleStatus, liveLabel, settledLabel) => {
       const commandEntry = {
         ...entry,
         command: "/bin/bash -lc 'vp test run'",
         toolLifecycleStatus,
       };
-      expect(liveWorkEntryLabel(commandEntry, undefined, true)).toBe(label);
-      expect(liveWorkEntryLabel(commandEntry, undefined, false)).toBe(label);
+      expect(liveWorkEntryLabel(commandEntry, undefined, true)).toBe(liveLabel);
+      expect(liveWorkEntryLabel(commandEntry, undefined, false)).toBe(settledLabel);
     },
   );
 
-  it("gives a completed browser group its own count and summary icon category", () => {
-    const rows = deriveMessagesTimelineRows({
-      timelineEntries: [
-        {
-          id: "browser-entry",
-          kind: "work",
-          createdAt: entry.createdAt,
-          entry: {
-            ...entry,
-            itemType: "mcp_tool_call",
-            toolLifecycleStatus: "completed",
-            toolData: { server: "t3-code", tool: "preview_click" },
+  it.each([
+    ["preview_click", "Clicked in the preview browser", "browser"],
+    ["task_status", "Got delegated task status", "t3-code"],
+  ] as const)(
+    "uses the completed %s call presentation for a settled legacy tool",
+    (tool, summary, summaryToolIcon) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "browser-entry",
+            kind: "work",
+            createdAt: entry.createdAt,
+            entry: {
+              ...entry,
+              itemType: "mcp_tool_call",
+              toolData: { server: "t3-code", tool },
+            },
           },
-        },
-      ],
-      isWorking: false,
-      activeTurnStartedAt: null,
-      turnDiffSummaryByAssistantMessageId: new Map(),
-      revertTurnCountByUserMessageId: new Map(),
-    });
-    expect(rows).toMatchObject([
-      { kind: "work-toggle", summary: "Used browser 1 time", summaryKind: "browser" },
-    ]);
-  });
+        ],
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+      expect(rows).toMatchObject([
+        { kind: "work-toggle", hiddenCount: 1, summary, summaryToolIcon },
+      ]);
+    },
+  );
 });
 
 describe("shouldPreserveAssistantLineBreaks", () => {
@@ -1126,7 +1134,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  it("summarizes a tool run after commentary starts a new run", () => {
+  it("labels a single completed tool call without summarizing it", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -1189,7 +1197,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.kind)).toEqual(["working", "work-toggle", "message", "work-live"]);
     expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
       hiddenCount: 1,
-      summary: "Ran 1 command",
+      summary: "rg toolCall",
     });
   });
 
@@ -1370,7 +1378,7 @@ describe("deriveMessagesTimelineRows", () => {
     [undefined, true],
     ["inProgress", true],
     ["completed", false],
-    ["failed", false],
+    ["failed", null],
     ["declined", false],
     ["stopped", false],
   ] as const)(
@@ -1406,12 +1414,20 @@ describe("deriveMessagesTimelineRows", () => {
         revertTurnCountByUserMessageId: new Map(),
       });
 
-      expect(rows.find((row) => row.kind === "work-live")).toMatchObject({ active });
+      const workLiveRow = rows.find((row) => row.kind === "work-live");
+      if (active === null) {
+        expect(workLiveRow).toBeUndefined();
+        expect(rows.at(-1)).toMatchObject({ kind: "thinking", id: "live-activity-row" });
+      } else {
+        expect(workLiveRow).toMatchObject({ active });
+      }
     },
   );
 
   it("reuses one activity row for initial thinking and the latest tool", () => {
-    const deriveRows = (toolLifecycleStatus: "inProgress" | "completed" | "declined" | null) =>
+    const deriveRows = (
+      toolLifecycleStatus: "inProgress" | "completed" | "failed" | "declined" | null,
+    ) =>
       deriveMessagesTimelineRows({
         timelineEntries:
           toolLifecycleStatus === null
@@ -1430,6 +1446,7 @@ describe("deriveMessagesTimelineRows", () => {
                     requestKind: "command",
                     tone: "tool" as const,
                     toolLifecycleStatus,
+                    ...(toolLifecycleStatus === "inProgress" ? { detail: "exit code 1" } : {}),
                   },
                 },
               ],
@@ -1448,6 +1465,7 @@ describe("deriveMessagesTimelineRows", () => {
     const initialRows = deriveRows(null);
     const runningRows = deriveRows("inProgress");
     const completedRows = deriveRows("completed");
+    const failedRows = deriveRows("failed");
     const declinedRows = deriveRows("declined");
     const initialActivityRow = initialRows.find((row) => row.id === "live-activity-row");
     const runningActivityRow = runningRows.find((row) => row.id === "live-activity-row");
@@ -1456,11 +1474,14 @@ describe("deriveMessagesTimelineRows", () => {
     expect(initialActivityRow).toMatchObject({ kind: "thinking" });
     expect(runningActivityRow).toMatchObject({ kind: "work-live", active: true });
     expect(completedActivityRow).toMatchObject({ kind: "work-live", active: true });
+    expect(failedRows.some((row) => row.kind === "work-live")).toBe(false);
+    expect(failedRows.at(-1)).toMatchObject({ kind: "thinking", id: "live-activity-row" });
     expect(declinedRows.find((row) => row.kind === "work-live")).toMatchObject({ active: false });
     expect(declinedRows.at(-1)).toMatchObject({ kind: "thinking", id: "live-activity-row" });
     expect(initialRows.filter((row) => row.id === "live-activity-row")).toHaveLength(1);
     expect(runningRows.filter((row) => row.id === "live-activity-row")).toHaveLength(1);
     expect(completedRows.filter((row) => row.id === "live-activity-row")).toHaveLength(1);
+    expect(failedRows.filter((row) => row.id === "live-activity-row")).toHaveLength(1);
     expect(declinedRows.filter((row) => row.id === "live-activity-row")).toHaveLength(1);
   });
 

@@ -11,7 +11,7 @@
  * WORKTREE: every thread sharing a checkout sees the same panel layout, so
  * switching between sibling threads never swaps the open surfaces.
  */
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { ChatFileAttachment, ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -43,12 +43,15 @@ export type RightPanelSurface =
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
   | {
-      id: `file:${string}`;
+      id: `file:${string}` | `attachment:${string}`;
       kind: "file";
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
       revealLine: number | null;
       revealRequestId: number;
+      /** Present when the file lives in the thread's attachment store rather
+          than at a workspace or host path. */
+      attachment?: ChatFileAttachment;
     }
   | {
       /**
@@ -96,6 +99,7 @@ interface RightPanelStoreState {
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
     target: { environmentId?: string; projectId: string; repository: string; number: number },
@@ -163,6 +167,15 @@ const fileSurface = (
   revealRequestId,
 });
 
+const attachmentSurface = (attachment: ChatFileAttachment): RightPanelSurface => ({
+  id: `attachment:${attachment.id}`,
+  kind: "file",
+  relativePath: attachment.name,
+  revealLine: null,
+  revealRequestId: 0,
+  attachment,
+});
+
 const terminalSurface = (terminalId: string): RightPanelSurface => ({
   id: `terminal:${terminalId}`,
   kind: "terminal",
@@ -212,23 +225,6 @@ export function pullRequestSurface(target: {
     repository: target.repository,
     number: target.number,
   };
-}
-
-/**
- * A pull-request tab's status map with one entry set. Keyed by the surface the panel is showing
- * rather than by a key rebuilt from the status, so the tab is found again whether or not that
- * surface was opened with an environment on it. Returns the same map when the tab's own fields
- * have not changed, so a caller can skip a re-render.
- */
-export function updatePullRequestTabStatus<Status extends { state: unknown; isDraft: boolean }>(
-  statuses: Readonly<Record<string, Status>>,
-  surfaceId: string,
-  status: Status,
-): Readonly<Record<string, Status>> {
-  return statuses[surfaceId]?.state === status.state &&
-    statuses[surfaceId]?.isDraft === status.isDraft
-    ? statuses
-    : { ...statuses, [surfaceId]: status };
 }
 
 const upsertSurface = (
@@ -438,6 +434,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             };
           }),
         })),
+      openAttachment: (ref, attachment) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, ref, (current) => {
+            const withoutStandaloneExplorer = current.surfaces.filter(
+              (surface) => surface.kind !== "files",
+            );
+            return upsertSurface(
+              { ...current, surfaces: withoutStandaloneExplorer },
+              attachmentSurface(attachment),
+            );
+          }),
+        })),
       openTerminal: (ref, terminalId) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, ref, (current) =>
@@ -626,7 +634,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, ref, (current) => {
             if (workspaceAvailable) return current;
             const surfaces = current.surfaces.filter(
-              (surface) => surface.kind !== "files" && surface.kind !== "file",
+              (surface) =>
+                surface.kind !== "files" &&
+                (surface.kind !== "file" || surface.attachment !== undefined),
             );
             if (surfaces.length === current.surfaces.length) return current;
             const activeStillExists = surfaces.some(

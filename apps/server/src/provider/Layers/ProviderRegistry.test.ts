@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it, assert } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -41,6 +42,7 @@ import { ProviderInstanceRegistryHydrationLive } from "./ProviderInstanceRegistr
 import {
   haveProvidersChanged,
   mergeProviderSnapshot,
+  upsertProviderWorkspaceSnapshot,
   ProviderRegistryLive,
 } from "./ProviderRegistry.ts";
 import * as ServerConfig from "../../config.ts";
@@ -563,6 +565,41 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         assert.strictEqual(haveProvidersChanged(providers, [...providers]), false);
       });
 
+      it("stores workspace skills and commands without changing machine metadata", () => {
+        const provider = {
+          instanceId: ProviderInstanceId.make("codex"),
+          driver: ProviderDriverKind.make("codex"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-03-25T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [{ name: "global" }],
+          skills: [{ name: "global", path: "/global/SKILL.md", enabled: true }],
+        } satisfies ServerProvider;
+        const scopedSnapshot = {
+          ...provider,
+          checkedAt: "2026-03-25T00:01:00.000Z",
+          slashCommands: [{ name: "project" }],
+          skills: [{ name: "project", path: "/project/SKILL.md", enabled: true }],
+        } satisfies ServerProvider;
+
+        const result = upsertProviderWorkspaceSnapshot(provider, "/project", scopedSnapshot);
+
+        assert.deepStrictEqual(result.slashCommands, provider.slashCommands);
+        assert.deepStrictEqual(result.skills, provider.skills);
+        assert.deepStrictEqual(result.workspaceSnapshots, [
+          {
+            cwd: "/project",
+            checkedAt: scopedSnapshot.checkedAt,
+            slashCommands: scopedSnapshot.slashCommands,
+            skills: scopedSnapshot.skills,
+          },
+        ]);
+      });
+
       it("preserves previously discovered provider models when a refresh returns none", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("cursor"),
@@ -993,6 +1030,164 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               [workspaceSkill],
             );
             assert.deepStrictEqual(yield* Ref.get(skillCwds), ["/tmp/project"]);
+          }).pipe(Effect.provide(runtimeServices));
+        }),
+      );
+
+      it.effect("deduplicates cwd probes and clears snapshots when an instance rebuilds", () =>
+        Effect.gen(function* () {
+          const driver = ProviderDriverKind.make("codex");
+          const instanceId = ProviderInstanceId.make("codex");
+          const machineProvider = {
+            instanceId,
+            driver,
+            status: "ready",
+            enabled: true,
+            installed: true,
+            auth: { status: "authenticated" },
+            checkedAt: "2026-06-10T00:00:00.000Z",
+            version: "1.0.0",
+            models: [],
+            slashCommands: [{ name: "global" }],
+            skills: [{ name: "global", path: "/global/SKILL.md", enabled: true }],
+          } as const satisfies ServerProvider;
+          const scopedProvider = {
+            ...machineProvider,
+            checkedAt: "2026-06-10T00:01:00.000Z",
+            slashCommands: [{ name: "project" }],
+            skills: [{ name: "project", path: "/workspace/SKILL.md", enabled: true }],
+          } as const satisfies ServerProvider;
+          const pendingScopedProvider = {
+            ...scopedProvider,
+            status: "error",
+            installed: false,
+            slashCommands: [],
+          } as const satisfies ServerProvider;
+          const snapshotCalls = yield* Ref.make(0);
+          const returnPendingSnapshot = yield* Ref.make(true);
+          const probeStarted = yield* Deferred.make<void>();
+          const releaseProbe = yield* Deferred.make<void>();
+          const makeInstance = (
+            provider: ServerProvider,
+            snapshotForCwd: NonNullable<ProviderInstance["snapshotForCwd"]>,
+          ): ProviderInstance => ({
+            instanceId,
+            driverKind: driver,
+            continuationIdentity: {
+              driverKind: driver,
+              continuationKey: "codex:instance:codex",
+            },
+            displayName: undefined,
+            enabled: true,
+            snapshot: {
+              maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
+                provider: driver,
+                packageName: null,
+              }),
+              getSnapshot: Effect.succeed(provider),
+              refresh: Effect.succeed(provider),
+              streamChanges: Stream.empty,
+            },
+            snapshotForCwd,
+            adapter: {} as ProviderInstance["adapter"],
+            textGeneration: {} as ProviderInstance["textGeneration"],
+          });
+          const firstInstance = makeInstance(machineProvider, () =>
+            Effect.gen(function* () {
+              yield* Ref.update(snapshotCalls, (count) => count + 1);
+              if (yield* Ref.get(returnPendingSnapshot)) return pendingScopedProvider;
+              yield* Deferred.succeed(probeStarted, undefined);
+              yield* Deferred.await(releaseProbe);
+              return scopedProvider;
+            }),
+          );
+          const rebuiltProvider = {
+            ...machineProvider,
+            checkedAt: "2026-06-10T00:02:00.000Z",
+            status: "warning",
+            installed: false,
+            auth: { status: "unknown" },
+          } satisfies ServerProvider;
+          const rebuiltInstance = makeInstance(rebuiltProvider, () =>
+            Ref.update(snapshotCalls, (count) => count + 1).pipe(Effect.as(scopedProvider)),
+          );
+          const registryChanges = yield* PubSub.unbounded<void>();
+          const instancesRef = yield* Ref.make<ReadonlyArray<ProviderInstance>>([firstInstance]);
+          const instanceRegistryLayer = Layer.succeed(
+            ProviderInstanceRegistry.ProviderInstanceRegistry,
+            {
+              getInstance: (requestedId) =>
+                Ref.get(instancesRef).pipe(
+                  Effect.map((instances) =>
+                    instances.find((instance) => instance.instanceId === requestedId),
+                  ),
+                ),
+              listInstances: Ref.get(instancesRef),
+              listUnavailable: Effect.succeed([]),
+              streamChanges: Stream.fromPubSub(registryChanges),
+              subscribeChanges: PubSub.subscribe(registryChanges),
+            },
+          );
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistryLive.pipe(
+              Layer.provideMerge(instanceRegistryLayer),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "t3-provider-registry-workspace-snapshot-",
+                }),
+              ),
+              Layer.provideMerge(NodeServices.layer),
+            ),
+          ).pipe(Scope.provide(scope));
+
+          yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry.ProviderRegistry;
+            yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
+            assert.strictEqual((yield* registry.getProviders)[0]?.workspaceSnapshots, undefined);
+            yield* Ref.set(returnPendingSnapshot, false);
+            const workspaceUpdate = yield* registry.streamChanges.pipe(
+              Stream.runHead,
+              Effect.forkChild,
+            );
+            yield* Effect.yieldNow;
+            const firstRefresh = yield* registry
+              .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" })
+              .pipe(Effect.forkChild);
+            yield* Deferred.await(probeStarted);
+            const duplicateRefresh = yield* registry
+              .refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" })
+              .pipe(Effect.forkChild);
+            yield* Effect.yieldNow;
+            assert.strictEqual(yield* Ref.get(snapshotCalls), 2);
+            yield* Deferred.succeed(releaseProbe, undefined);
+            yield* Fiber.join(firstRefresh);
+            yield* Fiber.join(duplicateRefresh);
+            const published = yield* Fiber.join(workspaceUpdate);
+            assert.strictEqual(published._tag, "Some");
+            const providers = yield* registry.getProviders;
+            assert.deepStrictEqual(providers[0]?.skills, machineProvider.skills);
+            assert.deepStrictEqual(
+              providers[0]?.workspaceSnapshots?.[0]?.skills,
+              scopedProvider.skills,
+            );
+            yield* registry.refreshWorkspaceSnapshot({ instanceId, cwd: "/workspace" });
+            assert.strictEqual(yield* Ref.get(snapshotCalls), 2);
+
+            yield* Ref.set(instancesRef, [rebuiltInstance]);
+            yield* PubSub.publish(registryChanges, undefined);
+            let rebuilt = yield* registry.getProviders;
+            for (
+              let attempt = 0;
+              attempt < 50 && rebuilt[0]?.checkedAt !== rebuiltProvider.checkedAt;
+              attempt += 1
+            ) {
+              yield* Effect.yieldNow;
+              rebuilt = yield* registry.getProviders;
+            }
+            assert.strictEqual(rebuilt[0]?.checkedAt, rebuiltProvider.checkedAt);
+            assert.strictEqual(rebuilt[0]?.workspaceSnapshots, undefined);
           }).pipe(Effect.provide(runtimeServices));
         }),
       );
@@ -1763,7 +1958,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           const firstMissing = `t3code_codex_first_`;
           const secondMissing = `t3code_codex_second_`;
           const spawnedCommands: Array<string> = [];
-          const serverSettings = yield* makeMutableServerSettingsService(
+          const allowLazySettingsStream = yield* Deferred.make<void>();
+          const mutableServerSettings = yield* makeMutableServerSettingsService(
             decodeServerSettings(
               deepMerge(encodedDefaultServerSettings, {
                 providers: {
@@ -1776,6 +1972,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               }),
             ),
           );
+          const serverSettings = {
+            ...mutableServerSettings,
+            streamChanges: Stream.unwrap(
+              Deferred.await(allowLazySettingsStream).pipe(
+                Effect.as(mutableServerSettings.streamChanges),
+              ),
+            ),
+          } satisfies ServerSettingsModule.ServerSettingsService["Service"];
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
@@ -1835,7 +2039,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
             // Drive a settings change. The Hydration layer's
-            // `SettingsWatcherLive` consumes this via `streamChanges`,
+            // `SettingsWatcherLive` consumes this via `subscribeChanges`,
             // calls `reconcile`, which rebuilds the codex instance (the
             // envelope changed because `binaryPath` differs → `entryEqual`
             // is false). The registry's `Stream.runForEach(
@@ -1847,6 +2051,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 codex: { enabled: true, binaryPath: secondMissing },
               },
             });
+            // Start the lazy stream only after publishing. A watcher that did
+            // not subscribe before forking has already lost this update.
+            yield* Deferred.succeed(allowLazySettingsStream, undefined);
 
             // Poll until the injected process boundary observes the new
             // executable. This verifies the public settings-to-probe behavior

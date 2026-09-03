@@ -24,6 +24,12 @@ import {
 import { useRightPanelStore } from "~/rightPanelStore";
 import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
+import {
+  browserDefaultOpenProfileId,
+  browserDefaultOpenViewport,
+  resolveBrowserDefaults,
+} from "./browserDefaults";
+
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
 
@@ -46,9 +52,18 @@ export async function openUrlInPreview<E>(input: {
   // Preview sessions are worktree-scoped: open through the worktree's
   // canonical thread id so sibling threads share one set of tabs.
   const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
+  const defaults = await resolveBrowserDefaults();
   const result = await input.openPreview({
     environmentId: canonicalRef.environmentId,
-    input: { threadId: canonicalRef.threadId, url: input.url },
+    input: {
+      threadId: canonicalRef.threadId,
+      url: input.url,
+      // Built here rather than via `openPreviewSession` because this path
+      // maps the result differently, so the configured defaults have to be
+      // applied explicitly or file/link opens would ignore them.
+      viewport: browserDefaultOpenViewport(defaults),
+      profileId: browserDefaultOpenProfileId(defaults),
+    },
   });
   return mapAtomCommandResult(result, (snapshot) => {
     applyPreviewServerSnapshot(input.threadRef, snapshot);

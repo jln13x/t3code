@@ -59,6 +59,11 @@ export interface ProviderRegistryShape {
     input: ProviderRegistryListSkillsInput,
   ) => Effect.Effect<ReadonlyArray<ServerProviderSkill>>;
 
+  readonly refreshWorkspaceSnapshot: (input: {
+    readonly instanceId: ProviderInstanceId;
+    readonly cwd: string;
+  }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
   /**
    * Resolve the maintenance capabilities owned by one live provider instance.
    * Falls back to manual-only capabilities when the instance is not live.
