@@ -79,6 +79,10 @@
       "types": "./src/toolActivity.ts",
       "import": "./src/toolActivity.ts"
     },
+    "./favicon": {
+      "types": "./src/favicon.ts",
+      "import": "./src/favicon.ts"
+    },
     "./Struct": {
       "types": "./src/Struct.ts",
       "import": "./src/Struct.ts"
@@ -242,6 +246,10 @@
     "./worktreeResource": {
       "types": "./src/worktreeResource.ts",
       "import": "./src/worktreeResource.ts"
+    },
+    "./usageLimits": {
+      "types": "./src/usageLimits.ts",
+      "import": "./src/usageLimits.ts"
     },
     "./desktopAppControl": {
       "types": "./src/desktopAppControl.ts",
