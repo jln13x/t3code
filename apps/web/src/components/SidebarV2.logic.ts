@@ -1,15 +1,12 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { activeThreadAnchorTimestampMs } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  activeThreadAnchorTimestampMs,
+  resolveSettledThreadTimestamp,
+} from "@t3tools/client-runtime/state/thread-sort";
 
 import { threadWorktreeScopeKey } from "../worktreeScope";
-import {
-  firstValidTimestampMs,
-  parseTimestampMs,
-  resolveSettledTimestamp,
-  resolveSidebarThreadStatus,
-  type SidebarThreadStatus,
-} from "./Sidebar.logic";
+import { firstValidTimestampMs, parseTimestampMs, type SidebarThreadStatus } from "./Sidebar.logic";
 
 export type SidebarWorktreeSection = "active" | "snoozed" | "settled";
 
@@ -45,7 +42,7 @@ export function visibleWorktreeGroupMemberIndexes(group: SidebarWorktreeGroup): 
 function groupSettledTimestampMs(group: SidebarWorktreeGroup): number {
   let latest = 0;
   for (const thread of group.threads) {
-    const timestamp = resolveSettledTimestamp(thread);
+    const timestamp = resolveSettledThreadTimestamp(thread);
     if (timestamp !== null) latest = Math.max(latest, parseTimestampMs(timestamp));
   }
   return latest;
@@ -174,7 +171,7 @@ export function pickWorktreeGroupRepresentative(
     let best: EnvironmentThreadShell | null = null;
     let bestMs = Number.NEGATIVE_INFINITY;
     for (const thread of group.threads) {
-      const timestamp = resolveSettledTimestamp(thread);
+      const timestamp = resolveSettledThreadTimestamp(thread);
       const ms = timestamp === null ? 0 : parseTimestampMs(timestamp);
       if (ms > bestMs || best === null) {
         best = thread;

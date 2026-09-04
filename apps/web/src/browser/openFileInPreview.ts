@@ -6,6 +6,7 @@ import type {
   PreviewSessionSnapshot,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import {
   type AtomCommandResult,
   mapAtomCommandResult,
@@ -22,6 +23,12 @@ import {
 } from "~/previewStateStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
+
+import {
+  browserDefaultOpenProfileId,
+  browserDefaultOpenViewport,
+  resolveBrowserDefaults,
+} from "./browserDefaults";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
@@ -45,9 +52,18 @@ export async function openUrlInPreview<E>(input: {
   // Preview sessions are worktree-scoped: open through the worktree's
   // canonical thread id so sibling threads share one set of tabs.
   const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
+  const defaults = await resolveBrowserDefaults();
   const result = await input.openPreview({
     environmentId: canonicalRef.environmentId,
-    input: { threadId: canonicalRef.threadId, url: input.url },
+    input: {
+      threadId: canonicalRef.threadId,
+      url: input.url,
+      // Built here rather than via `openPreviewSession` because this path
+      // maps the result differently, so the configured defaults have to be
+      // applied explicitly or file/link opens would ignore them.
+      viewport: browserDefaultOpenViewport(defaults),
+      profileId: browserDefaultOpenProfileId(defaults),
+    },
   });
   return mapAtomCommandResult(result, (snapshot) => {
     applyPreviewServerSnapshot(input.threadRef, snapshot);
@@ -56,9 +72,14 @@ export async function openUrlInPreview<E>(input: {
   });
 }
 
+/**
+ * Opens a browser document in the integrated browser. Inside the workspace the
+ * page may load sibling assets; a file outside it is served on its own.
+ */
 export async function openFileInPreview<AssetError, PreviewError>(input: {
   readonly threadRef: ScopedThreadRef;
   readonly filePath: string;
+  readonly workspaceRoot: string | undefined;
   readonly httpBaseUrl: string;
   readonly createAssetUrl: (input: {
     readonly environmentId: EnvironmentId;
@@ -75,11 +96,13 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
       ),
     );
   }
+  const insideWorkspace =
+    mediaFileReference(input.filePath, input.workspaceRoot).relativePath !== undefined;
   const assetResult = await input.createAssetUrl({
     environmentId: input.threadRef.environmentId,
     input: {
       resource: {
-        _tag: "workspace-file",
+        _tag: insideWorkspace ? "workspace-file" : "media-file",
         threadId: input.threadRef.threadId,
         path: input.filePath,
       },

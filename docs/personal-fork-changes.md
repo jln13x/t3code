@@ -104,10 +104,12 @@ This file is both the current inventory and the retirement record used during up
   extended rather than replaced. Future merges must preserve upstream search, drafts, pinning and
   reorder, lifecycle/context-menu actions, provider badges, shelf persistence, and PR snapshots.
 
-### Codex project skills, explicit invocation, and active-turn steering
+### Codex explicit skill invocation and active-turn steering
 
-- Codex skill discovery follows the active project or worktree instead of only the server process
-  directory, so the composer shows workspace-local skills alongside personal skills.
+- Upstream now discovers provider skills and slash commands for the active workspace through its
+  workspace snapshots. The fork retains its project-scoped `providerSkills` RPC for explicit
+  `$skill-name` lookup, so structured invocation is still bound against the exact project or
+  worktree rather than the server process directory.
 - Explicit `$skill-name` tokens are sent to Codex as structured skill inputs while the original
   prompt text remains intact.
 - Unknown explicit skill names fail visibly instead of silently becoming plain prompt text.
@@ -115,15 +117,17 @@ This file is both the current inventory and the retirement record used during up
 - A message sent during an active Codex turn uses native `turn/steer` instead of a second
   `turn/start`. The start response ID remains authoritative for steering, interrupting, and emitted
   lifecycle events even when an earlier `turn/started` notification names a different review turn.
-- Source candidates: upstream [#5335](https://github.com/pingdotgg/t3code/pull/5335) for
-  workspace-aware discovery and [#7196](https://github.com/pingdotgg/t3code/pull/7196) for
-  structured invocation and token matching. Upstream [#5795](https://github.com/pingdotgg/t3code/pull/5795)
-  is the adapter-only steering candidate; it remains open.
+- Upstream [#9180](https://github.com/pingdotgg/t3code/pull/9180) superseded the fork's general
+  workspace-aware discovery behavior. Upstream [#7196](https://github.com/pingdotgg/t3code/pull/7196)
+  remains the source candidate for structured invocation and token matching. Upstream
+  [#5795](https://github.com/pingdotgg/t3code/pull/5795) is the adapter-only steering candidate;
+  it remains open.
 - Fork implementation: [jln13x/t3code#28](https://github.com/jln13x/t3code/pull/28).
 - Sync boundary: preserve the project-scoped `providerSkills` RPC path through contracts, server
-  registry, client runtime, and composer queries. In `CodexSessionRuntime`, skill binding stays
-  shared by `turn/start` and `turn/steer`; the start-response ID handoff must remain available until
-  the queued `turn/started` notification is projected.
+  registry, client runtime, and the explicit `$skill` composer query while retaining upstream
+  workspace snapshots for slash menus. In `CodexSessionRuntime`, skill binding stays shared by
+  `turn/start` and `turn/steer`; the start-response ID handoff must remain available until the
+  queued `turn/started` notification is projected.
 
 ### Cross-environment chat transfer
 
@@ -198,6 +202,9 @@ tests were removed with them.
 
 ## Earlier retirements
 
+- Fork-specific draft retry ID reminting: retired after upstream added bootstrap-deletion-scoped
+  thread ID rotation that preserves the draft while avoiding unnecessary rotation for unrelated
+  failures.
 - Working-change diff workflow (`enablePersonalDiffWorkflow`): retired after upstream adopted
   working-tree-first diff selection and active-worktree scoping.
 - Periodic client-side branch-ref revalidation: retired after upstream added generation-aware
