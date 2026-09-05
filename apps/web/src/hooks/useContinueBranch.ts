@@ -7,7 +7,10 @@ import {
   type EnvironmentId,
   type ThreadId,
 } from "@t3tools/contracts";
-import type { TerminalBufferState } from "@t3tools/client-runtime/state/terminal";
+import {
+  terminalOutputText,
+  type TerminalBufferState,
+} from "@t3tools/client-runtime/state/terminal";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import {
   isAtomCommandInterrupted,
@@ -169,17 +172,14 @@ export function useContinueBranch() {
             return;
           }
           if (result._tag !== "Success") return;
-          latestBuffer = result.value.buffer;
+          latestBuffer = terminalOutputText(result.value.output);
           if (result.value.error) {
             finish({ exitCode: null, error: result.value.error, output: latestBuffer });
             return;
           }
-          const markerOffset = result.value.buffer.lastIndexOf(marker);
+          const markerOffset = latestBuffer.lastIndexOf(marker);
           if (markerOffset < 0) return;
-          const exitCode = Number.parseInt(
-            result.value.buffer.slice(markerOffset + marker.length),
-            10,
-          );
+          const exitCode = Number.parseInt(latestBuffer.slice(markerOffset + marker.length), 10);
           if (Number.isSafeInteger(exitCode)) {
             finish({ exitCode, error: null, output: latestBuffer });
           }
