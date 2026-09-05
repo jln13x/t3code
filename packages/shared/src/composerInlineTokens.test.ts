@@ -34,6 +34,26 @@ describe("collectComposerInlineTokens", () => {
     ]);
   });
 
+  it("collects skill names that begin with a digit", () => {
+    expect(collectComposerInlineTokens("Use $2spec next")).toEqual([
+      {
+        type: "skill",
+        value: "2spec",
+        source: "$2spec",
+        start: 4,
+        end: 10,
+      },
+    ]);
+  });
+
+  it("leaves digits-only dollar amounts and compact monetary expressions as text", () => {
+    expect(collectComposerInlineTokens("I'll pay $20 tomorrow")).toEqual([]);
+    expect(collectComposerInlineTokens("Budget is $1_000 total")).toEqual([]);
+    expect(collectComposerInlineTokens("Budget is $20k tomorrow")).toEqual([]);
+    expect(collectComposerInlineTokens("Cost is $100M total")).toEqual([]);
+    expect(collectComposerInlineTokens("Limit is $1e6 here")).toEqual([]);
+  });
+
   it("does not convert incomplete trailing tokens", () => {
     expect(collectComposerInlineTokens("Use $ui")).toEqual([]);
     expect(collectComposerInlineTokens("Inspect @AGENTS.md")).toEqual([]);
@@ -152,6 +172,7 @@ describe("collectComposerInlineTokens", () => {
     ]);
     expect(collectComposerSkillInvocations("Use $grill-with-docs")).toEqual(["grill-with-docs"]);
     expect(collectComposerSkillInvocations("$ui then $ui again $review")).toEqual(["ui", "review"]);
+    expect(collectComposerSkillInvocations("Use $2spec.")).toEqual(["2spec"]);
   });
 
   it("collects skill invocations terminated by punctuation", () => {
@@ -174,6 +195,8 @@ describe("collectComposerInlineTokens", () => {
     expect(collectComposerSkillInvocations("")).toEqual([]);
     expect(collectComposerSkillInvocations("plain text")).toEqual([]);
     expect(collectComposerSkillInvocations("costs $100 please")).toEqual([]);
+    expect(collectComposerSkillInvocations("costs $20k.")).toEqual([]);
+    expect(collectComposerSkillInvocations("limit $1e6!")).toEqual([]);
     expect(collectComposerSkillInvocations("foo$bar baz")).toEqual([]);
   });
 

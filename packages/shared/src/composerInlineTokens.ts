@@ -18,15 +18,27 @@ export interface CollectComposerInlineTokensOptions {
   readonly preserveTrailingFrom?: ReadonlyArray<ComposerInlineToken>;
 }
 
-const SKILL_NAME_PATTERN = "[a-zA-Z][a-zA-Z0-9:_-]*";
+/**
+ * A skill name may start with a digit, but compact monetary amounts and
+ * numeric expressions like "$20", "$20k", "$100M", and "$1e6" must stay prose:
+ * the composer chips any matched `$name` token, known or not. Tokens beginning
+ * with digits must not match numbers with currency/exponent suffixes, and must
+ * contain at least one letter.
+ */
+const SKILL_NAME_PATTERN = "(?=[a-zA-Z0-9:_-]*[a-zA-Z])[a-zA-Z0-9][a-zA-Z0-9:_-]*";
+const COMPACT_DOLLAR_AMOUNT_PATTERN =
+  "(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?=\\s|$|[,!?;)\"'\\]]|\\.(?![\\p{L}\\p{N}])))";
 // Trailing whitespace is required while typing so `$partial` does not become a chip.
-const SKILL_TOKEN_REGEX = new RegExp(`(^|\\s)\\$(${SKILL_NAME_PATTERN})(?=\\s)`, "g");
+const SKILL_TOKEN_REGEX = new RegExp(
+  `(^|\\s)\\$${COMPACT_DOLLAR_AMOUNT_PATTERN}(${SKILL_NAME_PATTERN})(?=\\s)`,
+  "gu",
+);
 // Submitted messages also accept sentence punctuation so `$review.` / `$review,`
 // bind. A period only terminates when it is not an extension (`$review.md`,
 // `$review.配置`). Path-like `$HOME/.config` stays plain text — `/` is not a
 // terminator.
 const COMPLETE_SKILL_INVOCATION_REGEX = new RegExp(
-  `(^|\\s)\\$(${SKILL_NAME_PATTERN})(?=\\s|$|[,!?;)"'\\]]|\\.(?![\\p{L}\\p{N}]))`,
+  `(^|\\s)\\$${COMPACT_DOLLAR_AMOUNT_PATTERN}(${SKILL_NAME_PATTERN})(?=\\s|$|[,!?;)"'\\]]|\\.(?![\\p{L}\\p{N}]))`,
   "gu",
 );
 const MENTION_TOKEN_REGEX = /(^|\s)@(?:"((?:\\.|[^"\\])*)"|([^\s@"]+))(?=\s)/g;
