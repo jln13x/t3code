@@ -6,14 +6,12 @@ import type {
   EnvironmentId,
   ModelSelection,
   PreviewAnnotationPayload,
-  ProjectId,
   ProviderApprovalDecision,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
   ServerProvider,
-  ServerProviderSkill,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -148,7 +146,6 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
-import { useProviderSkills } from "../../state/queries";
 import { type ElementContextDraft } from "../../lib/elementContext";
 import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
@@ -1177,7 +1174,6 @@ export interface ChatComposerProps {
   draftId: DraftId | null;
 
   // Thread context
-  activeProjectId: ProjectId | null;
   activeThreadId: ThreadId | null;
   activeThreadEnvironmentId: EnvironmentId | undefined;
   activeThread: Thread | undefined;
@@ -1324,12 +1320,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     routeKind,
     routeThreadRef,
     draftId,
-    activeProjectId,
     activeThreadId,
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
-    isServerThread,
     promptHistoryMessages,
+    isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
@@ -1651,7 +1646,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [selectedProviderEntry],
   );
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
-  const selectedProviderWorkspaceSkills = selectedProviderStatus
+  const selectedProviderSkills = selectedProviderStatus
     ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
     : [];
   const selectedProviderSlashCommands = selectedProviderStatus
@@ -1715,6 +1710,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => selectedProviderEntry?.models ?? [],
     [selectedProviderEntry],
   );
+
   const composerPromptInjectionState = useMemo(
     () => getComposerPromptInjectionState(prompt),
     [prompt],
@@ -1905,33 +1901,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
-  const providerSkillsThreadId = isServerThread ? activeThreadId : null;
-  const providerSkills = useProviderSkills({
-    environmentId,
-    instanceId: selectedInstanceId,
-    projectId: activeProjectId,
-    threadId: providerSkillsThreadId,
-    enabled: composerTriggerKind === "skill",
-  });
-  const providerSkillsTargetKey = `${environmentId}\0${selectedInstanceId}\0${activeProjectId ?? ""}\0${providerSkillsThreadId ?? ""}`;
-  const [cachedProviderSkills, setCachedProviderSkills] = useState<{
-    readonly targetKey: string;
-    readonly skills: ReadonlyArray<ServerProviderSkill>;
-  } | null>(null);
-  useEffect(() => {
-    if (providerSkills.data) {
-      setCachedProviderSkills({
-        targetKey: providerSkillsTargetKey,
-        skills: providerSkills.data.skills,
-      });
-    }
-  }, [providerSkills.data, providerSkillsTargetKey]);
-  const selectedProviderSkills =
-    providerSkills.data?.skills ??
-    (cachedProviderSkills?.targetKey === providerSkillsTargetKey
-      ? cachedProviderSkills.skills
-      : selectedProviderWorkspaceSkills) ??
-    [];
   const compactSlashCommandAvailable =
     composerTrigger?.kind === "slash-command" &&
     prompt.slice(0, composerTrigger.rangeStart).trim() === "" &&
@@ -1985,7 +1954,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : []),
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const slashMenuSkills = getProviderSkillsForSlashMenu(
-        selectedProviderWorkspaceSkills,
+        selectedProviderSkills,
         settings.showSkillsInSlashMenu,
       );
       const providerSlashCommandItems = getProviderSlashCommandsForSlashMenu(
@@ -2040,7 +2009,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     planModeUiEnabled,
     selectedProvider,
     selectedProviderSkills,
-    selectedProviderWorkspaceSkills,
     selectedProviderSlashCommands,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
@@ -2111,8 +2079,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
 
   const isComposerMenuLoading =
-    (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
-    (composerTriggerKind === "skill" && providerSkills.isPending && composerMenuItems.length === 0);
+    composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending;
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
@@ -2186,6 +2153,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
   const collapsedComposerPrimaryActionDisabled =
+    phase === "running" ||
     isSendBusy ||
     isSendDisabled ||
     isConnecting ||

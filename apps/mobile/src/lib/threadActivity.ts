@@ -1003,7 +1003,6 @@ function workEntryIcon(entry: DerivedWorkLogEntry): ThreadFeedActivity["icon"] {
     return "message";
   }
   if (entry.sourceActivityKind === "runtime.warning") return "warning";
-  if (entry.sourceActivityKind === "provider.turn.steer.rejected") return "warning";
   if (entry.toolSurface) return entry.toolSurface;
   if (entry.requestKind === "command") return "command";
   if (entry.requestKind === "file-read") return "eye";

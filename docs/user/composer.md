@@ -6,12 +6,6 @@ include a skill when the task needs more context.
 Messages can contain up to 120,000 characters. Longer drafts stay in the composer
 so you can shorten them or split them into several messages.
 
-Sending while an agent is working submits the message immediately instead of holding it to run
-later. For an active Codex turn, the message steers that turn.
-
-On mobile, an empty composer shows an interrupt button while the agent is working. Adding text
-or an attachment replaces it with the send button.
-
 ## Attach files
 
 Attach up to eight files per message. Images can be up to 10 MB; other files can
@@ -108,10 +102,6 @@ provider. On mobile, both are also available before starting a thread on
 
 The slash menu also includes skills unless you turn off **Settings → General →
 Show skills in slash menu**. Only skills enabled for the provider are listed.
-
-An explicit `$skill-name` in a Codex prompt is bound to that skill in the current project or
-worktree while the original prompt text stays visible. Unknown skill names fail visibly. Shell
-paths such as `$HOME/.config` remain ordinary text.
 
 Provider commands must start the message to run. T3 Code commands such as
 `/model` and `/plan`, and skill mentions, work on any line.

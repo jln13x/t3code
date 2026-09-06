@@ -8,7 +8,8 @@ When asked to sync or rebuild the personal fork, run this checklist end-to-end.
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before resolving conflicts.
   Preserve only the maintained desktop identity, completion/attention sounds, and native macOS
   completion notifications, plus the documented local signed-install workflow, worktree grouping,
-  and checkout-resource boundary.
+  checkout-resource boundary, and client-only cross-environment chat transfer. Codex steering and
+  custom skill discovery are retired; use upstream provider behavior.
 - If upstream replaces or makes a customization obsolete, update the inventory instead of silently
   dropping it.
 - Do not restore retired customizations or fork feature flags during conflict resolution.

@@ -10,7 +10,7 @@ You can think of T3 Code as an open source "bring-your-own-subscription" alterna
 - Follow `SYNC.md` when syncing or rebuilding the fork.
 - Track meaningful fork-specific behavior in `docs/personal-fork-changes.md`; update it in the same change.
 - Check that inventory during upstream merges and record preserved, replaced, or retired customizations.
-- Preserve only the documented desktop fork identity, completion/attention sounds, and native macOS completion notifications unless the developer explicitly expands the fork's scope.
+- Preserve the maintained differences in `docs/personal-fork-changes.md`: desktop fork identity and local signing, completion/attention sounds, native macOS completion notifications, worktree-grouped threads and resources, and cross-environment chat transfer. Do not expand that scope without an explicit developer request.
 - Prefer upstream behavior for every other product surface; do not restore retired fork flags during syncs.
 - Keep the remaining differences at narrow boundaries. Sounds and notifications are always on in the fork and do not have app-level toggles.
 - Keep personal-fork changes primarily in the UI client and client-local state. In general, do not
