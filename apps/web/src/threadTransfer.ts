@@ -179,11 +179,20 @@ export async function prepareTransferredThreadArchive(input: {
   readonly sourceEnvironmentId: EnvironmentId;
   readonly thread: OrchestrationThread;
   readonly modelSelection: ModelSelection;
+  readonly previousArchive?: TransferredThreadArchive | null;
   readonly exportedAt?: string;
   readonly loadAttachment: (attachment: ChatAttachment) => Promise<string>;
 }): Promise<TransferredThreadArchive> {
+  const history = mergeTransferredThreadHistory(input.thread, input.previousArchive ?? null);
   const previewUrlByAttachmentId = new Map<string, string>();
-  for (const message of input.thread.messages) {
+  for (const message of input.previousArchive?.thread.messages ?? []) {
+    for (const attachment of message.attachments ?? []) {
+      if (attachment.type === "image" && "previewUrl" in attachment) {
+        previewUrlByAttachmentId.set(attachment.id, attachment.previewUrl);
+      }
+    }
+  }
+  for (const message of history.messages) {
     for (const attachment of message.attachments ?? []) {
       if (!isChatImageAttachment(attachment)) continue;
       if (!previewUrlByAttachmentId.has(attachment.id)) {
@@ -199,14 +208,21 @@ export async function prepareTransferredThreadArchive(input: {
     exportedAt: input.exportedAt ?? new Date().toISOString(),
     sourceFingerprint: await fingerprintTransferredThread(input.thread),
     thread: {
-      ...input.thread,
+      ...history,
       modelSelection: input.modelSelection,
-      messages: input.thread.messages.map((message) => {
+      messages: history.messages.map((message) => {
         const { attachments, ...messageWithoutAttachments } = message;
+        const portableMessage = {
+          ...messageWithoutAttachments,
+          text:
+            message.role === "user"
+              ? stripTransferredChatProviderContext(message.text)
+              : message.text,
+        };
         return attachments === undefined
-          ? messageWithoutAttachments
+          ? portableMessage
           : {
-              ...messageWithoutAttachments,
+              ...portableMessage,
               attachments: attachments.map((attachment) =>
                 isChatImageAttachment(attachment)
                   ? {
