@@ -75,14 +75,15 @@ export function continueBranchTerminalFailureMessage(input: {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.includes(input.marker));
-  const usefulLine = lines
-    .toReversed()
-    .find((line) =>
-      /fatal:|error:|permission denied|authentication|passphrase|password|host key|could not (?:read|resolve)|unable to access|repository not found|connection (?:refused|timed out)|timed out/i.test(
-        line,
-      ),
-    );
-  const message = usefulLine ?? input.fallback;
+  const usefulLineIndex = lines.findLastIndex((line) =>
+    /fatal:|error:|permission denied|authentication|passphrase|password|host key|could not (?:read|resolve)|unable to access|repository not found|connection (?:refused|timed out)|timed out/i.test(
+      line,
+    ),
+  );
+  const message =
+    usefulLineIndex < 0
+      ? input.fallback
+      : lines.slice(usefulLineIndex, usefulLineIndex + 6).join("\n");
   return message.length > 600 ? `${message.slice(0, 597)}...` : message;
 }
 
@@ -200,6 +201,7 @@ export interface ContinueBranchTransferRefs {
   readonly localHead: string;
   readonly localIndex: string;
   readonly localWorktree: string;
+  readonly remoteHead: string;
   readonly remoteIndex: string;
   readonly remoteWorktree: string;
   readonly checkpoints: ReadonlyArray<{
@@ -220,6 +222,7 @@ export function continueBranchTransferRefs(
     localHead: `${localBase}/head`,
     localIndex: `${localBase}/index`,
     localWorktree: `${localBase}/worktree`,
+    remoteHead: `${remoteBase}-head`,
     remoteIndex: `${remoteBase}-index`,
     remoteWorktree: `${remoteBase}-worktree`,
     checkpoints: checkpointRefs.map((local, index) => ({
@@ -230,31 +233,37 @@ export function continueBranchTransferRefs(
   };
 }
 
-function posixWorktreeTreeScript(tempVariable: string, outputVariable: string): string {
-  return [
+/** Export from the real index; verify against exported paths even if local ignore rules differ. */
+function posixWorktreeTreeScript(
+  tempVariable: string,
+  outputVariable: string,
+  trackedTree?: string,
+): string {
+  const capture = [
+    `t3_snapshot_index=$(git write-tree)`,
     `${tempVariable}=$(mktemp)`,
-    `GIT_INDEX_FILE="$${tempVariable}" git read-tree HEAD`,
+    `trap 'rm -f "$${tempVariable}"' EXIT`,
+    `GIT_INDEX_FILE="$${tempVariable}" git read-tree ${trackedTree === undefined ? '"$t3_snapshot_index"' : shellQuote(trackedTree)}`,
     `GIT_INDEX_FILE="$${tempVariable}" git add -A`,
-    `${outputVariable}=$(GIT_INDEX_FILE="$${tempVariable}" git write-tree)`,
-    `rm -f "$${tempVariable}"`,
+    `GIT_INDEX_FILE="$${tempVariable}" git write-tree`,
   ].join(" && ");
+  return `${outputVariable}=$(${capture})`;
 }
 
 function powershellGit(command: string): string {
   return `${command}; if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`;
 }
 
-function powershellWorktreeTreeScript(tempVariable: string, outputVariable: string): string {
+function powershellWorktreeTreeScript(
+  tempVariable: string,
+  outputVariable: string,
+  trackedTree?: string,
+): string {
   return [
+    powershellGit(`$t3SnapshotIndex = git write-tree`),
     `$${tempVariable} = Join-Path $env:TEMP ('t3-transfer-' + [guid]::NewGuid())`,
     `$t3PreviousIndex = $env:GIT_INDEX_FILE`,
-    `$env:GIT_INDEX_FILE = $${tempVariable}`,
-    powershellGit("git read-tree HEAD"),
-    powershellGit("git add -A"),
-    `$${outputVariable} = git write-tree`,
-    `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
-    `$env:GIT_INDEX_FILE = $t3PreviousIndex`,
-    `Remove-Item -Force -ErrorAction SilentlyContinue $${tempVariable}`,
+    `try { $env:GIT_INDEX_FILE = $${tempVariable}; ${powershellGit(`git read-tree ${trackedTree === undefined ? "$t3SnapshotIndex" : powershellQuote(trackedTree)}`)}; ${powershellGit("git add -A")}; ${powershellGit(`$${outputVariable} = git write-tree`)} } finally { $env:GIT_INDEX_FILE = $t3PreviousIndex; Remove-Item -Force -ErrorAction SilentlyContinue $${tempVariable} }`,
   ].join("; ");
 }
 
@@ -265,7 +274,8 @@ export function continueBranchSnapshotPushCommand(input: {
 }): string {
   const { refs } = input;
   const pushRefspecs = [
-    `HEAD:refs/heads/${input.branch}`,
+    `${refs.localHead}:refs/heads/${input.branch}`,
+    `${refs.localHead}:${refs.remoteHead}`,
     `${refs.localIndex}:${refs.remoteIndex}`,
     `${refs.localWorktree}:${refs.remoteWorktree}`,
     ...refs.checkpoints.map((checkpoint) => `${checkpoint.local}:${checkpoint.remote}`),
@@ -284,7 +294,7 @@ export function continueBranchSnapshotPushCommand(input: {
       powershellGit(`git update-ref ${powershellQuote(refs.localHead)} $t3Head`),
       powershellGit(`git update-ref ${powershellQuote(refs.localIndex)} $t3IndexCommit`),
       powershellGit(`git update-ref ${powershellQuote(refs.localWorktree)} $t3WorktreeCommit`),
-      powershellGit(`git push origin ${pushRefspecs.map(powershellQuote).join(" ")}`),
+      powershellGit(`git push --atomic origin ${pushRefspecs.map(powershellQuote).join(" ")}`),
     ].join("; ");
   }
   return [
@@ -296,7 +306,7 @@ export function continueBranchSnapshotPushCommand(input: {
     `git update-ref ${shellQuote(refs.localHead)} "$t3_head"`,
     `git update-ref ${shellQuote(refs.localIndex)} "$t3_index_commit"`,
     `git update-ref ${shellQuote(refs.localWorktree)} "$t3_worktree_commit"`,
-    `git push origin ${pushRefspecs.map(shellQuote).join(" ")}`,
+    `git push --atomic origin ${pushRefspecs.map(shellQuote).join(" ")}`,
   ].join(" && ");
 }
 
@@ -306,7 +316,7 @@ export function continueBranchTransferFetchCommand(input: {
 }): string {
   const refspecs = [
     `+refs/heads/${input.branch}:refs/remotes/origin/${input.branch}`,
-    `+refs/heads/${input.branch}:${input.refs.localHead}`,
+    `+${input.refs.remoteHead}:${input.refs.localHead}`,
     `+${input.refs.remoteIndex}:${input.refs.localIndex}`,
     `+${input.refs.remoteWorktree}:${input.refs.localWorktree}`,
     ...input.refs.checkpoints.map(
@@ -323,6 +333,10 @@ export function continueBranchApplySnapshotCommand(input: {
 }): string {
   const expectedIndex = `${input.refs.localIndex}^{tree}`;
   const expectedWorktree = `${input.refs.localWorktree}^{tree}`;
+  // Checkout protects ignored files as well as ordinary untracked files. Once
+  // it succeeds, restore the captured branch tip and index without touching the
+  // restored working files, so staged and unstaged changes remain separate.
+  const ancestryError = "error: Destination branch contains commits outside the source snapshot.";
   if (input.platform === "windows") {
     const checkpointChecks = input.refs.checkpoints.flatMap((checkpoint, index) => [
       `git show-ref --verify --quiet ${powershellQuote(checkpoint.local)}`,
@@ -338,11 +352,20 @@ export function continueBranchApplySnapshotCommand(input: {
     const exactCheck = [
       `$t3CurrentHead = git rev-parse HEAD`,
       `$t3CurrentIndex = git write-tree`,
-      powershellWorktreeTreeScript("t3VerifyIndex", "t3CurrentWorktree"),
+      powershellWorktreeTreeScript("t3VerifyIndex", "t3CurrentWorktree", expectedWorktree),
       `$t3ExpectedHead = git rev-parse ${powershellQuote(input.refs.localHead)}`,
       `$t3ExpectedIndex = git rev-parse ${powershellQuote(expectedIndex)}`,
       `$t3ExpectedWorktree = git rev-parse ${powershellQuote(expectedWorktree)}`,
       `if ($t3CurrentHead -ne $t3ExpectedHead -or $t3CurrentIndex -ne $t3ExpectedIndex -or $t3CurrentWorktree -ne $t3ExpectedWorktree) { throw 'Destination checkout contains unrelated changes' }`,
+    ].join("; ");
+    const restoreCleanCheckout = [
+      `git merge-base --is-ancestor HEAD ${powershellQuote(input.refs.localHead)}`,
+      `if ($LASTEXITCODE -ne 0) { throw ${powershellQuote(ancestryError)} }`,
+      powershellGit(
+        `git checkout --no-overwrite-ignore -B ${powershellQuote(input.branch)} ${powershellQuote(input.refs.localWorktree)}`,
+      ),
+      powershellGit(`git reset --soft ${powershellQuote(input.refs.localHead)}`),
+      powershellGit(`git read-tree ${powershellQuote(expectedIndex)}`),
     ].join("; ");
     return [
       ...checkpointChecks,
@@ -350,7 +373,7 @@ export function continueBranchApplySnapshotCommand(input: {
       `if ($LASTEXITCODE -ne 0 -or $t3CurrentBranch -ne ${powershellQuote(input.branch)}) { throw 'Destination checkout is on a different branch' }`,
       `$t3Dirty = git status --porcelain --untracked-files=all`,
       `if ($LASTEXITCODE -ne 0) { throw 'Git command failed' }`,
-      `if ($t3Dirty) { ${exactCheck} } else { ${powershellGit(`git merge --ff-only ${powershellQuote(`refs/remotes/origin/${input.branch}`)}`)}; ${powershellGit(`git read-tree ${powershellQuote(expectedIndex)}`)}; ${powershellGit(`git restore --worktree --source=${powershellQuote(expectedWorktree)} -- .`)} }`,
+      `if ($t3Dirty) { ${exactCheck} } else { ${restoreCleanCheckout} }`,
       ...checkpointUpdates,
     ].join("; ");
   }
@@ -365,13 +388,20 @@ export function continueBranchApplySnapshotCommand(input: {
   const exactCheck = [
     `test "$(git rev-parse HEAD)" = "$(git rev-parse ${shellQuote(input.refs.localHead)})"`,
     `test "$(git write-tree)" = "$(git rev-parse ${shellQuote(expectedIndex)})"`,
-    posixWorktreeTreeScript("t3_verify_index", "t3_current_worktree"),
+    posixWorktreeTreeScript("t3_verify_index", "t3_current_worktree", expectedWorktree),
     `test "$t3_current_worktree" = "$(git rev-parse ${shellQuote(expectedWorktree)})"`,
+  ].join(" && ");
+  const restoreCleanCheckout = [
+    `(git merge-base --is-ancestor HEAD ${shellQuote(input.refs.localHead)} || { printf '%s\\n' ${shellQuote(ancestryError)} >&2; false; })`,
+    `git checkout --no-overwrite-ignore -B ${shellQuote(input.branch)} ${shellQuote(input.refs.localWorktree)}`,
+    `git reset --soft ${shellQuote(input.refs.localHead)}`,
+    `git read-tree ${shellQuote(expectedIndex)}`,
   ].join(" && ");
   return [
     ...checkpointChecks,
     `test "$(git branch --show-current)" = ${shellQuote(input.branch)}`,
-    `if test -n "$(git status --porcelain --untracked-files=all)"; then ${exactCheck}; else git merge --ff-only ${shellQuote(`refs/remotes/origin/${input.branch}`)} && git read-tree ${shellQuote(expectedIndex)} && git restore --worktree --source=${shellQuote(expectedWorktree)} -- .; fi`,
+    `t3_dirty=$(git status --porcelain --untracked-files=all)`,
+    `if test -n "$t3_dirty"; then ${exactCheck}; else ${restoreCleanCheckout}; fi`,
     ...checkpointUpdates,
   ].join(" && ");
 }
@@ -387,7 +417,11 @@ export function continueBranchVerifySourceCommand(input: {
       `if ($LASTEXITCODE -ne 0 -or $t3CurrentBranch -ne ${powershellQuote(input.branch)}) { throw 'Source checkout changed branch during transfer' }`,
       `$t3CurrentHead = git rev-parse HEAD`,
       `$t3CurrentIndex = git write-tree`,
-      powershellWorktreeTreeScript("t3VerifyIndex", "t3CurrentWorktree"),
+      powershellWorktreeTreeScript(
+        "t3VerifyIndex",
+        "t3CurrentWorktree",
+        `${input.refs.localWorktree}^{tree}`,
+      ),
       `$t3ExpectedHead = git rev-parse ${powershellQuote(input.refs.localHead)}`,
       `$t3ExpectedIndex = git rev-parse ${powershellQuote(`${input.refs.localIndex}^{tree}`)}`,
       `$t3ExpectedWorktree = git rev-parse ${powershellQuote(`${input.refs.localWorktree}^{tree}`)}`,
@@ -398,7 +432,11 @@ export function continueBranchVerifySourceCommand(input: {
     `test "$(git branch --show-current)" = ${shellQuote(input.branch)}`,
     `test "$(git rev-parse HEAD)" = "$(git rev-parse ${shellQuote(input.refs.localHead)})"`,
     `test "$(git write-tree)" = "$(git rev-parse ${shellQuote(`${input.refs.localIndex}^{tree}`)})"`,
-    posixWorktreeTreeScript("t3_verify_index", "t3_current_worktree"),
+    posixWorktreeTreeScript(
+      "t3_verify_index",
+      "t3_current_worktree",
+      `${input.refs.localWorktree}^{tree}`,
+    ),
     `test "$t3_current_worktree" = "$(git rev-parse ${shellQuote(`${input.refs.localWorktree}^{tree}`)})"`,
   ].join(" && ");
 }
@@ -411,6 +449,7 @@ export function continueBranchCleanupCommand(input: {
   const quote = input.platform === "windows" ? powershellQuote : shellQuote;
   const separator = input.platform === "windows" ? "; " : "; ";
   const remoteTrackingRefs = [
+    input.refs.remoteHead,
     input.refs.remoteIndex,
     input.refs.remoteWorktree,
     ...input.refs.checkpoints.map((checkpoint) => checkpoint.remote),
@@ -426,6 +465,7 @@ export function continueBranchCleanupCommand(input: {
     .join(separator);
   if (!input.includeRemote) return local;
   const remoteBranches = [
+    input.refs.remoteHead,
     input.refs.remoteIndex,
     input.refs.remoteWorktree,
     ...input.refs.checkpoints.map((checkpoint) => checkpoint.remote),

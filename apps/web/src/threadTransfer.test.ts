@@ -226,6 +226,75 @@ describe("thread transfer preparation", () => {
       downloadable: false,
     });
   });
+
+  it("preserves imported history when a chat moves again before its first native turn", async () => {
+    const previousArchive = await archive();
+    const nativeThread = { ...thread(), id: makeTransferredThreadId("second"), messages: [] };
+    const loadAttachment = vi.fn(async () => {
+      throw new Error("The original attachments are not on this environment");
+    });
+    const prepared = await prepareTransferredThreadArchive({
+      sourceEnvironmentId: EnvironmentId.make("second-machine"),
+      thread: nativeThread,
+      modelSelection: sourceModel,
+      previousArchive,
+      loadAttachment,
+    });
+
+    expect(prepared.thread.messages.map((message) => message.text)).toEqual(["First", "Second"]);
+    expect(prepared.thread.messages[0]?.attachments?.[0]).toMatchObject({
+      previewUrl: "data:image/png;base64,AQID",
+    });
+    expect(loadAttachment).not.toHaveBeenCalled();
+    expect(prepared.sourceFingerprint).toBe(await fingerprintTransferredThread(nativeThread));
+  });
+
+  it("exports original history and new turns without nesting provider context on repeated moves", async () => {
+    const previousArchive = await archive();
+    const nativeThread = {
+      ...thread(),
+      id: makeTransferredThreadId("second"),
+      messages: [
+        {
+          ...thread().messages[0]!,
+          id: MessageId.make("second-machine-message"),
+          text: buildTransferredChatProviderInput({ archive: previousArchive, userInput: "Third" }),
+          attachments: undefined,
+        },
+      ],
+    };
+    const prepared = await prepareTransferredThreadArchive({
+      sourceEnvironmentId: EnvironmentId.make("second-machine"),
+      thread: nativeThread,
+      modelSelection: sourceModel,
+      previousArchive,
+      loadAttachment: async () => {
+        throw new Error("Original source is offline");
+      },
+    });
+    const nextThreadId = makeTransferredThreadId("third");
+    const encoded = await encodeTransferredThreadArchiveFiles(nextThreadId, prepared);
+    const files = new Map(encoded.files.map((file) => [file.relativePath, file.contents]));
+    const reloaded = await loadTransferredThreadArchive({
+      destinationThreadId: nextThreadId,
+      readFile: async (relativePath) => {
+        const contents = files.get(relativePath)!;
+        return {
+          contents,
+          byteLength: new TextEncoder().encode(contents).length,
+          truncated: false,
+        };
+      },
+    });
+    expect(reloaded.thread.messages.map((message) => message.text)).toEqual([
+      "First",
+      "Second",
+      "Third",
+    ]);
+    const nextInput = buildTransferredChatProviderInput({ archive: reloaded, userInput: "Fourth" });
+    expect(stripTransferredChatProviderContext(nextInput)).toBe("Fourth");
+    expect(nextInput.match(/<t3-transferred-chat-context /g)).toHaveLength(1);
+  });
 });
 
 describe("destination history capsule", () => {

@@ -56,11 +56,15 @@ attachments, plans, activity history, and checkpoint history.
 
 Committed, staged, unstaged, and non-ignored untracked Git work is restored exactly on the other
 machine. The branch is published as `origin/<branch>`; its configured upstream is ignored. Ignored
-files stay in the source checkout. Both machines need non-interactive access to that `origin`.
+untracked files stay in the source checkout. Files already staged remain included even if their
+names match an ignore rule. Both machines need non-interactive access to that `origin`, and the
+remote must support atomic pushes. A move refuses to overwrite existing destination files,
+including ignored files, or replace destination commits outside the source history.
 
 The complete conversation is stored as a verified, Git-ignored history capsule in the destination
 checkout and remains available after reconnecting or reloading. Historical approvals, plan actions,
 and checkpoint reverts are read-only there; new destination turns remain fully interactive.
+Moving the chat again includes this imported history and its saved images along with later turns.
 
 The source chat is archived only after the destination history and both Git states have been
 verified, and it remains available under Archive as a recovery copy. If verification fails or the

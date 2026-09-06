@@ -51,6 +51,8 @@ import {
   blobToDataUrl,
   cacheTransferredThreadArchive,
   fingerprintTransferredThread,
+  isTransferredThreadId,
+  loadTransferredThreadArchive,
   makeTransferredThreadId,
   persistTransferredThreadArchive,
   prepareTransferredThreadArchive,
@@ -319,11 +321,25 @@ export function useContinueBranch() {
           return;
         }
 
-        const archiveResult = await settlePromise(() =>
-          prepareTransferredThreadArchive({
+        const archiveResult = await settlePromise(async () => {
+          const previousArchive = isTransferredThreadId(sourceThread.id)
+            ? await loadTransferredThreadArchive({
+                destinationThreadId: sourceThread.id,
+                readFile: async (relativePath) => {
+                  const result = await readProjectFile({
+                    environmentId: input.sourceEnvironmentId,
+                    input: { cwd: input.sourceCwd, relativePath },
+                  });
+                  if (result._tag === "Failure") throw new Error(failureMessage(result));
+                  return result.value;
+                },
+              })
+            : null;
+          return prepareTransferredThreadArchive({
             sourceEnvironmentId: input.sourceEnvironmentId,
             thread: sourceThread,
             modelSelection,
+            previousArchive,
             loadAttachment: async (attachment: ChatAttachment) => {
               const urlResult = await createAssetUrl({
                 environmentId: input.sourceEnvironmentId,
@@ -348,10 +364,10 @@ export function useContinueBranch() {
               }
               return blobToDataUrl(new Blob([bytes], { type: attachment.mimeType }));
             },
-          }),
-        );
+          });
+        });
         if (archiveResult._tag === "Failure") {
-          fail("Could not copy chat attachments", failureMessage(archiveResult));
+          fail("Could not copy chat history", failureMessage(archiveResult));
           return;
         }
         const archive = archiveResult.value;
@@ -378,7 +394,7 @@ export function useContinueBranch() {
         const operationId = randomUUID().replaceAll("-", "");
         const transferRefs = continueBranchTransferRefs(
           operationId,
-          sourceThread.checkpoints.map((checkpoint) => checkpoint.checkpointRef),
+          archive.thread.checkpoints.map((checkpoint) => checkpoint.checkpointRef),
         );
         let destinationCleanupCwd = input.target.workspaceRoot;
         const cleanupTransfer = async () => {

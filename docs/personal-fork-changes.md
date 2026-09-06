@@ -140,13 +140,20 @@ This file is both the current inventory and the retirement record used during up
   source-environment asset bytes are not part of the documented portable capsule; image bytes are.
 - The client captures the source HEAD, index, and non-ignored worktree as separate temporary Git
   trees. It pushes those trees, the exact local branch as `origin/<branch>`, and checkpoint objects
-  through operation-scoped remote refs. The destination creates or reuses the branch's normal
+  through operation-scoped remote refs in one atomic push. The captured HEAD has its own remote
+  ref, so later branch pushes cannot change the snapshot being restored. The worktree snapshot
+  starts from the real index to include force-added ignored files; verification tracks exported
+  paths even when the destination has different local ignore rules.
+  The destination creates or reuses the branch's normal
   worktree, rejects unrelated existing changes or checkpoint refs, and restores committed, staged,
   unstaged, and non-ignored untracked state exactly. Source and destination Git state are verified
   before the source lifecycle changes. Temporary local, tracking, and remote refs are cleaned on
   success and bounded failure paths. Hidden terminal Git commands disable Git, Credential Manager,
   and SSH askpass prompts. A destination without usable credentials fails with its terminal error
   instead of waiting on an invisible prompt.
+- Restoration rejects destination-only commits and uses Git's no-overwrite-ignore checkout before
+  restoring the captured HEAD and staged index. Ignored file and directory collisions fail before
+  modifying the destination, and the error includes the conflicting paths.
 - The implementation uses only unmodified upstream server operations. It pages the stock thread
   snapshot API where supported, downloads every referenced image once, and writes a versioned
   history capsule through the stock project-file RPC. Capsules live in the destination checkout at
@@ -154,6 +161,10 @@ This file is both the current inventory and the retirement record used during up
   limit, SHA-256 verified after writing, and excluded through the repository's local Git exclude
   file. The web client loads and verifies the capsule after reload, then overlays later native
   destination events by ID.
+- Subsequent moves reload and verify the existing capsule, merge it with the native source
+  snapshot, and reuse its embedded image bytes. Export strips prior provider context envelopes
+  from user messages so later moves do not nest the transcript. Race detection fingerprints the
+  native source snapshot independently of the combined exported history.
 - A move never deletes the source. After the capsule, destination thread, and both Git states pass
   integrity checks, the client archives the source as a recoverable backup. It reads the source
   again after archiving and compares a content fingerprint that ignores only archive lifecycle
