@@ -13,6 +13,7 @@ import {
   type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderSession,
+  type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
   ThreadId,
   TurnId,
@@ -36,21 +37,17 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { ProviderAdapterRequestError, ProviderAdapterValidationError } from "../Errors.ts";
+import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import {
-  CodexSessionRuntimeTurnSteerRejectedError,
-  type CodexSendTurnResult,
   type CodexSessionRuntimeOptions,
-  type CodexSessionRuntimeError,
   type CodexSessionRuntimeSendTurnInput,
   type CodexSessionRuntimeShape,
   type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
 import { makeCodexAdapter } from "./CodexAdapter.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
-const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 
 // Test-local service tag so the rest of the file can keep using `yield* CodexAdapter`.
 class CodexAdapter extends Context.Service<CodexAdapter, CodexAdapterShape>()(
@@ -80,11 +77,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   );
 
   public readonly sendTurnImpl = vi.fn(
-    (_input: CodexSessionRuntimeSendTurnInput): Promise<CodexSendTurnResult> =>
+    (_input: CodexSessionRuntimeSendTurnInput): Promise<ProviderTurnStartResult> =>
       Promise.resolve({
         threadId: this.options.threadId,
         turnId: asTurnId("turn-1"),
-        steered: false,
       }),
   );
 
@@ -136,9 +132,7 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
 
   getSession = Effect.promise(() => this.startImpl());
 
-  sendTurn(
-    input: CodexSessionRuntimeSendTurnInput,
-  ): Effect.Effect<CodexSendTurnResult, CodexSessionRuntimeError> {
+  sendTurn(input: CodexSessionRuntimeSendTurnInput) {
     return Effect.promise(() => this.sendTurnImpl(input));
   }
 
@@ -450,39 +444,6 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         effort: "high",
         serviceTier: "priority",
       });
-    }),
-  );
-
-  it.effect("preserves steer rejection reason and delivery certainty", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CodexAdapter;
-      const threadId = asThreadId("sess-steer-mismatch");
-      yield* adapter.startSession({
-        provider: ProviderDriverKind.make("codex"),
-        threadId,
-        runtimeMode: "full-access",
-      });
-      const runtime = sessionRuntimeFactory.lastRuntime;
-      NodeAssert.ok(runtime);
-      vi.spyOn(runtime, "sendTurn").mockReturnValue(
-        Effect.fail(
-          new CodexSessionRuntimeTurnSteerRejectedError({
-            threadId,
-            expectedTurnId: "turn-expected",
-            steeredTurnId: "turn-other",
-            reason: "turn-id-mismatch",
-          }),
-        ),
-      );
-
-      const result = yield* adapter
-        .sendTurn({ threadId, input: "hello", attachments: [] })
-        .pipe(Effect.result);
-
-      NodeAssert.equal(result._tag, "Failure");
-      NodeAssert.ok(isProviderAdapterRequestError(result.failure));
-      NodeAssert.equal(result.failure.reason, "turn-id-mismatch");
-      NodeAssert.equal(result.failure.delivery, "uncertain");
     }),
   );
 

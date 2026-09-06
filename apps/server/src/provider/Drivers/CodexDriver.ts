@@ -23,7 +23,6 @@
  */
 import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -38,18 +37,17 @@ import { expandHomePath } from "../../pathExpansion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeCodexAdapter } from "../Layers/CodexAdapter.ts";
-import { resolveCodexLaunchArgs } from "../Layers/codexLaunchArgs.ts";
 import {
   CODEX_RESET_CREDIT_TIMEOUT,
   CodexResetCreditCoordinator,
 } from "../Layers/codexResetCredit.ts";
 import {
   checkCodexProviderStatus,
-  listCodexProviderSkills,
   makePendingCodexProvider,
   probeCodexSkillsForCwd,
   withCodexAppServerClient,
 } from "../Layers/CodexProvider.ts";
+import { resolveCodexLaunchArgs } from "../Layers/codexLaunchArgs.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -273,29 +271,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
               ),
             );
 
-      const listSkills = (cwd: string) =>
-        listCodexProviderSkills({
-          binaryPath: effectiveConfig.binaryPath,
-          homePath: effectiveConfig.homePath,
-          launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
-          cwd,
-          environment: processEnv,
-        }).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.scoped,
-          Effect.timeout(Duration.seconds(10)),
-          Effect.catch((error) =>
-            Effect.logWarning("Codex workspace skill discovery failed; using global skills.", {
-              cwd,
-              error: String(error),
-              instanceId,
-            }).pipe(
-              Effect.andThen(snapshot.getSnapshot),
-              Effect.map((provider) => provider.skills),
-            ),
-          ),
-        );
-
       // Redemption spends something on the user's account. It serialises on
       // the account (instances sharing a Codex home share the credit), keeps
       // one idempotency key until Codex reports an outcome, and is bounded so
@@ -370,7 +345,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         consumeResetCredit,
         adapter,
         textGeneration,
-        listSkills,
       } satisfies ProviderInstance;
     }),
 };

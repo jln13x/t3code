@@ -63,7 +63,6 @@ import { ServerConfig } from "../../config.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
-  CodexSessionRuntimeTurnSteerRejectedError,
   describeMcpElicitation,
   makeCodexSessionRuntime,
   type CodexSessionRuntimeError,
@@ -77,9 +76,6 @@ const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerP
 const isCodexAppServerTransportError = Schema.is(CodexErrors.CodexAppServerTransportError);
 const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
   CodexSessionRuntimeThreadIdMissingError,
-);
-const isCodexSessionRuntimeTurnSteerRejectedError = Schema.is(
-  CodexSessionRuntimeTurnSteerRejectedError,
 );
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
@@ -149,19 +145,6 @@ function mapCodexRuntimeError(
     return new ProviderAdapterSessionNotFoundError({
       provider: PROVIDER,
       threadId,
-      cause: error,
-    });
-  }
-
-  // A refused steer is not a failed turn start: reporting it under the method
-  // that was actually attempted keeps the surfaced detail honest.
-  if (isCodexSessionRuntimeTurnSteerRejectedError(error)) {
-    return new ProviderAdapterRequestError({
-      provider: PROVIDER,
-      method: "turn/steer",
-      detail: error.message,
-      reason: error.reason,
-      delivery: error.reason === "turn-id-mismatch" ? "uncertain" : "not-delivered",
       cause: error,
     });
   }

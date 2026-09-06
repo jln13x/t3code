@@ -1,9 +1,8 @@
 # Personal Fork Changes
 
-The personal fork intentionally maintains six product differences from `upstream/main`: desktop
+The personal fork intentionally maintains five product differences from `upstream/main`: desktop
 fork identity, completion/attention sounds, native macOS completion notifications,
-worktree-grouped web/desktop threads, cross-environment chat transfer, and Codex skill
-and active-turn handling. Everything else follows upstream directly.
+worktree-grouped web/desktop threads, and cross-environment chat transfer. Everything else follows upstream directly.
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
@@ -104,31 +103,6 @@ This file is both the current inventory and the retirement record used during up
   extended rather than replaced. Future merges must preserve upstream search, drafts, pinning and
   reorder, lifecycle/context-menu actions, provider badges, shelf persistence, and PR snapshots.
 
-### Codex explicit skill invocation and active-turn steering
-
-- Upstream now discovers provider skills and slash commands for the active workspace through its
-  workspace snapshots. The fork retains its project-scoped `providerSkills` RPC for explicit
-  `$skill-name` lookup, so structured invocation is still bound against the exact project or
-  worktree rather than the server process directory.
-- Explicit `$skill-name` tokens are sent to Codex as structured skill inputs while the original
-  prompt text remains intact.
-- Unknown explicit skill names fail visibly instead of silently becoming plain prompt text.
-  Path-like shell variables such as `$HOME/.config` remain ordinary text.
-- A message sent during an active Codex turn uses native `turn/steer` instead of a second
-  `turn/start`. The start response ID remains authoritative for steering, interrupting, and emitted
-  lifecycle events even when an earlier `turn/started` notification names a different review turn.
-- Upstream [#9180](https://github.com/pingdotgg/t3code/pull/9180) superseded the fork's general
-  workspace-aware discovery behavior. Upstream [#7196](https://github.com/pingdotgg/t3code/pull/7196)
-  remains the source candidate for structured invocation and token matching. Upstream
-  [#5795](https://github.com/pingdotgg/t3code/pull/5795) is the adapter-only steering candidate;
-  it remains open.
-- Fork implementation: [jln13x/t3code#28](https://github.com/jln13x/t3code/pull/28).
-- Sync boundary: preserve the project-scoped `providerSkills` RPC path through contracts, server
-  registry, client runtime, and the explicit `$skill` composer query while retaining upstream
-  workspace snapshots for slash menus. In `CodexSessionRuntime`, skill binding stays shared by
-  `turn/start` and `turn/steer`; the start-response ID handoff must remain available until the
-  queued `turn/started` notification is projected.
-
 ### Cross-environment chat transfer
 
 - On web/desktop, **Move chat to…** transfers an idle thread to a connected environment that has the
@@ -174,11 +148,21 @@ This file is both the current inventory and the retirement record used during up
   transport in `apps/web`. Preserve upstream contracts, `apps/server`, client-runtime command
   unions, and server databases unchanged.
 
+## Retired on 2026-09-06
+
+- Codex active-turn steering, structured `$skill` invocation, and unknown-skill rejection now follow
+  upstream behavior. The fork no longer sends native `turn/steer` requests or interprets ordinary
+  shell variables as mandatory skill invocations.
+- The project-scoped `server.listProviderSkills` RPC and its contracts, registry hooks, and client
+  query are removed. Web, desktop, and mobile use upstream workspace snapshots for skill menus.
+- Do not restore these provider overrides during syncs. Upstream Codex turn handling and workspace
+  discovery are authoritative, including their future changes.
+
 ## Retired on 2026-08-18
 
-| Customization              | Retirement                                                                                                                                                                                                                                                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Active-turn message queues | PR [#28](https://github.com/jln13x/t3code/pull/28) briefly added a durable server queue, and [#35](https://github.com/jln13x/t3code/pull/35) replaced it with a client-local web queue. Both queues are retired. Active-turn sends now submit immediately through the existing turn-start path, including native Codex steering. |
+| Customization              | Retirement                                                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active-turn message queues | PR [#28](https://github.com/jln13x/t3code/pull/28) briefly added a durable server queue, and [#35](https://github.com/jln13x/t3code/pull/35) replaced it with a client-local web queue. Both queues are retired. Active-turn sends follow upstream behavior; native Codex steering was retired on 2026-09-06. |
 
 ## Retired on 2026-08-16
 
