@@ -231,7 +231,6 @@ export function subscribeThreadPreviewState(
     listener(state, prior);
   });
 }
-
 export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEvent): void {
   updateThreadPreviewState(ref, (current) => {
     if (current.serverEpoch !== null && event.serverEpoch !== current.serverEpoch) return current;
@@ -526,7 +525,6 @@ export function removePreviewThread(ref: ScopedThreadRef): void {
     changedPreviewThreadKeys.delete(threadKey);
   }
 }
-
 export function isPreviewSupportedInRuntime(): boolean {
   if (typeof window === "undefined") return false;
   return Boolean(window.desktopBridge?.preview);
