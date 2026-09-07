@@ -68,7 +68,8 @@ it("exports exact object result schemas for preview actions", () => {
     expect(Tool.getJsonSchemaFromSchema(PreviewToolkit.tools[name].successSchema)).toEqual({
       type: "object",
       additionalProperties: false,
-      description: "The preview action completed successfully.",
+      properties: { ok: { type: "boolean", enum: [true] } },
+      required: ["ok"],
     });
   }
 });
