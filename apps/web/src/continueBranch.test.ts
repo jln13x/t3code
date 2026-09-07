@@ -4,7 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { EnvironmentId, ProjectId, type VcsRef } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   CONTINUE_BRANCH_GIT_ENV,
@@ -29,6 +29,13 @@ const { execFileSync } = NodeChildProcess;
 const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = NodeFS;
 const { tmpdir } = NodeOS;
 const { join } = NodePath;
+const powershellExecutable = process.env.T3CODE_TEST_PWSH ?? "pwsh";
+const hasPowerShell =
+  NodeChildProcess.spawnSync(
+    powershellExecutable,
+    ["-NoProfile", "-NonInteractive", "-Command", "exit 0"],
+    { stdio: "ignore" },
+  ).status === 0;
 
 function project(environmentId: string, id: string, root: string, canonicalKey: string) {
   return {
@@ -219,16 +226,123 @@ describe("resolveContinueBranchPushPlan", () => {
       }),
     ).toBe("The Git command timed out.");
   });
+
+  it("includes conflicting destination paths in the transfer error", () => {
+    expect(
+      continueBranchTerminalFailureMessage({
+        buffer:
+          "error: The following untracked working tree files would be overwritten by checkout:\n\tlocal data.txt\nPlease move or remove them before you switch branches.\nAborting\n__DONE__:1\n",
+        marker: "__DONE__:",
+        fallback: "Git command failed",
+      }),
+    ).toContain("local data.txt");
+  });
 });
 
 describe("complete Git transfer", () => {
+  const temporaryRoots = new Set<string>();
+  afterEach(() => {
+    for (const root of temporaryRoots) NodeFS.rmSync(root, { recursive: true, force: true });
+    temporaryRoots.clear();
+  });
   const git = (cwd: string, ...args: string[]) =>
-    execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   const bash = (cwd: string, command: string) =>
-    execFileSync("bash", ["-c", command], { cwd, encoding: "utf8" });
+    execFileSync("bash", ["-c", command], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+  function transferRepositories() {
+    const root = mkdtempSync(join(tmpdir(), "t3-chat-transfer-regression-"));
+    temporaryRoots.add(root);
+    const remote = join(root, "remote.git");
+    const source = join(root, "source");
+    const destination = join(root, "destination");
+    git(root, "init", "--bare", remote);
+    git(root, "init", "-b", "feat/move", source);
+    git(source, "config", "user.name", "Test");
+    git(source, "config", "user.email", "test@example.com");
+    writeFileSync(join(source, "tracked.txt"), "base\n");
+    writeFileSync(join(source, ".gitignore"), "*.ignored\n");
+    git(source, "add", ".");
+    git(source, "commit", "-m", "base");
+    git(source, "remote", "add", "origin", remote);
+    git(source, "push", "-u", "origin", "feat/move");
+    git(root, "clone", "--branch", "feat/move", remote, destination);
+    git(destination, "config", "user.name", "Test");
+    git(destination, "config", "user.email", "test@example.com");
+    const refs = continueBranchTransferRefs("regression", []);
+    const input = { branch: "feat/move", refs, platform: "linux" as const };
+    return { source, destination, remote, input };
+  }
+
+  function powershell(cwd: string, command: string) {
+    const marker = "__T3_POWERSHELL_TRANSFER_TEST__:";
+    const output = execFileSync(
+      powershellExecutable,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        continueBranchTerminalCommand({ command, marker, platform: "windows" }),
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        env: { ...process.env, TEMP: tmpdir() },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+    const status = output.match(/__T3_POWERSHELL_TRANSFER_TEST__:(\d+)/)?.[1];
+    if (status === undefined) throw new Error(`Missing transfer status: ${output}`);
+    return Number(status);
+  }
+
+  it.skipIf(!hasPowerShell)("executes a PowerShell transfer with staged ignored files", () => {
+    const fixture = transferRepositories();
+    const { source, destination } = fixture;
+    const input = { ...fixture.input, platform: "windows" as const };
+    writeFileSync(join(source, "new.ignored"), "staged\n");
+    git(source, "add", "-f", "new.ignored");
+    writeFileSync(join(source, "new.ignored"), "unstaged\n");
+    const head = git(source, "rev-parse", "HEAD");
+
+    expect(powershell(source, continueBranchSnapshotPushCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchTransferFetchCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchApplySnapshotCommand(input))).toBe(0);
+    expect(git(destination, "rev-parse", "HEAD")).toBe(head);
+    expect(readFileSync(join(destination, "new.ignored"), "utf8")).toBe("unstaged\n");
+    expect(git(destination, "diff", "--cached")).toBe(git(source, "diff", "--cached"));
+    expect(git(destination, "diff")).toBe(git(source, "diff"));
+    expect(powershell(source, continueBranchVerifySourceCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchVerifySourceCommand(input))).toBe(0);
+    writeFileSync(join(destination, "new.ignored"), "changed after transfer\n");
+    expect(powershell(destination, continueBranchVerifySourceCommand(input))).toBe(1);
+  });
+
+  it.skipIf(!hasPowerShell)("rejects ignored destination collisions through PowerShell", () => {
+    const fixture = transferRepositories();
+    const { source, destination } = fixture;
+    const input = { ...fixture.input, platform: "windows" as const };
+    writeFileSync(join(source, "local data.txt"), "source content\n");
+    writeFileSync(join(destination, ".git", "info", "exclude"), "local data.txt\n");
+    writeFileSync(join(destination, "local data.txt"), "destination content\n");
+    const head = git(destination, "rev-parse", "HEAD");
+    const index = git(destination, "write-tree");
+
+    expect(powershell(source, continueBranchSnapshotPushCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchTransferFetchCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchApplySnapshotCommand(input))).toBe(1);
+    expect(git(destination, "rev-parse", "HEAD")).toBe(head);
+    expect(git(destination, "write-tree")).toBe(index);
+    expect(readFileSync(join(destination, "local data.txt"), "utf8")).toBe("destination content\n");
+  });
 
   it("restores committed, staged, unstaged, and untracked work without changing the source", () => {
     const root = mkdtempSync(join(tmpdir(), "t3-chat-transfer-"));
+    temporaryRoots.add(root);
     const remote = join(root, "remote.git");
     const source = join(root, "source");
     const destination = join(root, "destination");
@@ -337,6 +451,104 @@ describe("complete Git transfer", () => {
     );
     bash(source, continueBranchCleanupCommand({ refs, includeRemote: true, platform: "linux" }));
     expect(git(source, "rev-parse", checkpointRef)).toBe(sourceHead);
+  });
+
+  it("preserves force-added ignored files and their separate staged and unstaged contents", () => {
+    const { source, destination, input } = transferRepositories();
+    writeFileSync(join(source, "new.ignored"), "staged\n");
+    git(source, "add", "-f", "new.ignored");
+    writeFileSync(join(source, "new.ignored"), "unstaged\n");
+    const index = git(source, "write-tree");
+    bash(source, continueBranchSnapshotPushCommand(input));
+    bash(destination, continueBranchTransferFetchCommand(input));
+    bash(destination, continueBranchApplySnapshotCommand(input));
+
+    expect(readFileSync(join(destination, "new.ignored"), "utf8")).toBe("unstaged\n");
+    expect(git(destination, "write-tree")).toBe(index);
+    expect(git(destination, "diff")).toBe(git(source, "diff"));
+    expect(git(destination, "diff", "--cached")).toBe(git(source, "diff", "--cached"));
+    bash(source, continueBranchVerifySourceCommand(input));
+    bash(destination, continueBranchVerifySourceCommand(input));
+  });
+
+  it.each([
+    { incoming: "local data.txt", existing: "local data.txt", ignore: "local data.txt" },
+    { incoming: "directory", existing: "directory/private.txt", ignore: "directory/" },
+    { incoming: "directory/incoming.txt", existing: "directory", ignore: "directory" },
+  ])(
+    "rejects an ignored destination collision at $existing before changing files or HEAD",
+    ({ incoming, existing, ignore }) => {
+      const { source, destination, input } = transferRepositories();
+      mkdirSync(NodePath.dirname(join(source, incoming)), { recursive: true });
+      mkdirSync(NodePath.dirname(join(destination, existing)), { recursive: true });
+      writeFileSync(join(source, incoming), "incoming source content\n");
+      writeFileSync(join(destination, ".git", "info", "exclude"), `${ignore}\n`);
+      writeFileSync(join(destination, existing), "destination content\n");
+      const originalHead = git(destination, "rev-parse", "HEAD");
+      const originalIndex = git(destination, "write-tree");
+      bash(source, continueBranchSnapshotPushCommand(input));
+      bash(destination, continueBranchTransferFetchCommand(input));
+
+      expect(() => bash(destination, continueBranchApplySnapshotCommand(input))).toThrow();
+      expect(readFileSync(join(destination, existing), "utf8")).toBe("destination content\n");
+      expect(git(destination, "rev-parse", "HEAD")).toBe(originalHead);
+      expect(git(destination, "write-tree")).toBe(originalIndex);
+      expect(git(destination, "status", "--porcelain")).toBe("");
+    },
+  );
+
+  it("rejects a destination with newer local commits before restoring incoming work", () => {
+    const { source, destination, input } = transferRepositories();
+    writeFileSync(join(destination, "tracked.txt"), "newer destination commit\n");
+    git(destination, "add", ".");
+    git(destination, "commit", "-m", "destination work");
+    const originalHead = git(destination, "rev-parse", "HEAD");
+    bash(source, continueBranchSnapshotPushCommand(input));
+    bash(destination, continueBranchTransferFetchCommand(input));
+
+    expect(() => bash(destination, continueBranchApplySnapshotCommand(input))).toThrow();
+    expect(readFileSync(join(destination, "tracked.txt"), "utf8")).toBe(
+      "newer destination commit\n",
+    );
+    expect(git(destination, "rev-parse", "HEAD")).toBe(originalHead);
+    expect(git(destination, "status", "--porcelain")).toBe("");
+  });
+
+  it("verifies transferred untracked files even when the destination excludes their names", () => {
+    const { source, destination, input } = transferRepositories();
+    writeFileSync(join(source, "incoming.txt"), "source untracked content\n");
+    writeFileSync(join(destination, ".git", "info", "exclude"), "incoming.txt\n");
+    bash(source, continueBranchSnapshotPushCommand(input));
+    bash(destination, continueBranchTransferFetchCommand(input));
+    bash(destination, continueBranchApplySnapshotCommand(input));
+
+    expect(readFileSync(join(destination, "incoming.txt"), "utf8")).toBe(
+      "source untracked content\n",
+    );
+    bash(destination, continueBranchVerifySourceCommand(input));
+    writeFileSync(join(destination, "incoming.txt"), "changed after transfer\n");
+    expect(() => bash(destination, continueBranchVerifySourceCommand(input))).toThrow();
+  });
+
+  it("restores the captured HEAD even if the published branch advances before the fetch", () => {
+    const { source, destination, input } = transferRepositories();
+    const capturedHead = git(source, "rev-parse", "HEAD");
+    writeFileSync(join(source, "tracked.txt"), "source work\n");
+    bash(source, continueBranchSnapshotPushCommand(input));
+    writeFileSync(join(destination, "tracked.txt"), "later remote work\n");
+    git(destination, "add", ".");
+    git(destination, "commit", "-m", "later remote commit");
+    git(destination, "push", "origin", "feat/move");
+    git(destination, "reset", "--hard", capturedHead);
+    bash(destination, continueBranchTransferFetchCommand(input));
+    bash(destination, continueBranchApplySnapshotCommand(input));
+
+    expect(git(destination, "rev-parse", "HEAD")).toBe(capturedHead);
+    expect(readFileSync(join(destination, "tracked.txt"), "utf8")).toBe("source work\n");
+    bash(destination, continueBranchVerifySourceCommand(input));
+    bash(source, continueBranchCleanupCommand({ ...input, includeRemote: true }));
+    bash(destination, continueBranchCleanupCommand({ ...input, includeRemote: false }));
+    expect(git(destination, "for-each-ref", "--format=%(refname)", "refs/t3/transfers")).toBe("");
   });
 
   it("builds guarded PowerShell transfer commands for Windows environments", () => {
