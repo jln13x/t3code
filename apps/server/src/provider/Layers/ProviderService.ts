@@ -1456,13 +1456,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         status: "running",
         ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
         runtimePayload: {
-          // A steered message folds into a turn that is already running, so
-          // its model selection never reached the model. Persisting it would
-          // make the directory — and the UI after a reconnect — report a
-          // switch that did not happen.
-          ...(input.modelSelection !== undefined && turn.steered !== true
-            ? { modelSelection: input.modelSelection }
-            : {}),
+          ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
           activeTurnId: turn.turnId,
           // Admission and marker consumption must survive the same restart.
           continueAfterServerUpdate: null,
