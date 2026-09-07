@@ -3192,17 +3192,14 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   };
   const iconConfig = workToneIcon(workEntry.tone);
   const showWarningIndicator = workEntry.sourceActivityKind === "runtime.warning";
-  const showRejectedIndicator = workEntry.sourceActivityKind === "provider.turn.steer.rejected";
   const showFailedIndicator = workEntryDisplayIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
     (workEntrySignalsSevereFailure(workEntry) || !workLogEntryIsToolLike(workEntry));
   const entryIconName =
-    showWarningIndicator || showRejectedIndicator || showDestructiveRowStyle
-      ? "circle-alert"
-      : workEntryIconName(workEntry);
+    showWarningIndicator || showDestructiveRowStyle ? "circle-alert" : workEntryIconName(workEntry);
   const entryToolIcon =
-    showWarningIndicator || showRejectedIndicator || showDestructiveRowStyle
+    showWarningIndicator || showDestructiveRowStyle
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
   const previewText = displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot);
@@ -3235,7 +3232,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   // Reserve destructive row styling for severe failures, not routine tool errors.
   const iconWrapperClass = cn(
     "flex size-6 shrink-0 items-center justify-center",
-    showWarningIndicator || showRejectedIndicator
+    showWarningIndicator
       ? "text-warning"
       : showDestructiveRowStyle
         ? "text-destructive"
@@ -3247,13 +3244,11 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   );
   const headingClass = showWarningIndicator
     ? "font-medium text-warning"
-    : showRejectedIndicator
-      ? "font-medium text-warning"
-      : showDestructiveRowStyle
-        ? "font-medium text-destructive"
-        : workLogEntryIsToolLike(workEntry)
-          ? "text-secondary-label"
-          : "text-foreground/80";
+    : showDestructiveRowStyle
+      ? "font-medium text-destructive"
+      : workLogEntryIsToolLike(workEntry)
+        ? "text-secondary-label"
+        : "text-foreground/80";
   const accessibleDisplayText = showFailedIndicator
     ? `${previewText}, tool call failed`
     : previewText;

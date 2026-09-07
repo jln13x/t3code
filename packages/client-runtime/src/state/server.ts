@@ -1040,11 +1040,6 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
       refreshTrigger: ({ environmentId }) => usagePricesAtom(environmentId),
     }),
-    providerSkills: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:provider-skills",
-      tag: WS_METHODS.serverListProviderSkills,
-      staleTimeMs: 30_000,
-    }),
     configProjection,
     welcome,
     consumeResetCredit: createEnvironmentRpcCommand(runtime, {

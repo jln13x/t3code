@@ -4,7 +4,6 @@ import {
   EventId,
   type ModelSelection,
   type OrchestrationEvent,
-  type OrchestrationThreadActivityTone,
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
@@ -353,7 +352,6 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly kind:
       | "provider.turn.start.failed"
-      | "provider.turn.steer.rejected"
       | "provider.turn.interrupt.failed"
       | "provider.approval.respond.failed"
       | "provider.user-input.respond.failed"
@@ -363,8 +361,6 @@ const make = Effect.gen(function* () {
     readonly turnId: TurnId | null;
     readonly createdAt: string;
     readonly requestId?: string;
-    /** Defaults to "error"; declined-but-healthy outcomes pass "info". */
-    readonly tone?: OrchestrationThreadActivityTone;
   }) =>
     Effect.all({
       commandId: serverCommandId("provider-failure-activity"),
@@ -377,7 +373,7 @@ const make = Effect.gen(function* () {
           threadId: input.threadId,
           activity: {
             id: eventId,
-            tone: input.tone ?? "error",
+            tone: "error",
             kind: input.kind,
             summary: input.summary,
             payload: {
@@ -404,23 +400,6 @@ const make = Effect.gen(function* () {
       return failReason.error.message;
     }
     return Cause.pretty(cause);
-  };
-
-  /**
-   * A refused `turn/steer` is not a broken session. The provider declined to
-   * fold this message into the turn that is still running — most often
-   * because that turn is a `/review` or `/compact`, which the protocol
-   * documents as never accepting same-turn steering. Treating it like a
-   * turn-start failure would mark the session errored and null out
-   * `activeTurnId`, making the running turn vanish from the UI while it is
-   * still working.
-   */
-  const readSteerRejection = (cause: Cause.Cause<unknown>) => {
-    const failReason = cause.reasons.find(Cause.isFailReason);
-    return isProviderAdapterRequestError(failReason?.error) &&
-      failReason.error.method === "turn/steer"
-      ? failReason.error
-      : undefined;
   };
 
   const setThreadSession = (input: {
@@ -1242,23 +1221,6 @@ const make = Effect.gen(function* () {
         return Effect.void;
       }
       const detail = formatFailureDetail(cause);
-      // A rejected steer leaves the current turn and session healthy. Surface
-      // the failed delivery without clearing the active turn.
-      const steerRejection = readSteerRejection(cause);
-      if (steerRejection) {
-        const deliveryUncertain = steerRejection.delivery === "uncertain";
-        return appendProviderFailureActivity({
-          threadId: event.payload.threadId,
-          kind: "provider.turn.steer.rejected",
-          tone: "info",
-          summary: deliveryUncertain ? "Delivery uncertain" : "Message not sent",
-          detail: deliveryUncertain
-            ? `${detail} The message may have been delivered to an unexpected active turn; do not resend it automatically.`
-            : detail,
-          turnId: null,
-          createdAt: event.payload.createdAt,
-        }).pipe(Effect.asVoid);
-      }
       return setThreadSessionErrorOnTurnStartFailure({
         threadId: event.payload.threadId,
         detail,

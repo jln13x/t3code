@@ -191,7 +191,6 @@ function makeRegistry(
 
     const registry: ProviderRegistryShape = {
       getProviders: Ref.get(providersRef),
-      listSkills: () => Effect.succeed([]),
       refresh: () => Ref.get(providersRef),
       refreshInstance: () => Ref.get(providersRef),
       refreshWorkspaceSnapshot: () => Ref.get(providersRef),
