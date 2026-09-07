@@ -148,6 +148,14 @@ This file is both the current inventory and the retirement record used during up
   transport in `apps/web`. Preserve upstream contracts, `apps/server`, client-runtime command
   unions, and server databases unchanged.
 
+## Fork CI infrastructure
+
+- Pull-request CI and mobile fingerprint checks use GitHub-hosted Ubuntu 24.04 and macOS 26
+  runners outside `pingdotgg/t3code`. Upstream's Blacksmith labels have no registered runners in
+  this fork, so retaining those labels leaves validation queued indefinitely.
+- Preserve the repository-aware runner selection during upstream syncs. Keep the upstream jobs,
+  test commands, and checks intact.
+
 ## Retired on 2026-09-06
 
 - Codex active-turn steering, structured `$skill` invocation, and unknown-skill rejection now follow
