@@ -422,7 +422,7 @@ const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, 
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
 });
 
-export const WsServerListProviderSkillsRpc = Rpc.make(WS_METHODS.serverListProviderSkills, {
+const WsServerListProviderSkillsRpc = Rpc.make(WS_METHODS.serverListProviderSkills, {
   payload: ServerProviderListSkillsInput,
   success: ServerProviderListSkillsResult,
   error: EnvironmentAuthorizationError,
