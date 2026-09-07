@@ -29,6 +29,13 @@ const { execFileSync } = NodeChildProcess;
 const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = NodeFS;
 const { tmpdir } = NodeOS;
 const { join } = NodePath;
+const powershellExecutable = process.env.T3CODE_TEST_PWSH ?? "pwsh";
+const hasPowerShell =
+  NodeChildProcess.spawnSync(
+    powershellExecutable,
+    ["-NoProfile", "-NonInteractive", "-Command", "exit 0"],
+    { stdio: "ignore" },
+  ).status === 0;
 
 function project(environmentId: string, id: string, root: string, canonicalKey: string) {
   return {
@@ -270,6 +277,68 @@ describe("complete Git transfer", () => {
     const input = { branch: "feat/move", refs, platform: "linux" as const };
     return { source, destination, remote, input };
   }
+
+  function powershell(cwd: string, command: string) {
+    const marker = "__T3_POWERSHELL_TRANSFER_TEST__:";
+    const output = execFileSync(
+      powershellExecutable,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        continueBranchTerminalCommand({ command, marker, platform: "windows" }),
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        env: { ...process.env, TEMP: tmpdir() },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+    const status = output.match(/__T3_POWERSHELL_TRANSFER_TEST__:(\d+)/)?.[1];
+    if (status === undefined) throw new Error(`Missing transfer status: ${output}`);
+    return Number(status);
+  }
+
+  it.skipIf(!hasPowerShell)("executes a PowerShell transfer with staged ignored files", () => {
+    const fixture = transferRepositories();
+    const { source, destination } = fixture;
+    const input = { ...fixture.input, platform: "windows" as const };
+    writeFileSync(join(source, "new.ignored"), "staged\n");
+    git(source, "add", "-f", "new.ignored");
+    writeFileSync(join(source, "new.ignored"), "unstaged\n");
+    const head = git(source, "rev-parse", "HEAD");
+
+    expect(powershell(source, continueBranchSnapshotPushCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchTransferFetchCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchApplySnapshotCommand(input))).toBe(0);
+    expect(git(destination, "rev-parse", "HEAD")).toBe(head);
+    expect(readFileSync(join(destination, "new.ignored"), "utf8")).toBe("unstaged\n");
+    expect(git(destination, "diff", "--cached")).toBe(git(source, "diff", "--cached"));
+    expect(git(destination, "diff")).toBe(git(source, "diff"));
+    expect(powershell(source, continueBranchVerifySourceCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchVerifySourceCommand(input))).toBe(0);
+    writeFileSync(join(destination, "new.ignored"), "changed after transfer\n");
+    expect(powershell(destination, continueBranchVerifySourceCommand(input))).toBe(1);
+  });
+
+  it.skipIf(!hasPowerShell)("rejects ignored destination collisions through PowerShell", () => {
+    const fixture = transferRepositories();
+    const { source, destination } = fixture;
+    const input = { ...fixture.input, platform: "windows" as const };
+    writeFileSync(join(source, "local data.txt"), "source content\n");
+    writeFileSync(join(destination, ".git", "info", "exclude"), "local data.txt\n");
+    writeFileSync(join(destination, "local data.txt"), "destination content\n");
+    const head = git(destination, "rev-parse", "HEAD");
+    const index = git(destination, "write-tree");
+
+    expect(powershell(source, continueBranchSnapshotPushCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchTransferFetchCommand(input))).toBe(0);
+    expect(powershell(destination, continueBranchApplySnapshotCommand(input))).toBe(1);
+    expect(git(destination, "rev-parse", "HEAD")).toBe(head);
+    expect(git(destination, "write-tree")).toBe(index);
+    expect(readFileSync(join(destination, "local data.txt"), "utf8")).toBe("destination content\n");
+  });
 
   it("restores committed, staged, unstaged, and untracked work without changing the source", () => {
     const root = mkdtempSync(join(tmpdir(), "t3-chat-transfer-"));
