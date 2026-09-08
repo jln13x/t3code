@@ -1,8 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
+import { isCommandAvailable } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { vi } from "vite-plus/test";
+import * as Path from "effect/Path";
+import { beforeEach, vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
@@ -10,14 +13,64 @@ import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronNotification from "../../electron/ElectronNotification.ts";
+import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import { THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL } from "../channels.ts";
 import {
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
   pickProjectFavicon,
+  probeRemoteEditors,
   showThreadCompletionNotification,
 } from "./window.ts";
+
+vi.mock("@t3tools/shared/shell", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@t3tools/shared/shell")>()),
+  isCommandAvailable: vi.fn(),
+}));
+
+describe("probeRemoteEditors", () => {
+  beforeEach(() => {
+    vi.mocked(isCommandAvailable).mockReset();
+    vi.mocked(isCommandAvailable).mockReturnValue(Effect.succeed(false));
+  });
+
+  const shellLayer = (registeredSchemes: ReadonlyArray<string>) =>
+    Layer.mergeAll(
+      Layer.succeed(ElectronShell.ElectronShell, {
+        hasProtocolHandler: (scheme) => Effect.succeed(registeredSchemes.includes(scheme)),
+        openExternal: () => Effect.succeed(true),
+        openSystemSettings: () => Effect.succeed(true),
+        copyText: () => Effect.void,
+      }),
+      FileSystem.layerNoop({}),
+      Path.layer,
+    );
+
+  it.effect("finds Zed through its registered handler when no editor CLI is on PATH", () =>
+    Effect.gen(function* () {
+      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["zed"]);
+    }).pipe(Effect.provide(shellLayer(["zed"]))),
+  );
+
+  it.effect("keeps CLI discovery and does not duplicate editors with a handler", () =>
+    Effect.gen(function* () {
+      vi.mocked(isCommandAvailable).mockImplementation((command) =>
+        Effect.succeed(command === "cursor" || command === "zed"),
+      );
+      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["cursor", "zed"]);
+    }).pipe(Effect.provide(shellLayer(["zed"]))),
+  );
+
+  it.effect("supports the zeditor CLI alias when protocol detection is unavailable", () =>
+    Effect.gen(function* () {
+      vi.mocked(isCommandAvailable).mockImplementation((command) =>
+        Effect.succeed(command === "zeditor"),
+      );
+      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["zed"]);
+    }).pipe(Effect.provide(shellLayer([]))),
+  );
+});
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",

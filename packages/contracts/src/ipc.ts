@@ -1139,9 +1139,10 @@ export interface DesktopBridge {
    */
   openSystemSettings?: (pane: SystemSettingsPane) => Promise<boolean>;
   /**
-   * Probe this desktop machine for installed remote-capable editor CLIs
-   * (used for remote open-in-editor deep links). Optional: older desktop
-   * builds lack it; callers fall back to VS Code only.
+   * Probe this desktop machine for installed remote editor CLIs or registered
+   * protocol handlers. A handler can make an editor available without its CLI
+   * on PATH. Optional: older desktop builds lack it; callers fall back to the
+   * primary supported editors.
    */
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   onMenuAction: (listener: (action: string) => void) => () => void;
