@@ -6,6 +6,21 @@ worktree-grouped web/desktop threads, and cross-environment chat transfer. Every
 
 This file is both the current inventory and the retirement record used during upstream syncs.
 
+## Pending upstream integration
+
+### Open remote projects in Zed
+
+- The web/desktop Open menu offers Zed for environments with an SSH route and opens the current
+  project or worktree through the local `zed://ssh/<host>/<path>` handler. Desktop detection checks
+  registered protocol handlers as well as editor commands, so a Finder-launched app can find Zed
+  without its CLI on PATH.
+- Adapted from [upstream PR #8866](https://github.com/pingdotgg/t3code/pull/8866), tracked by
+  [upstream issue #8938](https://github.com/pingdotgg/t3code/issues/8938). Replace this temporary
+  integration with upstream behavior when that support lands.
+- Changes stay in the clients and shared editor URL helpers. Server behavior and wire schemas
+  remain compatible with unmodified upstream environments. Zed and Zed Preview share the OS URL
+  handler; the registered application determines which one opens.
+
 ## Maintained differences
 
 ### Desktop fork identity
