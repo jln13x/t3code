@@ -8,15 +8,14 @@ This file is both the current inventory and the retirement record used during up
 
 ## Pending upstream integration
 
-### Open remote projects in Zed
+### Desktop remote-editor detection
 
-- The web/desktop Open menu offers Zed for environments with an SSH route and opens the current
-  project or worktree through the local `zed://ssh/<host>/<path>` handler. Desktop detection checks
+- Remote Zed links now use upstream's editor definitions and URL builder. Desktop detection checks
   registered protocol handlers as well as editor commands, so a Finder-launched app can find Zed
   without its CLI on PATH.
-- Adapted from [upstream PR #8866](https://github.com/pingdotgg/t3code/pull/8866), tracked by
-  [upstream issue #8938](https://github.com/pingdotgg/t3code/issues/8938). Replace this temporary
-  integration with upstream behavior when that support lands.
+- The remaining temporary integration is protocol-handler discovery and the `zeditor` command
+  alias. Upstream's CLI-only discovery does not yet provide equivalent Finder-launch behavior;
+  retire these additions when it does.
 - Changes stay in the clients and shared editor URL helpers. Server behavior and wire schemas
   remain compatible with unmodified upstream environments. Zed and Zed Preview share the OS URL
   handler; the registered application determines which one opens.
@@ -55,6 +54,8 @@ This file is both the current inventory and the retirement record used during up
 - Existing completed or attention-waiting threads establish a silent baseline when the app loads,
   so opening the app does not replay old cues.
 - Both cues are always enabled. There is no fork feature flag or app preference for sounds.
+- Upstream's notification coordinator retains its toast, badge, and optional system-alert behavior,
+  but does not play a second sound. Notification settings do not expose upstream sound controls.
 - The fork patches `cuelume@0.1.0` to accept an optional per-play volume multiplier.
 
 ### Native macOS completion notifications
@@ -72,6 +73,9 @@ This file is both the current inventory and the retirement record used during up
 - Notifications are always enabled when Electron and macOS report support. Notification permission
   and presentation remain controlled by macOS System Settings; there is no fork feature flag.
 - Detection uses the existing shell snapshots and does not add a server RPC or wire-contract fork.
+- Upstream's completion popup is suppressed when the native macOS completion bridge is present;
+  its attention alerts remain available. The native ledger, delivery queue, and click routing stay
+  authoritative for completion notifications.
 
 ### Worktree-grouped threads and checkout resources
 
@@ -102,6 +106,11 @@ This file is both the current inventory and the retirement record used during up
   snoozed pinned threads follow upstream into their lifecycle sections, keep a visible pin marker,
   and participate in the fork's checkout grouping there. This compatibility boundary keeps
   upstream pinning behavior intact instead of replacing it with a fork-specific group-order model.
+- Upstream active ordering and cross-section dragging operate on checkout cards. Reordering writes
+  ordinary active-order keys for every active sibling as one contiguous block; it does not wake
+  parked siblings. Dragging a checkout to Settled or back to Active preserves checkout-wide lifecycle
+  scope. Dropping on Pinned pins the conversation picked up, not an arbitrary sibling. Older servers
+  retain their supported actions without receiving unsupported ordering commands.
 - Each conversation keeps independent messages and agent state, while terminal sessions, terminal
   layout, preview tabs, open-file state, and Git diff state use a canonical checkout identity.
 - Checkout-level terminal and dev-server indicators appear on the grouped card. Removing one thread
@@ -109,6 +118,8 @@ This file is both the current inventory and the retirement record used during up
 - Settle, snooze, wake, and un-settle actions expand from a selected grouped thread to the checkout's
   member threads. Search results, drafts, archive/delete, copying, title regeneration, provider
   badges, durable PR display state, and project filtering continue to follow upstream behavior.
+- Upstream file drops, unsent-draft markers, and linked-PR/stack controls are available on the inner
+  conversation rows. Live status subscriptions follow upstream's visible-row leases.
 - `chat.newInWorktree` creates a sibling conversation in the current checkout and defaults to
   `mod+t`. This is a narrow explicit command; the retired arbitrary-worktree picker, mobile checkout
   flow, PR-to-worktree resolution, and cross-project checkout inheritance remain retired.
@@ -164,6 +175,9 @@ This file is both the current inventory and the retirement record used during up
   future provider resumes but stripped from the rendered user message. Historical source approvals,
   plan actions, and checkpoint reverts stay read-only because their database IDs are not present on
   the destination server; new destination-native history remains fully interactive.
+- The shared timeline receives destination-native rollback checkpoints separately from displayed
+  imported metadata, including its incremental row cache. Imported diff links never query the
+  destination using source-only turn IDs.
 - Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
   to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
   publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39) and fetch only the
@@ -181,6 +195,20 @@ This file is both the current inventory and the retirement record used during up
   this fork, so retaining those labels leaves validation queued indefinitely.
 - Preserve the repository-aware runner selection during upstream syncs. Keep the upstream jobs,
   test commands, and checks intact.
+
+## Replaced during the 2026-09-15 sync
+
+- The temporary Zed URL representation is replaced by upstream's `remoteScheme` definitions and
+  URL builder, which provide the same SSH project/worktree links. Handler discovery remains pending
+  as described above.
+- The preview MCP acknowledgement wrapper is replaced by upstream's object-shaped action results
+  and wrapped evaluate value. These retain valid structured results while supporting preview tool
+  icons, screenshot saving, and recording transfers without a separate fork response schema.
+- Desktop identity/signing, always-on cues, native completion delivery, checkout resource identity,
+  and chat transfer remain maintained. Upstream's proactive panels and device surfaces use the
+  existing checkout-scoped store and share its user-action revision and dismissal state.
+- Existing checkout terminal cleanup and instant preview scrolling remain preserved; neither is
+  silently discarded merely because it was absent from the earlier inventory.
 
 ## Retired on 2026-09-06
 
