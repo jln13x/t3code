@@ -287,9 +287,16 @@ describe("streaming row projection", () => {
     const importedInput = { ...input, rollbackTurnDiffSummaries: [] };
     const imported = deriveMessagesTimelineRowsWithState(importedInput, native);
     expect(imported.rows).toEqual(deriveMessagesTimelineRows(importedInput));
-    expect(imported.rows.some((row) => row.kind === "message" && row.revertTurnCount !== undefined)).toBe(false);
-    expect(imported.rows.some((row) => row.kind === "message" && row.assistantTurnDiffSummary === summary)).toBe(true);
-    const restored = deriveMessagesTimelineRowsWithState({ ...input, rollbackTurnDiffSummaries: [summary] }, imported);
+    expect(
+      imported.rows.some((row) => row.kind === "message" && row.revertTurnCount !== undefined),
+    ).toBe(false);
+    expect(
+      imported.rows.some((row) => row.kind === "message" && row.assistantTurnDiffSummary === summary),
+    ).toBe(true);
+    const restored = deriveMessagesTimelineRowsWithState(
+      { ...input, rollbackTurnDiffSummaries: [summary] },
+      imported,
+    );
     expect(restored.rows.some((row) => row.kind === "message" && row.revertTurnCount === 4)).toBe(true);
   });
 

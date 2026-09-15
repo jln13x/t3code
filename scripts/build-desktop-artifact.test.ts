@@ -2207,7 +2207,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         verbose: Option.some(false),
         mockUpdates: Option.some(false),
         mockUpdateServerPort: Option.none<number>(),
-        wslPrebuild: Option.none<string>(),
+        wslRuntime: Option.none<string>(),
       };
       const layer = Layer.mergeAll(
         Layer.succeed(HostProcessPlatform, "darwin"),

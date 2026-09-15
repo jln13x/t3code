@@ -724,7 +724,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           if (current === undefined) return state;
           const next = withoutTerminalSurfaces(current);
           if (next === current) return state;
-          if (!next.isOpen && next.activeSurfaceId === null && next.surfaces.length === 0 && !next.dismissedDeviceSurfaceIds?.length) {
+          if (
+            !next.isOpen &&
+            next.activeSurfaceId === null &&
+            next.surfaces.length === 0 &&
+            !next.dismissedDeviceSurfaceIds?.length
+          ) {
             const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
             return { byThreadKey };
           }

@@ -2173,14 +2173,20 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const linkedPr = supportsMultiplePullRequests
     ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
     : null;
-  const badge = supportsMultiplePullRequests ? resolveThreadPullRequestBadge(thread.pullRequests) : null;
+  const badge = supportsMultiplePullRequests
+    ? resolveThreadPullRequestBadge(thread.pullRequests)
+    : null;
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
   const openPrLink = useOpenPrLink();
   const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isActive;
-  const fileDropHandlers = useMemo(() => makeWorkspaceFileDropHandlers({
-    setDragActive: setIsFileDragOver,
-    addFiles: (files) => props.onFileDropThreads(threadRef, files),
-  }), [props.onFileDropThreads, threadRef]);
+  const fileDropHandlers = useMemo(
+    () =>
+      makeWorkspaceFileDropHandlers({
+        setDragActive: setIsFileDragOver,
+        addFiles: (files) => props.onFileDropThreads(threadRef, files),
+      }),
+    [props.onFileDropThreads, threadRef],
+  );
   useEffect(() => {
     if (!isFileDragOver) return;
     const clear = () => setIsFileDragOver(false);
@@ -2370,7 +2376,9 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
       >
         {title}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-        {hasUnsentDraft ? <SquarePenIcon aria-label="Unsent draft" className="size-3 shrink-0" /> : null}
+        {hasUnsentDraft ? (
+          <SquarePenIcon aria-label="Unsent draft" className="size-3 shrink-0" />
+        ) : null}
         {badge?.kind === "stack" || pr || linkedPr ? (
           <ThreadPullRequestBadgeControl
             variant="underline"
@@ -2385,7 +2393,11 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
             onOpenPullRequest={(event) => {
               const url = pr?.url ?? linkedPr?.url;
               if (!url) return;
-              const opened = openPrLink(event, url, props.openPullRequestsInRightPanel ? threadRef : undefined);
+              const opened = openPrLink(
+                event,
+                url,
+                props.openPullRequestsInRightPanel ? threadRef : undefined,
+              );
               if (opened && !props.isActive) props.onThreadActivate(threadRef);
             }}
           />
@@ -2454,7 +2466,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   renamingThreadKey: string | null;
   renamingTitle: string;
   openPullRequestsInRightPanel: boolean;
-  sortable?: SortableThreadRowBag;
+  sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -2542,7 +2554,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     allThreads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
   const gitCwd = worktreePath ?? props.project?.workspaceRoot ?? null;
   const gitStatus = useEnvironmentQuery(
-    gitCwd === null || !leaseLiveStatus ? null : vcsEnvironment.status({ environmentId, input: { cwd: gitCwd } }),
+    gitCwd === null || !leaseLiveStatus
+      ? null
+      : vcsEnvironment.status({ environmentId, input: { cwd: gitCwd } }),
   );
   const visibleGitStatus = useRetainedValue(group.key, gitStatus.data);
   const checkoutBranch =
@@ -2601,7 +2615,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         if (event.target instanceof Element && event.target.closest("button, a, input")) return;
         props.sortable?.listeners?.onPointerDown?.(event);
       }}
-      className={cn("list-none py-0.5 [content-visibility:auto]", props.sortable?.isDragging && "relative z-20 rounded-md bg-sidebar shadow-lg")}
+      className={cn(
+        "list-none py-0.5 [content-visibility:auto]",
+        props.sortable?.isDragging && "relative z-20 rounded-md bg-sidebar shadow-lg",
+      )}
       style={{
         containIntrinsicSize: `auto ${96 + (threads.length - 1) * 32}px`,
         transform: CSS.Translate.toString(props.sortable?.transform ?? null),
@@ -2625,7 +2642,10 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         onKeyDown={handleCardKeyDown}
         onContextMenu={handleCardContextMenu}
       >
-        <div className="group/worktree-header flex h-5 min-w-0 items-center gap-1.5" data-worktree-thread-key={scopedThreadKey(newestRef)}>
+        <div
+          className="group/worktree-header flex h-5 min-w-0 items-center gap-1.5"
+          data-worktree-thread-key={scopedThreadKey(newestRef)}
+        >
           {props.project ? <ProjectFavicon project={props.project} className="size-4 shrink-0" /> : null}
           {props.projectDisplayName ? (
             <span className="min-w-0 truncate text-xs font-medium text-muted-foreground/60">
@@ -2666,7 +2686,12 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             </Tooltip>
           ) : null}
           {props.sortable?.isDragging && props.dropVerb ? (
-            <span role="status" className="ml-auto inline-flex items-center gap-1 text-xs text-primary">{dropVerbBadge[props.dropVerb]}</span>
+            <span
+              role="status"
+              className="ml-auto inline-flex items-center gap-1 text-xs text-primary"
+            >
+              {dropVerbBadge[props.dropVerb]}
+            </span>
           ) : null}
           <span className="relative ml-auto flex h-5 min-w-8 items-center justify-end text-xs">
             {canSettleGroup || canSnoozeGroup ? (
@@ -2718,7 +2743,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           ) : (
             <span className="flex-1" />
           )}
-
           {isRemote ? (
             <EnvironmentMachineIcon
               aria-label="Remote environment"
@@ -3242,7 +3266,8 @@ export default function Sidebar() {
     const groups = buildSidebarWorktreeGroups(classified);
     if (optimisticDrop?.section === "active" && optimisticDrop.order !== null) {
       const rank = new Map(optimisticDrop.order.map((key, index) => [key, index]));
-      const groupRank = (group: SidebarWorktreeGroup) => Math.min(...group.memberKeys.map((key) => rank.get(key) ?? Number.POSITIVE_INFINITY));
+      const groupRank = (group: SidebarWorktreeGroup) =>
+        Math.min(...group.memberKeys.map((key) => rank.get(key) ?? Number.POSITIVE_INFINITY));
       groups.activeGroups.sort((left, right) => groupRank(left) - groupRank(right));
     }
     return {
