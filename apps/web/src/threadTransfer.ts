@@ -105,7 +105,7 @@ export function readCachedTransferredThreadArchive(
   return archiveCache.get(archiveCacheKey(environmentId, threadId)) ?? null;
 }
 
-export function transferredThreadArchiveDirectory(threadId: ThreadId): string {
+function transferredThreadArchiveDirectory(threadId: ThreadId): string {
   return `${TRANSFER_HISTORY_ROOT}/${threadId}`;
 }
 

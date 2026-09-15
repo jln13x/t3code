@@ -38,7 +38,7 @@ export const environmentThreadShells = createEnvironmentThreadShellAtoms({
   snapshotAtom: threadEnvironment.snapshotAtom,
 });
 
-class ThreadTransferSnapshotNotFoundError extends Schema.TaggedErrorClass<ThreadTransferSnapshotNotFoundError>()(
+class ThreadTransferSnapshotNotFoundError extends Schema.TaggedError<ThreadTransferSnapshotNotFoundError>()(
   "ThreadTransferSnapshotNotFoundError",
   {},
 ) {

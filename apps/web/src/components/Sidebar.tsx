@@ -4124,7 +4124,7 @@ export default function Sidebar() {
     const activeRows = rowsOf(activeRepresentativeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
-    if (snoozedThreads.length > 0) {
+    if (snoozedGroups.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
       items.push(...rowsOf(snoozedRepresentativeThreads, "snoozed"));
     }
@@ -4140,6 +4140,7 @@ export default function Sidebar() {
     settledRepresentativeThreads,
     settledThreads.length,
     snoozedThreads.length,
+    snoozedGroups.length,
     snoozedRepresentativeThreads,
   ]);
   useEffect(() => {
@@ -4196,11 +4197,19 @@ export default function Sidebar() {
     if (dragState === null || thread === undefined) return [];
     const key = (candidate: EnvironmentThreadShell) =>
       scopedThreadKey(scopeThreadRef(candidate.environmentId, candidate.id));
-    return sortSettledThreadsForSidebar([
-      ...settledThreads.filter((candidate) => key(candidate) !== dragState.activeKey),
-      applySidebarThreadDrop(thread, "settled", dragState.occurredAt),
-    ]).map(key);
-  }, [dragState, settledThreads, threadByKey]);
+    const movingGroup = groupByThreadKey.get(dragState.activeKey);
+    const movingMembers = movingGroup?.threads ?? [thread];
+    const movingKeys = new Set(movingMembers.map(key));
+    const projected = [
+      ...settledThreads.filter((candidate) => !movingKeys.has(key(candidate))),
+      ...movingMembers.map((member) => applySidebarThreadDrop(member, "settled", dragState.occurredAt)),
+    ];
+    return buildSidebarWorktreeGroups(
+      projected.map((candidate) => ({ thread: candidate, classification: "settled" })),
+    ).settledGroups.map((group) => movingKeys.has(group.memberKeys[0]!)
+      ? dragState.activeKey
+      : key(pickWorktreeGroupRepresentative(group, routeThreadKey)));
+  }, [dragState, groupByThreadKey, routeThreadKey, settledThreads, threadByKey]);
   const sidebarSortingStrategy = useMemo(
     () =>
       createSidebarSortingStrategy({
@@ -4210,7 +4219,7 @@ export default function Sidebar() {
         settledExpanded: settledShelfExpanded,
         settledVisibleCount,
         routeThreadKey,
-        snoozedThreadCount: snoozedThreads.length,
+        snoozedThreadCount: snoozedGroups.length,
       }),
     [
       draggedSettledOrder,
@@ -4218,7 +4227,7 @@ export default function Sidebar() {
       settledShelfExpanded,
       settledVisibleCount,
       sidebarListItems,
-      snoozedThreads.length,
+      snoozedGroups.length,
     ],
   );
   // Hidden and filtered threads keep their keys. Reserve those slots without
@@ -4389,7 +4398,7 @@ export default function Sidebar() {
             try {
               for (const key of plan.memberKeys) {
                 const member = threadByKey.get(key);
-                if (!member || member.settledOverride === "settled") continue;
+                if (!member || (member.settledOverride === "settled" && member.pinnedAt == null && member.snoozedUntil == null)) continue;
                 if (!(await run(settleThread(scopeThreadRef(member.environmentId, member.id)), "Failed to settle checkout"))) {
                   settled = false;
                   break;

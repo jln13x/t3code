@@ -326,6 +326,25 @@ describe("checkout drag ordering", () => {
     expect(planSidebarWorktreeDrop(base).kind).toBe("none");
   });
 
+  it("can settle a snoozed checkout when its open representative is already settled", () => {
+    const base = input();
+    const snoozed = { ...b, snoozedUntil: "2030-01-01T00:00:00Z" };
+    const group = buildSidebarWorktreeGroups([
+      { thread: parked, classification: "settled" },
+      { thread: snoozed, classification: "snoozed" },
+    ]).snoozedGroups[0]!;
+    const plan = planSidebarWorktreeDrop({
+      ...base,
+      activeKey: keys[3]!,
+      activeSection: "snoozed",
+      activeSettled: true,
+      groupsByThreadKey: new Map(group.memberKeys.map((key) => [key, group])),
+      target: { ...base.target, section: "settled" },
+    });
+    expect(plan.kind).toBe("settle");
+    expect(new Set(plan.memberKeys)).toEqual(new Set([keys[1], keys[3]]));
+  });
+
   it("never uses a hidden settled sibling as an active drag identity", () => {
     const groups = buildSidebarWorktreeGroups([
       { thread: { ...parked, createdAt: "2020-01-01T00:00:00Z" }, classification: "settled" },

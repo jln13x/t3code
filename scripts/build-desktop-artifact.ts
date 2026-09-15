@@ -269,7 +269,7 @@ const UnsupportedLocalDesktopSigningReason = Schema.Literals([
   "non-zip-target",
 ]);
 
-export class UnsupportedLocalDesktopSigningBuildError extends Schema.TaggedErrorClass<UnsupportedLocalDesktopSigningBuildError>()(
+export class UnsupportedLocalDesktopSigningBuildError extends Schema.TaggedError<UnsupportedLocalDesktopSigningBuildError>()(
   "UnsupportedLocalDesktopSigningBuildError",
   {
     reason: UnsupportedLocalDesktopSigningReason,
@@ -288,7 +288,7 @@ export class UnsupportedLocalDesktopSigningBuildError extends Schema.TaggedError
 
 const LocalDesktopSigningBuildOperation = Schema.Literals(["resolve-mode", "preflight"]);
 
-export class LocalDesktopSigningBuildError extends Schema.TaggedErrorClass<LocalDesktopSigningBuildError>()(
+export class LocalDesktopSigningBuildError extends Schema.TaggedError<LocalDesktopSigningBuildError>()(
   "LocalDesktopSigningBuildError",
   {
     operation: LocalDesktopSigningBuildOperation,

@@ -105,7 +105,14 @@ export function planSidebarWorktreeDrop(input: Parameters<typeof planSidebarThre
   }
   const memberKeys = group?.memberKeys ?? [input.activeKey];
   if (input.target.section === "settled") {
-    return { ...planSidebarThreadDrop(input), memberKeys, movedKey: input.activeKey };
+    return {
+      ...planSidebarThreadDrop({
+        ...input,
+        activeSettled: group ? group.section === "settled" : input.activeSettled === true,
+      }),
+      memberKeys,
+      movedKey: input.activeKey,
+    };
   }
   const movingThread = input.threadsByKey.get(input.activeKey);
   const movingScope = movingThread ? threadWorktreeScopeKey(movingThread) : null;
@@ -113,7 +120,9 @@ export function planSidebarWorktreeDrop(input: Parameters<typeof planSidebarThre
     (candidate) => candidate.section === "active" && candidate.key === movingScope,
   );
   const movingOrder = group
-    ? input.activeSection === "active" ? activeWorktreeMemberKeys(group) : [...memberKeys]
+    ? input.activeSection === "active"
+      ? activeWorktreeMemberKeys(group)
+      : [...memberKeys]
     : [...(movingActiveGroup ? activeWorktreeMemberKeys(movingActiveGroup) : []), input.activeKey];
   const order = input.target.activeOrder.flatMap((key) => {
     if (key === input.activeKey) return movingOrder;
@@ -123,20 +132,24 @@ export function planSidebarWorktreeDrop(input: Parameters<typeof planSidebarThre
   });
   const { activeReorderableKeys, ...threadDropInput } = input;
   const plan = planSidebarThreadDrop({
-      ...threadDropInput,
-      // An active card may include parked siblings; an in-section reorder
-      // must not wake them merely because the measured representative changed.
-      activeSettled: input.activeSection === "settled",
-      target: { ...input.target, activeOrder: order },
-      // The block planner below checks exactly the writes it will perform.
-
-    });
+    ...threadDropInput,
+    // An active card may include parked siblings; an in-section reorder
+    // must not wake them merely because the measured representative changed.
+    activeSettled: input.activeSection === "settled",
+    target: { ...input.target, activeOrder: order },
+    // The block planner below checks exactly the writes it will perform.
+  });
   if (plan.kind === "move-active") {
     const assignments = planWorktreeActiveReorder(order, movingOrder, input.activeKeysById);
     if (activeReorderableKeys && assignments.some(({ id }) => !activeReorderableKeys.has(id))) {
       return { kind: "none" as const, memberKeys, movedKey: input.activeKey };
     }
-    return { ...plan, assignments, memberKeys: input.activeSection === "active" ? movingOrder : memberKeys, movedKey: input.activeKey };
+    return {
+      ...plan,
+      assignments,
+      memberKeys: input.activeSection === "active" ? movingOrder : memberKeys,
+      movedKey: input.activeKey,
+    };
   }
   return {
     ...plan,
