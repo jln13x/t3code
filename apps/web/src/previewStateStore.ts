@@ -219,18 +219,6 @@ export function readThreadPreviewState(ref: ScopedThreadRef): ThreadPreviewState
   return appAtomRegistry.get(previewStateAtomForRead(ref));
 }
 
-export function subscribeThreadPreviewState(
-  ref: ScopedThreadRef,
-  listener: (state: ThreadPreviewState, previous: ThreadPreviewState) => void,
-): () => void {
-  const atom = previewStateAtomForRead(ref);
-  let previous = appAtomRegistry.get(atom);
-  return appAtomRegistry.subscribe(atom, (state) => {
-    const prior = previous;
-    previous = state;
-    listener(state, prior);
-  });
-}
 export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEvent): void {
   updateThreadPreviewState(ref, (current) => {
     if (current.serverEpoch !== null && event.serverEpoch !== current.serverEpoch) return current;
@@ -517,14 +505,6 @@ export function rememberPreviewUrl(ref: ScopedThreadRef, url: string): void {
   }));
 }
 
-export function removePreviewThread(ref: ScopedThreadRef): void {
-  const { primaryKey, fallbackKey } = worktreeStateKeysForThreadRef(ref);
-  for (const threadKey of new Set([primaryKey, fallbackKey])) {
-    appAtomRegistry.set(previewStateAtom(threadKey), EMPTY_THREAD_PREVIEW_STATE);
-    syncActivePreviewThread(threadKey, ref, EMPTY_THREAD_PREVIEW_STATE);
-    changedPreviewThreadKeys.delete(threadKey);
-  }
-}
 export function isPreviewSupportedInRuntime(): boolean {
   if (typeof window === "undefined") return false;
   return Boolean(window.desktopBridge?.preview);

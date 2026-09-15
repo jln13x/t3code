@@ -63,7 +63,7 @@ export function boundConfiguredLocalServerUrls(
   return bounded;
 }
 
-export function useDiscoveredPorts(
+function useDiscoveredPorts(
   environmentId: EnvironmentId | null,
   configuredUrls?: ReadonlyArray<string>,
 ): ReadonlyArray<DiscoveredLocalServer> {

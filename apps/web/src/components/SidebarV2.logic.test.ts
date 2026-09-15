@@ -5,6 +5,9 @@ import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "../types";
 import {
   buildSidebarWorktreeGroups,
+  activeWorktreeMemberKeys,
+  planSidebarWorktreeDrop,
+  sidebarWorktreeDragThread,
   pickWorktreeGroupRepresentative,
   resolveWorktreeThreadIndicator,
   sidebarThreadKey,
@@ -32,6 +35,9 @@ function makeShell(overrides: Partial<EnvironmentThreadShell> = {}): Environment
     createdAt: "2026-03-09T10:00:00.000Z",
     updatedAt: "2026-03-09T10:00:00.000Z",
     archivedAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
+    activeOrderKey: null,
     settledOverride: null,
     settledAt: null,
     snoozedUntil: null,
@@ -251,6 +257,135 @@ describe("visibleWorktreeGroupMemberIndexes", () => {
     const { settledGroups } = buildSidebarWorktreeGroups(classifyAll([first, second], "settled"));
 
     expect(visibleWorktreeGroupMemberIndexes(settledGroups[0]!)).toEqual([0, 1]);
+  });
+});
+
+describe("checkout drag ordering", () => {
+  const a = makeShell({ id: ThreadId.make("a"), worktreePath: "/wt/a", activeOrderKey: "d" });
+  const b = makeShell({ id: ThreadId.make("b"), worktreePath: "/wt/a", activeOrderKey: "f" });
+  const c = makeShell({ id: ThreadId.make("c"), worktreePath: "/wt/c", activeOrderKey: "m" });
+  const parked = makeShell({
+    id: ThreadId.make("parked"),
+    worktreePath: "/wt/a",
+    settledOverride: "settled",
+    activeOrderKey: null,
+  });
+  const keys = [a, b, c, parked].map(sidebarThreadKey);
+  function input() {
+    const groups = buildSidebarWorktreeGroups([
+      ...classifyAll([a, b, c]),
+      { thread: parked, classification: "settled" },
+    ]).activeGroups;
+    return {
+      activeKey: keys[0]!,
+      pickedThreadKey: keys[1]!,
+      activeSection: "active" as const,
+      supportsSettlement: true,
+      target: {
+        section: "active" as const,
+        activeOrder: [keys[2]!, keys[0]!],
+        pinnedOrder: [],
+      },
+      activeOrder: groups.flatMap(activeWorktreeMemberKeys),
+      activeKeysById: new Map(
+        [a, b, c, parked].map((thread) => [sidebarThreadKey(thread), thread.activeOrderKey]),
+      ),
+      pinnedOrder: [],
+      pinnedKeysById: new Map<string, string | null>(),
+      reorderableKeys: new Set(keys),
+      activeReorderableKeys: new Set(keys),
+      groupsByThreadKey: new Map(
+        groups.flatMap((group) => group.memberKeys.map((key) => [key, group] as const)),
+      ),
+      threadsByKey: new Map([a, b, c, parked].map((thread) => [sidebarThreadKey(thread), thread])),
+    };
+  }
+
+  it("moves every active sibling as a block without waking a settled sibling", () => {
+    const plan = planSidebarWorktreeDrop(input());
+    expect(plan.kind).toBe("move-active");
+    if (plan.kind !== "move-active") throw new Error("Expected active move");
+    expect(plan.order).toEqual([keys[2], keys[0], keys[1]]);
+    expect(plan.memberKeys).toEqual([keys[0], keys[1]]);
+    expect(plan.assignments.map(({ id }) => id)).toEqual([keys[0], keys[1]]);
+    const assignments = new Map(plan.assignments.map(({ id, orderKey }) => [id, orderKey]));
+    const moved = [a, b, c].map((thread) => ({
+      ...thread,
+      activeOrderKey: assignments.get(sidebarThreadKey(thread)) ?? thread.activeOrderKey,
+    }));
+    const groups = buildSidebarWorktreeGroups(classifyAll(moved)).activeGroups;
+    expect(groups.map((group) => group.threads[0]!.worktreePath)).toEqual(["/wt/c", "/wt/a"]);
+    expect(groups[1]!.memberKeys).toEqual([keys[0], keys[1]]);
+    expect(plan.unsettle).toBe(false);
+  });
+
+  it("pins the picked conversation rather than the card's measured representative", () => {
+    const base = input();
+    const plan = planSidebarWorktreeDrop({
+      ...base,
+      target: { ...base.target, section: "pinned", pinnedOrder: [keys[0]!] },
+    });
+    expect(plan.kind).toBe("pin");
+    expect(plan.memberKeys).toEqual([keys[1]]);
+    expect(plan.movedKey).toBe(keys[1]);
+    if (plan.kind !== "pin") throw new Error("Expected pin");
+    expect(plan.order).toEqual([keys[1]]);
+  });
+
+  it("settles the checkout including its hidden siblings", () => {
+    const base = input();
+    const plan = planSidebarWorktreeDrop({
+      ...base,
+      target: { ...base.target, section: "settled" },
+    });
+    expect(plan.kind).toBe("settle");
+    expect(new Set(plan.memberKeys)).toEqual(new Set([keys[0], keys[1], keys[3]]));
+  });
+
+  it("rejects a block move if a required sibling cannot save active order", () => {
+    const base = input();
+    base.activeReorderableKeys.delete(keys[1]!);
+    expect(planSidebarWorktreeDrop(base).kind).toBe("none");
+  });
+
+  it("can settle a snoozed checkout when its open representative is already settled", () => {
+    const base = input();
+    const snoozed = { ...b, snoozedUntil: "2030-01-01T00:00:00Z" };
+    const group = buildSidebarWorktreeGroups([
+      { thread: parked, classification: "settled" },
+      { thread: snoozed, classification: "snoozed" },
+    ]).snoozedGroups[0]!;
+    const plan = planSidebarWorktreeDrop({
+      ...base,
+      activeKey: keys[3]!,
+      activeSection: "snoozed",
+      activeSettled: true,
+      groupsByThreadKey: new Map(group.memberKeys.map((key) => [key, group])),
+      target: { ...base.target, section: "settled" },
+    });
+    expect(plan.kind).toBe("settle");
+    expect(new Set(plan.memberKeys)).toEqual(new Set([keys[1], keys[3]]));
+  });
+
+  it("never uses a hidden settled sibling as an active drag identity", () => {
+    const groups = buildSidebarWorktreeGroups([
+      {
+        thread: { ...parked, createdAt: "2020-01-01T00:00:00Z" },
+        classification: "settled",
+      },
+      ...classifyAll([a, b]),
+    ]).activeGroups;
+    expect(sidebarWorktreeDragThread(groups[0]!).id).toBe(a.id);
+  });
+
+  it("keeps new keyless checkouts ahead of arranged checkouts", () => {
+    const fresh = makeShell({
+      id: ThreadId.make("fresh"),
+      worktreePath: "/wt/fresh",
+      activeOrderKey: null,
+    });
+    const groups = buildSidebarWorktreeGroups(classifyAll([a, b, fresh])).activeGroups;
+    expect(groups[0]!.threads[0]!.id).toBe(fresh.id);
   });
 });
 

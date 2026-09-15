@@ -76,6 +76,7 @@ function thread(): OrchestrationThread {
     pinnedAt: null,
     pinOrderKey: null,
     titleRegeneration: null,
+    pullRequests: [],
     deletedAt: null,
     messages: [
       {

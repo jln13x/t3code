@@ -1,12 +1,18 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
-  activeThreadAnchorTimestampMs,
+  sortActiveThreadsByOrderKey,
   resolveSettledThreadTimestamp,
+  generateSpreadPinOrderKeys,
+  pinOrderKeyBetween,
 } from "@t3tools/client-runtime/state/thread-sort";
 
 import { threadWorktreeScopeKey } from "../worktreeScope";
-import { firstValidTimestampMs, parseTimestampMs, type SidebarThreadStatus } from "./Sidebar.logic";
+import {
+  firstValidTimestampMs,
+  planSidebarThreadDrop,
+  type SidebarThreadStatus,
+} from "./Sidebar.logic";
 
 export type SidebarWorktreeSection = "active" | "snoozed" | "settled";
 
@@ -43,7 +49,7 @@ function groupSettledTimestampMs(group: SidebarWorktreeGroup): number {
   let latest = 0;
   for (const thread of group.threads) {
     const timestamp = resolveSettledThreadTimestamp(thread);
-    if (timestamp !== null) latest = Math.max(latest, parseTimestampMs(timestamp));
+    if (timestamp !== null) latest = Math.max(latest, firstValidTimestampMs(timestamp));
   }
   return latest;
 }
@@ -57,12 +63,139 @@ function groupSoonestWakeMs(group: SidebarWorktreeGroup): number {
   return soonest;
 }
 
-function groupNewestActiveAnchorTimestampMs(group: SidebarWorktreeGroup): number {
-  let newest = 0;
-  for (const thread of group.threads) {
-    newest = Math.max(newest, activeThreadAnchorTimestampMs(thread));
+/** Stable drag identity; never use a hidden settled sibling for an active card. */
+export function sidebarWorktreeDragThread(group: SidebarWorktreeGroup): EnvironmentThreadShell {
+  const activeIndex = group.classifications.indexOf("active");
+  return group.threads[activeIndex === -1 ? 0 : activeIndex]!;
+}
+
+export function activeWorktreeMemberKeys(group: SidebarWorktreeGroup): string[] {
+  return group.memberKeys.filter((_, index) => group.classifications[index] === "active");
+}
+
+/** Translate measured checkout cards to upstream per-conversation order writes.
+ * Pinning remains per conversation; ordering and lifecycle moves keep checkout
+ * siblings together. No new server command or client-local order is needed. */
+export function planSidebarWorktreeDrop(
+  input: Parameters<typeof planSidebarThreadDrop>[0] & {
+    readonly pickedThreadKey: string;
+    readonly groupsByThreadKey: ReadonlyMap<string, SidebarWorktreeGroup>;
+    readonly threadsByKey: ReadonlyMap<string, EnvironmentThreadShell>;
+  },
+) {
+  const group = input.groupsByThreadKey.get(input.activeKey);
+  const pickedKey = group?.memberKeys.includes(input.pickedThreadKey)
+    ? input.pickedThreadKey
+    : input.activeKey;
+  if (input.target.section === "pinned") {
+    const picked = input.threadsByKey.get(pickedKey);
+    return {
+      ...planSidebarThreadDrop({
+        ...input,
+        activeKey: pickedKey,
+        activePinned: picked?.pinnedAt != null,
+        activeSettled: picked?.settledOverride === "settled",
+        target: {
+          ...input.target,
+          pinnedOrder: input.target.pinnedOrder.map((key) =>
+            key === input.activeKey ? pickedKey : key,
+          ),
+        },
+      }),
+      memberKeys: [pickedKey],
+      movedKey: pickedKey,
+    };
   }
-  return newest;
+  const memberKeys = group?.memberKeys ?? [input.activeKey];
+  if (input.target.section === "settled") {
+    return {
+      ...planSidebarThreadDrop({
+        ...input,
+        activeSettled: group ? group.section === "settled" : input.activeSettled === true,
+      }),
+      memberKeys,
+      movedKey: input.activeKey,
+    };
+  }
+  const movingThread = input.threadsByKey.get(input.activeKey);
+  const movingScope = movingThread ? threadWorktreeScopeKey(movingThread) : null;
+  const movingActiveGroup = [...input.groupsByThreadKey.values()].find(
+    (candidate) => candidate.section === "active" && candidate.key === movingScope,
+  );
+  const movingOrder = group
+    ? input.activeSection === "active"
+      ? activeWorktreeMemberKeys(group)
+      : [...memberKeys]
+    : [...(movingActiveGroup ? activeWorktreeMemberKeys(movingActiveGroup) : []), input.activeKey];
+  const order = input.target.activeOrder.flatMap((key) => {
+    if (key === input.activeKey) return movingOrder;
+    const candidate = input.groupsByThreadKey.get(key);
+    if (candidate?.key === movingScope) return [];
+    return candidate ? activeWorktreeMemberKeys(candidate) : [key];
+  });
+  const { activeReorderableKeys, ...threadDropInput } = input;
+  const plan = planSidebarThreadDrop({
+    ...threadDropInput,
+    // An active card may include parked siblings; an in-section reorder
+    // must not wake them merely because the measured representative changed.
+    activeSettled: input.activeSection === "settled",
+    target: { ...input.target, activeOrder: order },
+    // The block planner below checks exactly the writes it will perform.
+  });
+  if (plan.kind === "move-active") {
+    const assignments = planWorktreeActiveReorder(order, movingOrder, input.activeKeysById);
+    if (activeReorderableKeys && assignments.some(({ id }) => !activeReorderableKeys.has(id))) {
+      return { kind: "none" as const, memberKeys, movedKey: input.activeKey };
+    }
+    return {
+      ...plan,
+      assignments,
+      memberKeys: input.activeSection === "active" ? movingOrder : memberKeys,
+      movedKey: input.activeKey,
+    };
+  }
+  return {
+    ...plan,
+    memberKeys: input.activeSection === "active" ? movingOrder : memberKeys,
+    movedKey: input.activeKey,
+  };
+}
+
+/** Assign the moved block between its neighbors, reserving hidden keys just as
+ * upstream does. Materialize the whole visible order only for keyless/corrupt
+ * neighbors; no filtered or archived conversation receives a write. */
+function planWorktreeActiveReorder(
+  order: readonly string[],
+  moving: readonly string[],
+  keys: ReadonlyMap<string, string | null | undefined>,
+) {
+  const first = order.indexOf(moving[0]!);
+  const last = first + moving.length - 1;
+  const beforeId = order[first - 1];
+  const afterId = order[last + 1];
+  let before = beforeId === undefined ? null : (keys.get(beforeId) ?? null);
+  const after = afterId === undefined ? null : (keys.get(afterId) ?? null);
+  const visible = new Set(order);
+  const reserved = new Set(
+    [...keys].flatMap(([id, key]) => (!visible.has(id) && key != null ? [key] : [])),
+  );
+  const assignments: Array<{ id: string; orderKey: string }> = [];
+  if ((beforeId === undefined || before !== null) && (afterId === undefined || after !== null)) {
+    for (const id of moving) {
+      let key = pinOrderKeyBetween(before, after);
+      while (key !== null && reserved.has(key)) key = pinOrderKeyBetween(key, after);
+      if (key === null) break;
+      assignments.push({ id, orderKey: key });
+      before = key;
+    }
+    if (assignments.length === moving.length) return assignments;
+  }
+  const spread = generateSpreadPinOrderKeys(order.length + reserved.size).filter(
+    (key) => !reserved.has(key),
+  );
+  return order.flatMap((id, index) =>
+    keys.get(id) === spread[index] ? [] : [{ id, orderKey: spread[index]! }],
+  );
 }
 
 /**
@@ -70,8 +203,8 @@ function groupNewestActiveAnchorTimestampMs(group: SidebarWorktreeGroup): number
  * active member is a full card (settled/snoozed members ride along inside
  * it); with none active it collapses to the snoozed shelf when any member
  * is snoozed, else to the settled tail. Sorting mirrors the per-thread
- * rules: cards hold static anchor order (newest worktree on top, with an
- * un-settled thread re-anchoring its card), snoozed groups order by soonest
+ * rules: cards follow upstream active order keys (new keyless checkouts stay
+ * above arranged ones), snoozed groups order by soonest
  * wake, settled groups by most recent wrap-up.
  */
 export function buildSidebarWorktreeGroups(
@@ -104,8 +237,8 @@ export function buildSidebarWorktreeGroups(
       .map((_, index) => index)
       .toSorted(
         (left, right) =>
-          parseTimestampMs(entry.threads[left]!.createdAt) -
-            parseTimestampMs(entry.threads[right]!.createdAt) ||
+          firstValidTimestampMs(entry.threads[left]!.createdAt) -
+            firstValidTimestampMs(entry.threads[right]!.createdAt) ||
           entry.threads[left]!.id.localeCompare(entry.threads[right]!.id),
       );
     const threads = order.map((index) => entry.threads[index]!);
@@ -122,11 +255,17 @@ export function buildSidebarWorktreeGroups(
     else settledGroups.push(group);
   }
 
-  activeGroups.sort(
-    (left, right) =>
-      groupNewestActiveAnchorTimestampMs(right) - groupNewestActiveAnchorTimestampMs(left) ||
-      left.key.localeCompare(right.key),
+  // The first active member in upstream order anchors the whole checkout.
+  // A group drag writes a contiguous run of ordinary per-thread order keys.
+  const ranked = sortActiveThreadsByOrderKey(
+    classified.filter((entry) => entry.classification === "active").map((entry) => entry.thread),
   );
+  const rankByGroup = new Map<string, number>();
+  for (const [rank, thread] of ranked.entries()) {
+    const key = threadWorktreeScopeKey(thread);
+    if (!rankByGroup.has(key)) rankByGroup.set(key, rank);
+  }
+  activeGroups.sort((left, right) => rankByGroup.get(left.key)! - rankByGroup.get(right.key)!);
   snoozedGroups.sort(
     (left, right) =>
       groupSoonestWakeMs(left) - groupSoonestWakeMs(right) || left.key.localeCompare(right.key),
@@ -172,7 +311,7 @@ export function pickWorktreeGroupRepresentative(
     let bestMs = Number.NEGATIVE_INFINITY;
     for (const thread of group.threads) {
       const timestamp = resolveSettledThreadTimestamp(thread);
-      const ms = timestamp === null ? 0 : parseTimestampMs(timestamp);
+      const ms = timestamp === null ? 0 : firstValidTimestampMs(timestamp);
       if (ms > bestMs || best === null) {
         best = thread;
         bestMs = ms;
@@ -181,7 +320,9 @@ export function pickWorktreeGroupRepresentative(
     if (best !== null) return best;
   }
   return group.threads.reduce((newest, thread) =>
-    parseTimestampMs(thread.createdAt) >= parseTimestampMs(newest.createdAt) ? thread : newest,
+    firstValidTimestampMs(thread.createdAt) >= firstValidTimestampMs(newest.createdAt)
+      ? thread
+      : newest,
   );
 }
 

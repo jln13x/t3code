@@ -25,17 +25,20 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
 import { mergeTransferredThreadSnapshotPage } from "../threadTransfer";
 
-export const threadEnvironment = createThreadEnvironmentAtoms(connectionAtomRuntime);
-export const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
+export const threadEnvironment = createThreadEnvironmentAtoms(
+  connectionAtomRuntime,
+  environmentSnapshotAtom,
+);
+const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );
 export const environmentThreadShells = createEnvironmentThreadShellAtoms({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
-  snapshotAtom: environmentSnapshotAtom,
+  snapshotAtom: threadEnvironment.snapshotAtom,
 });
 
-class ThreadTransferSnapshotNotFoundError extends Schema.TaggedErrorClass<ThreadTransferSnapshotNotFoundError>()(
+class ThreadTransferSnapshotNotFoundError extends Schema.TaggedError<ThreadTransferSnapshotNotFoundError>()(
   "ThreadTransferSnapshotNotFoundError",
   {},
 ) {
