@@ -281,7 +281,11 @@ describe("checkout drag ordering", () => {
       pickedThreadKey: keys[1]!,
       activeSection: "active" as const,
       supportsSettlement: true,
-      target: { section: "active" as const, activeOrder: [keys[2]!, keys[0]!], pinnedOrder: [] },
+      target: {
+        section: "active" as const,
+        activeOrder: [keys[2]!, keys[0]!],
+        pinnedOrder: [],
+      },
       activeOrder: groups.flatMap(activeWorktreeMemberKeys),
       activeKeysById: new Map(
         [a, b, c, parked].map((thread) => [sidebarThreadKey(thread), thread.activeOrderKey]),
@@ -365,7 +369,10 @@ describe("checkout drag ordering", () => {
 
   it("never uses a hidden settled sibling as an active drag identity", () => {
     const groups = buildSidebarWorktreeGroups([
-      { thread: { ...parked, createdAt: "2020-01-01T00:00:00Z" }, classification: "settled" },
+      {
+        thread: { ...parked, createdAt: "2020-01-01T00:00:00Z" },
+        classification: "settled",
+      },
       ...classifyAll([a, b]),
     ]).activeGroups;
     expect(sidebarWorktreeDragThread(groups[0]!).id).toBe(a.id);

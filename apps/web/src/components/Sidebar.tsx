@@ -2746,7 +2746,6 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
           ) : (
             <span className="flex-1" />
           )}
-
           {isRemote ? (
             <EnvironmentMachineIcon
               aria-label="Remote environment"
