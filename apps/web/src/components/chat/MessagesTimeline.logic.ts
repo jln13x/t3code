@@ -895,9 +895,14 @@ export function deriveMessagesTimelineRows(input: {
   const revertTurnCountByUserMessageId = buildRevertTurnCountByUserMessageId({
     supportsConversationRollback: input.supportsConversationRollback,
     timelineEntries: input.timelineEntries,
-    turnDiffSummaryByAssistantMessageId: input.rollbackTurnDiffSummaries === undefined
-      ? turnDiffSummaryByAssistantMessageId
-      : new Map(input.rollbackTurnDiffSummaries.flatMap((summary) => summary.assistantMessageId ? [[summary.assistantMessageId, summary] as const] : [])),
+    turnDiffSummaryByAssistantMessageId:
+      input.rollbackTurnDiffSummaries === undefined
+        ? turnDiffSummaryByAssistantMessageId
+        : new Map(
+            input.rollbackTurnDiffSummaries.flatMap((summary) =>
+              summary.assistantMessageId ? [[summary.assistantMessageId, summary] as const] : [],
+            ),
+          ),
     inferredCheckpointTurnCountByTurnId: input.supportsConversationRollback
       ? inferCheckpointTurnCountByTurnId(input.rollbackTurnDiffSummaries ?? input.turnDiffSummaries)
       : {},

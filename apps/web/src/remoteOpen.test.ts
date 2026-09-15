@@ -160,7 +160,6 @@ describe("buildRemoteOpenUrl", () => {
     );
   });
 
-
   it("returns undefined for editors without remote support", () => {
     expect(buildRemoteOpenUrl({ editor: "idea", host: "sol", absolutePath: "/tmp/x" })).toBe(
       undefined,

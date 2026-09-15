@@ -10,7 +10,6 @@ import {
 import { threadWorktreeScopeKey } from "../worktreeScope";
 import {
   firstValidTimestampMs,
-  parseTimestampMs,
   planSidebarThreadDrop,
   type SidebarThreadStatus,
 } from "./Sidebar.logic";
@@ -50,7 +49,7 @@ function groupSettledTimestampMs(group: SidebarWorktreeGroup): number {
   let latest = 0;
   for (const thread of group.threads) {
     const timestamp = resolveSettledThreadTimestamp(thread);
-    if (timestamp !== null) latest = Math.max(latest, parseTimestampMs(timestamp));
+    if (timestamp !== null) latest = Math.max(latest, firstValidTimestampMs(timestamp));
   }
   return latest;
 }
@@ -77,11 +76,13 @@ export function activeWorktreeMemberKeys(group: SidebarWorktreeGroup): string[] 
 /** Translate measured checkout cards to upstream per-conversation order writes.
  * Pinning remains per conversation; ordering and lifecycle moves keep checkout
  * siblings together. No new server command or client-local order is needed. */
-export function planSidebarWorktreeDrop(input: Parameters<typeof planSidebarThreadDrop>[0] & {
-  readonly pickedThreadKey: string;
-  readonly groupsByThreadKey: ReadonlyMap<string, SidebarWorktreeGroup>;
-  readonly threadsByKey: ReadonlyMap<string, EnvironmentThreadShell>;
-}) {
+export function planSidebarWorktreeDrop(
+  input: Parameters<typeof planSidebarThreadDrop>[0] & {
+    readonly pickedThreadKey: string;
+    readonly groupsByThreadKey: ReadonlyMap<string, SidebarWorktreeGroup>;
+    readonly threadsByKey: ReadonlyMap<string, EnvironmentThreadShell>;
+  },
+) {
   const group = input.groupsByThreadKey.get(input.activeKey);
   const pickedKey = group?.memberKeys.includes(input.pickedThreadKey)
     ? input.pickedThreadKey
@@ -96,7 +97,9 @@ export function planSidebarWorktreeDrop(input: Parameters<typeof planSidebarThre
         activeSettled: picked?.settledOverride === "settled",
         target: {
           ...input.target,
-          pinnedOrder: input.target.pinnedOrder.map((key) => key === input.activeKey ? pickedKey : key),
+          pinnedOrder: input.target.pinnedOrder.map((key) =>
+            key === input.activeKey ? pickedKey : key,
+          ),
         },
       }),
       memberKeys: [pickedKey],
@@ -170,10 +173,12 @@ function planWorktreeActiveReorder(
   const last = first + moving.length - 1;
   const beforeId = order[first - 1];
   const afterId = order[last + 1];
-  let before = beforeId === undefined ? null : keys.get(beforeId) ?? null;
-  const after = afterId === undefined ? null : keys.get(afterId) ?? null;
+  let before = beforeId === undefined ? null : (keys.get(beforeId) ?? null);
+  const after = afterId === undefined ? null : (keys.get(afterId) ?? null);
   const visible = new Set(order);
-  const reserved = new Set([...keys].flatMap(([id, key]) => !visible.has(id) && key != null ? [key] : []));
+  const reserved = new Set(
+    [...keys].flatMap(([id, key]) => (!visible.has(id) && key != null ? [key] : [])),
+  );
   const assignments: Array<{ id: string; orderKey: string }> = [];
   if ((beforeId === undefined || before !== null) && (afterId === undefined || after !== null)) {
     for (const id of moving) {
@@ -185,8 +190,12 @@ function planWorktreeActiveReorder(
     }
     if (assignments.length === moving.length) return assignments;
   }
-  const spread = generateSpreadPinOrderKeys(order.length + reserved.size).filter((key) => !reserved.has(key));
-  return order.flatMap((id, index) => keys.get(id) === spread[index] ? [] : [{ id, orderKey: spread[index]! }]);
+  const spread = generateSpreadPinOrderKeys(order.length + reserved.size).filter(
+    (key) => !reserved.has(key),
+  );
+  return order.flatMap((id, index) =>
+    keys.get(id) === spread[index] ? [] : [{ id, orderKey: spread[index]! }],
+  );
 }
 
 /**
@@ -228,8 +237,8 @@ export function buildSidebarWorktreeGroups(
       .map((_, index) => index)
       .toSorted(
         (left, right) =>
-          parseTimestampMs(entry.threads[left]!.createdAt) -
-            parseTimestampMs(entry.threads[right]!.createdAt) ||
+          firstValidTimestampMs(entry.threads[left]!.createdAt) -
+            firstValidTimestampMs(entry.threads[right]!.createdAt) ||
           entry.threads[left]!.id.localeCompare(entry.threads[right]!.id),
       );
     const threads = order.map((index) => entry.threads[index]!);
@@ -302,7 +311,7 @@ export function pickWorktreeGroupRepresentative(
     let bestMs = Number.NEGATIVE_INFINITY;
     for (const thread of group.threads) {
       const timestamp = resolveSettledThreadTimestamp(thread);
-      const ms = timestamp === null ? 0 : parseTimestampMs(timestamp);
+      const ms = timestamp === null ? 0 : firstValidTimestampMs(timestamp);
       if (ms > bestMs || best === null) {
         best = thread;
         bestMs = ms;
@@ -311,7 +320,9 @@ export function pickWorktreeGroupRepresentative(
     if (best !== null) return best;
   }
   return group.threads.reduce((newest, thread) =>
-    parseTimestampMs(thread.createdAt) >= parseTimestampMs(newest.createdAt) ? thread : newest,
+    firstValidTimestampMs(thread.createdAt) >= firstValidTimestampMs(newest.createdAt)
+      ? thread
+      : newest,
   );
 }
 

@@ -3687,7 +3687,6 @@ export default function ChatView(props: ChatViewProps) {
     captureDraftHeroComposerRect,
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
 
-
   const gitCwd = activeProject
     ? projectScriptCwd({
         project: { cwd: activeProject.workspaceRoot },
@@ -7024,7 +7023,11 @@ export default function ChatView(props: ChatViewProps) {
       if (!localApi || !activeThread || isRevertingCheckpoint) return;
       const message = activeThread.messages.find((message) => message.id === messageId);
       if (!message || message.role !== "user") return;
-      if (transferredHistory.archive !== null && !serverThread?.messages.some((native) => native.id === messageId)) return;
+      if (
+        transferredHistory.archive !== null &&
+        !serverThread?.messages.some((native) => native.id === messageId)
+      )
+        return;
 
       if (!supportsConversationRollback) {
         setThreadError(
@@ -9121,15 +9124,28 @@ export default function ChatView(props: ChatViewProps) {
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       if (!isServerThread || !activeThreadRef) return;
-      if (transferredHistory.archive !== null && !serverThread?.checkpoints.some((checkpoint) => checkpoint.turnId === turnId)) {
-        toastManager.add({ type: "info", title: "Imported checkpoint", description: "This checkpoint belongs to the source conversation and is read-only." });
+      if (
+        transferredHistory.archive !== null &&
+        !serverThread?.checkpoints.some((checkpoint) => checkpoint.turnId === turnId)
+      ) {
+        toastManager.add({
+          type: "info",
+          title: "Imported checkpoint",
+          description: "This checkpoint belongs to the source conversation and is read-only.",
+        });
         return;
       }
       useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath);
       useRightPanelStore.getState().open(activeThreadRef, "diff");
       onDiffPanelOpen?.();
     },
-    [activeThreadRef, isServerThread, onDiffPanelOpen, serverThread?.checkpoints, transferredHistory.archive],
+    [
+      activeThreadRef,
+      isServerThread,
+      onDiffPanelOpen,
+      serverThread?.checkpoints,
+      transferredHistory.archive,
+    ],
   );
   // The revert handler is read from a ref at call-time so the callback
   // reference is fully stable and never busts TimelineRowCtx identity.
@@ -9564,9 +9580,12 @@ export default function ChatView(props: ChatViewProps) {
                     ? EMPTY_HELD_TURN_DIFF_SUMMARIES
                     : activeThread.checkpoints
                 }
-                {...(transferredHistory.archive === null ? {} : {
-                  rollbackTurnDiffSummaries: serverThread?.checkpoints ?? EMPTY_HELD_TURN_DIFF_SUMMARIES,
-                })}
+                {...(transferredHistory.archive === null
+                  ? {}
+                  : {
+                      rollbackTurnDiffSummaries:
+                        serverThread?.checkpoints ?? EMPTY_HELD_TURN_DIFF_SUMMARIES,
+                    })}
                 activeThreadEnvironmentId={
                   displayedThreadRef?.environmentId ?? activeThread.environmentId
                 }
@@ -9720,14 +9739,14 @@ export default function ChatView(props: ChatViewProps) {
                               transferredHistory.error !== null
                                 ? "Transferred history unavailable"
                                 : isRevertingCheckpoint
-                                ? "Rewinding conversation"
-                                : feedbackUploading
-                                  ? "Sending feedback"
-                                  : threadHistoryLoading
-                                    ? "Messages loading"
-                                    : worktreeSetupBlocksSend
-                                      ? "Preparing worktree"
-                                      : projectCloneSendBlockReason
+                                  ? "Rewinding conversation"
+                                  : feedbackUploading
+                                    ? "Sending feedback"
+                                    : threadHistoryLoading
+                                      ? "Messages loading"
+                                      : worktreeSetupBlocksSend
+                                        ? "Preparing worktree"
+                                        : projectCloneSendBlockReason
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             bannerItems={composerBannerItems}

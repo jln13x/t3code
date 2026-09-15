@@ -58,7 +58,6 @@ export function ThreadNotificationCoordinator() {
     };
   }, [mode]);
 
-
   if (mode === "off" && !inAppNotificationsEnabled) return null;
 
   return environments.map((environment) => (

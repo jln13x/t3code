@@ -25,7 +25,7 @@ import { resolveStorage } from "./lib/storage";
 import {
   migrateWorktreeScopedRecord,
   readWorktreeScopedRecordValue,
-  worktreeScopeKeyForThreadRef,
+  resolveWorktreeScopeKeyForThreadRef,
 } from "./worktreeScope";
 
 const RIGHT_PANEL_KINDS = [
@@ -362,8 +362,8 @@ const userAction = (
   }),
   userActionRevisionByThreadKey: {
     ...state.userActionRevisionByThreadKey,
-    [worktreeScopeKeyForThreadRef(ref)]:
-      (state.userActionRevisionByThreadKey[worktreeScopeKeyForThreadRef(ref)] ?? 0) + 1,
+    [resolveWorktreeScopeKeyForThreadRef(ref)]:
+      (state.userActionRevisionByThreadKey[resolveWorktreeScopeKeyForThreadRef(ref)] ?? 0) + 1,
   },
 });
 
@@ -508,11 +508,11 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       byThreadKey: {},
       userActionRevisionByThreadKey: {},
       getUserActionRevision: (ref) =>
-        get().userActionRevisionByThreadKey[worktreeScopeKeyForThreadRef(ref)] ?? 0,
+        get().userActionRevisionByThreadKey[resolveWorktreeScopeKeyForThreadRef(ref)] ?? 0,
       openProactive: (ref, surface, expectedUserActionRevision) => {
         let opened = false;
         set((state) => {
-          const threadKey = worktreeScopeKeyForThreadRef(ref);
+          const threadKey = resolveWorktreeScopeKeyForThreadRef(ref);
           if (
             (state.userActionRevisionByThreadKey[threadKey] ?? 0) !== expectedUserActionRevision
           ) {
@@ -641,9 +641,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       openTerminal: (ref, terminalId) =>
         set((state) =>
-          userAction(state, ref, (current) =>
-            upsertSurface(current, terminalSurface(terminalId)),
-          ),
+          userAction(state, ref, (current) => upsertSurface(current, terminalSurface(terminalId))),
         ),
       splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
         set((state) =>
@@ -724,7 +722,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           if (current === undefined) return state;
           const next = withoutTerminalSurfaces(current);
           if (next === current) return state;
-          if (!next.isOpen && next.activeSurfaceId === null && next.surfaces.length === 0 && !next.dismissedDeviceSurfaceIds?.length) {
+          if (
+            !next.isOpen &&
+            next.activeSurfaceId === null &&
+            next.surfaces.length === 0 &&
+            !next.dismissedDeviceSurfaceIds?.length
+          ) {
             const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
             return { byThreadKey };
           }

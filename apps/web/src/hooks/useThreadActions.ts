@@ -147,7 +147,6 @@ export class ThreadActiveReorderUnsupportedError extends Schema.TaggedError<Thre
   override get message(): string {
     return "Update this environment's server to reorder active threads.";
   }
-
 }
 
 export async function requestThreadUnpinConfirmation(input: {

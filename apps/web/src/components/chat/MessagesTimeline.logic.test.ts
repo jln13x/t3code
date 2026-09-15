@@ -283,14 +283,27 @@ describe("streaming row projection", () => {
       expandedWorkGroupIds: new Set<string>(),
     };
     const native = deriveMessagesTimelineRowsWithState(input);
-    expect(native.rows.some((row) => row.kind === "message" && row.revertTurnCount === 4)).toBe(true);
+    expect(native.rows.some((row) => row.kind === "message" && row.revertTurnCount === 4)).toBe(
+      true,
+    );
     const importedInput = { ...input, rollbackTurnDiffSummaries: [] };
     const imported = deriveMessagesTimelineRowsWithState(importedInput, native);
     expect(imported.rows).toEqual(deriveMessagesTimelineRows(importedInput));
-    expect(imported.rows.some((row) => row.kind === "message" && row.revertTurnCount !== undefined)).toBe(false);
-    expect(imported.rows.some((row) => row.kind === "message" && row.assistantTurnDiffSummary === summary)).toBe(true);
-    const restored = deriveMessagesTimelineRowsWithState({ ...input, rollbackTurnDiffSummaries: [summary] }, imported);
-    expect(restored.rows.some((row) => row.kind === "message" && row.revertTurnCount === 4)).toBe(true);
+    expect(
+      imported.rows.some((row) => row.kind === "message" && row.revertTurnCount !== undefined),
+    ).toBe(false);
+    expect(
+      imported.rows.some(
+        (row) => row.kind === "message" && row.assistantTurnDiffSummary === summary,
+      ),
+    ).toBe(true);
+    const restored = deriveMessagesTimelineRowsWithState(
+      { ...input, rollbackTurnDiffSummaries: [summary] },
+      imported,
+    );
+    expect(restored.rows.some((row) => row.kind === "message" && row.revertTurnCount === 4)).toBe(
+      true,
+    );
   });
 
   it("owns checkpoint lookups across streaming and equal source snapshots", () => {

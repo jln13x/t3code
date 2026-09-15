@@ -102,7 +102,9 @@ function resolveDesktopAppStageLabel(input: {
   return "Fork";
 }
 
-export function resolveDesktopAppBranding(input: { readonly isDevelopment: boolean }): DesktopAppBranding {
+export function resolveDesktopAppBranding(input: {
+  readonly isDevelopment: boolean;
+}): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
     baseName: APP_BASE_NAME,

@@ -240,10 +240,12 @@ describe("thread notifications", () => {
   });
 
   it("does not duplicate native macOS completion alerts but keeps attention alerts", async () => {
-    Object.assign(window, { desktopBridge: {
-      getClientPlatform: () => "darwin",
-      showThreadCompletionNotification: vi.fn(),
-    } });
+    Object.assign(window, {
+      desktopBridge: {
+        getClientPlatform: () => "darwin",
+        showThreadCompletionNotification: vi.fn(),
+      },
+    });
     state.mode = "notifications-and-sound";
     state.focused = false;
     await render();
@@ -252,7 +254,10 @@ describe("thread notifications", () => {
     expect(state.sound).not.toHaveBeenCalled();
     state.input = true;
     await render();
-    expect(state.notification).toHaveBeenCalledWith("Input needed", expect.objectContaining({ silent: true }));
+    expect(state.notification).toHaveBeenCalledWith(
+      "Input needed",
+      expect.objectContaining({ silent: true }),
+    );
   });
 
   it("keeps system alerts when the app is in the background", async () => {

@@ -33,7 +33,6 @@ export const assetEnvironment = createAssetEnvironmentAtoms(
   localMediaEnvironment,
 );
 
-
 export const projectFaviconUrlAtom = createProjectFaviconUrlAtomFamily({
   imageCache: projectFaviconCache,
   createUrl: assetEnvironment.createUrl,

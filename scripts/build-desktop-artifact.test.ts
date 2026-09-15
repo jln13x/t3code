@@ -344,7 +344,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "mac",
         "dmg",
         "0.0.41-preview.20260912.1589",
-        false,
+        "unsigned",
         false,
         undefined,
         undefined,
@@ -2207,7 +2207,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         verbose: Option.some(false),
         mockUpdates: Option.some(false),
         mockUpdateServerPort: Option.none<number>(),
-        wslPrebuild: Option.none<string>(),
+        wslRuntime: Option.none<string>(),
       };
       const layer = Layer.mergeAll(
         Layer.succeed(HostProcessPlatform, "darwin"),

@@ -32,7 +32,6 @@ import {
 import {
   resolveEnvironmentMachineKind,
   type EnvironmentMachineKind,
-
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -166,7 +165,6 @@ import {
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
-
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveSidebarDropTarget,
@@ -2173,14 +2171,20 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
   const linkedPr = supportsMultiplePullRequests
     ? resolveThreadCurrentPullRequestLink(thread.pullRequests)
     : null;
-  const badge = supportsMultiplePullRequests ? resolveThreadPullRequestBadge(thread.pullRequests) : null;
+  const badge = supportsMultiplePullRequests
+    ? resolveThreadPullRequestBadge(thread.pullRequests)
+    : null;
   const prStatus = prStatusIndicator(pr, linkedPullRequestStatus?.sourceControlProvider);
   const openPrLink = useOpenPrLink();
   const hasUnsentDraft = useThreadHasUnsentDraft(threadRef) && !props.isActive;
-  const fileDropHandlers = useMemo(() => makeWorkspaceFileDropHandlers({
-    setDragActive: setIsFileDragOver,
-    addFiles: (files) => props.onFileDropThreads(threadRef, files),
-  }), [props.onFileDropThreads, threadRef]);
+  const fileDropHandlers = useMemo(
+    () =>
+      makeWorkspaceFileDropHandlers({
+        setDragActive: setIsFileDragOver,
+        addFiles: (files) => props.onFileDropThreads(threadRef, files),
+      }),
+    [props.onFileDropThreads, threadRef],
+  );
   useEffect(() => {
     if (!isFileDragOver) return;
     const clear = () => setIsFileDragOver(false);
@@ -2370,7 +2374,9 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
       >
         {title}
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
-        {hasUnsentDraft ? <SquarePenIcon aria-label="Unsent draft" className="size-3 shrink-0" /> : null}
+        {hasUnsentDraft ? (
+          <SquarePenIcon aria-label="Unsent draft" className="size-3 shrink-0" />
+        ) : null}
         {badge?.kind === "stack" || pr || linkedPr ? (
           <ThreadPullRequestBadgeControl
             variant="underline"
@@ -2385,7 +2391,11 @@ const SidebarWorktreeThreadRow = memo(function SidebarWorktreeThreadRow(props: {
             onOpenPullRequest={(event) => {
               const url = pr?.url ?? linkedPr?.url;
               if (!url) return;
-              const opened = openPrLink(event, url, props.openPullRequestsInRightPanel ? threadRef : undefined);
+              const opened = openPrLink(
+                event,
+                url,
+                props.openPullRequestsInRightPanel ? threadRef : undefined,
+              );
               if (opened && !props.isActive) props.onThreadActivate(threadRef);
             }}
           />
@@ -2454,7 +2464,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   renamingThreadKey: string | null;
   renamingTitle: string;
   openPullRequestsInRightPanel: boolean;
-  sortable?: SortableThreadRowBag;
+  sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -2466,7 +2476,7 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
   onContextMenu: (threadRef: ScopedThreadRef, position: { x: number; y: number }) => void;
   onArchive: (threadRef: ScopedThreadRef, title: string) => void;
   onSettle: () => void;
-  onSnooze: (preset: SnoozePreset) => void;
+  onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
 }) {
   const { group } = props;
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(
@@ -2542,7 +2552,9 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
     allThreads.find((thread) => thread.worktreePath !== null)?.worktreePath ?? null;
   const gitCwd = worktreePath ?? props.project?.workspaceRoot ?? null;
   const gitStatus = useEnvironmentQuery(
-    gitCwd === null || !leaseLiveStatus ? null : vcsEnvironment.status({ environmentId, input: { cwd: gitCwd } }),
+    gitCwd === null || !leaseLiveStatus
+      ? null
+      : vcsEnvironment.status({ environmentId, input: { cwd: gitCwd } }),
   );
   const visibleGitStatus = useRetainedValue(group.key, gitStatus.data);
   const checkoutBranch =
@@ -2601,12 +2613,18 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         if (event.target instanceof Element && event.target.closest("button, a, input")) return;
         props.sortable?.listeners?.onPointerDown?.(event);
       }}
-      className={cn("list-none py-0.5 [content-visibility:auto]", props.sortable?.isDragging && "relative z-20 rounded-md bg-sidebar shadow-lg")}
+      className={cn(
+        "list-none py-0.5 [content-visibility:auto]",
+        props.sortable?.isDragging && "relative z-20 rounded-md bg-sidebar shadow-lg",
+      )}
       style={{
         containIntrinsicSize: `auto ${96 + (threads.length - 1) * 32}px`,
         transform: CSS.Translate.toString(props.sortable?.transform ?? null),
         transition: props.sortable?.transition,
-        visibility: !props.sortable?.isDragging && props.sortable?.transform?.scaleY === 0 ? "hidden" : undefined,
+        visibility:
+          !props.sortable?.isDragging && props.sortable?.transform?.scaleY === 0
+            ? "hidden"
+            : undefined,
       }}
     >
       <div
@@ -2625,8 +2643,13 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
         onKeyDown={handleCardKeyDown}
         onContextMenu={handleCardContextMenu}
       >
-        <div className="group/worktree-header flex h-5 min-w-0 items-center gap-1.5" data-worktree-thread-key={scopedThreadKey(newestRef)}>
-          {props.project ? <ProjectFavicon project={props.project} className="size-4 shrink-0" /> : null}
+        <div
+          className="group/worktree-header flex h-5 min-w-0 items-center gap-1.5"
+          data-worktree-thread-key={scopedThreadKey(newestRef)}
+        >
+          {props.project ? (
+            <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+          ) : null}
           {props.projectDisplayName ? (
             <span className="min-w-0 truncate text-xs font-medium text-muted-foreground/60">
               {props.projectDisplayName}
@@ -2666,7 +2689,12 @@ const SidebarWorktreeCard = memo(function SidebarWorktreeCard(props: {
             </Tooltip>
           ) : null}
           {props.sortable?.isDragging && props.dropVerb ? (
-            <span role="status" className="ml-auto inline-flex items-center gap-1 text-xs text-primary">{dropVerbBadge[props.dropVerb]}</span>
+            <span
+              role="status"
+              className="ml-auto inline-flex items-center gap-1 text-xs text-primary"
+            >
+              {dropVerbBadge[props.dropVerb]}
+            </span>
           ) : null}
           <span className="relative ml-auto flex h-5 min-w-8 items-center justify-end text-xs">
             {canSettleGroup || canSnoozeGroup ? (
@@ -3242,7 +3270,8 @@ export default function Sidebar() {
     const groups = buildSidebarWorktreeGroups(classified);
     if (optimisticDrop?.section === "active" && optimisticDrop.order !== null) {
       const rank = new Map(optimisticDrop.order.map((key, index) => [key, index]));
-      const groupRank = (group: SidebarWorktreeGroup) => Math.min(...group.memberKeys.map((key) => rank.get(key) ?? Number.POSITIVE_INFINITY));
+      const groupRank = (group: SidebarWorktreeGroup) =>
+        Math.min(...group.memberKeys.map((key) => rank.get(key) ?? Number.POSITIVE_INFINITY));
       groups.activeGroups.sort((left, right) => groupRank(left) - groupRank(right));
     }
     return {
@@ -3274,7 +3303,7 @@ export default function Sidebar() {
       settledThreads: sortSettledThreadsForSidebar(settled),
       snoozeNow: preciseNow,
     };
-  }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
+  }, [optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -3364,7 +3393,6 @@ export default function Sidebar() {
     return routeGroup === undefined ? [] : [routeGroup];
   }, [groupContainsRouteThread, settledShelfExpanded, visibleSettledGroups]);
 
-
   // The snoozed shelf is collapsed by default: out of the way, never gone.
   // Collapsed threads don't render (and so don't participate in jump
   // shortcuts or multi-select), matching the settled tail's paging model.
@@ -3401,7 +3429,6 @@ export default function Sidebar() {
     () => activeGroups.map(sidebarWorktreeDragThread),
     [activeGroups],
   );
-
 
   const orderedThreads = useMemo(
     () => [
@@ -3856,10 +3883,7 @@ export default function Sidebar() {
       ),
     [pinnedThreads],
   );
-  const activeKeys = useMemo(
-    () => activeGroups.flatMap(activeWorktreeMemberKeys),
-    [activeGroups],
-  );
+  const activeKeys = useMemo(() => activeGroups.flatMap(activeWorktreeMemberKeys), [activeGroups]);
   useEffect(() => {
     if (optimisticDrop === null) return;
     const canonicalByKey = new Map(
@@ -3869,18 +3893,23 @@ export default function Sidebar() {
       ]),
     );
     const thread = canonicalByKey.get(optimisticDrop.key);
-    if (thread === undefined || [...optimisticDrop.memberKeys].some((key) => {
-      const member = canonicalByKey.get(key);
-      return member === undefined || member.archivedAt !== null;
-    })) {
+    if (
+      thread === undefined ||
+      [...optimisticDrop.memberKeys].some((key) => {
+        const member = canonicalByKey.get(key);
+        return member === undefined || member.archivedAt !== null;
+      })
+    ) {
       setOptimisticDrop(null);
       return;
     }
     const allMembersLanded = [...optimisticDrop.memberKeys].every((key) => {
       const member = canonicalByKey.get(key)!;
       if (optimisticDrop.clearsSnooze && member.snoozedUntil != null) return false;
-      if (optimisticDrop.section === "settled") return member.settledOverride === "settled" && member.pinnedAt == null;
-      if (optimisticDrop.section === "pinned") return member.pinnedAt != null && member.settledOverride !== "settled";
+      if (optimisticDrop.section === "settled")
+        return member.settledOverride === "settled" && member.pinnedAt == null;
+      if (optimisticDrop.section === "pinned")
+        return member.pinnedAt != null && member.settledOverride !== "settled";
       return member.pinnedAt == null && member.settledOverride !== "settled";
     });
     const canonicalSection = effectiveSnoozed(thread, { now: new Date().toISOString() })
@@ -4085,9 +4114,11 @@ export default function Sidebar() {
       }
       setDragState({
         activeKey,
-        pickedThreadKey: event.activatorEvent.target instanceof Element
-          ? event.activatorEvent.target.closest<HTMLElement>("[data-worktree-thread-key]")?.dataset.worktreeThreadKey ?? activeKey
-          : activeKey,
+        pickedThreadKey:
+          event.activatorEvent.target instanceof Element
+            ? (event.activatorEvent.target.closest<HTMLElement>("[data-worktree-thread-key]")
+                ?.dataset.worktreeThreadKey ?? activeKey)
+            : activeKey,
         activeSection,
         targetSection: activeSection,
         occurredAt: new Date().toISOString(),
@@ -4202,13 +4233,17 @@ export default function Sidebar() {
     const movingKeys = new Set(movingMembers.map(key));
     const projected = [
       ...settledThreads.filter((candidate) => !movingKeys.has(key(candidate))),
-      ...movingMembers.map((member) => applySidebarThreadDrop(member, "settled", dragState.occurredAt)),
+      ...movingMembers.map((member) =>
+        applySidebarThreadDrop(member, "settled", dragState.occurredAt),
+      ),
     ];
     return buildSidebarWorktreeGroups(
       projected.map((candidate) => ({ thread: candidate, classification: "settled" })),
-    ).settledGroups.map((group) => movingKeys.has(group.memberKeys[0]!)
-      ? dragState.activeKey
-      : key(pickWorktreeGroupRepresentative(group, routeThreadKey)));
+    ).settledGroups.map((group) =>
+      movingKeys.has(group.memberKeys[0]!)
+        ? dragState.activeKey
+        : key(pickWorktreeGroupRepresentative(group, routeThreadKey)),
+    );
   }, [dragState, groupByThreadKey, routeThreadKey, settledThreads, threadByKey]);
   const sidebarSortingStrategy = useMemo(
     () =>
@@ -4341,7 +4376,9 @@ export default function Sidebar() {
       const assignments =
         plan.kind === "pin"
           ? [
-              ...(plan.orderKey === undefined ? [] : [{ id: plan.movedKey, orderKey: plan.orderKey }]),
+              ...(plan.orderKey === undefined
+                ? []
+                : [{ id: plan.movedKey, orderKey: plan.orderKey }]),
               ...plan.extraAssignments,
             ]
           : plan.kind === "reorder-pinned" || plan.kind === "move-active"
@@ -4392,14 +4429,26 @@ export default function Sidebar() {
             }
             for (const key of plan.memberKeys) settlingThreadKeysRef.current.add(key);
             const routeKey = routeThreadKeyRef.current;
-            const navigationKey = routeKey !== null && coSettlingKeys.has(routeKey) ? routeKey : activeKey;
+            const navigationKey =
+              routeKey !== null && coSettlingKeys.has(routeKey) ? routeKey : activeKey;
             const navigateAfterSettle = planForwardNavigation(navigationKey, coSettlingKeys);
             let settled = true;
             try {
               for (const key of plan.memberKeys) {
                 const member = threadByKey.get(key);
-                if (!member || (member.settledOverride === "settled" && member.pinnedAt == null && member.snoozedUntil == null)) continue;
-                if (!(await run(settleThread(scopeThreadRef(member.environmentId, member.id)), "Failed to settle checkout"))) {
+                if (
+                  !member ||
+                  (member.settledOverride === "settled" &&
+                    member.pinnedAt == null &&
+                    member.snoozedUntil == null)
+                )
+                  continue;
+                if (
+                  !(await run(
+                    settleThread(scopeThreadRef(member.environmentId, member.id)),
+                    "Failed to settle checkout",
+                  ))
+                ) {
                   settled = false;
                   break;
                 }
@@ -4416,7 +4465,9 @@ export default function Sidebar() {
                 currentThreadKey: routeThreadKeyRef.current,
                 action: "settle",
                 now: new Date().toISOString(),
-                thread: readThreadShell(scopeThreadRef(navigationThread.environmentId, navigationThread.id)),
+                thread: readThreadShell(
+                  scopeThreadRef(navigationThread.environmentId, navigationThread.id),
+                ),
               })
             )
               navigateAfterSettle?.();
@@ -4428,10 +4479,22 @@ export default function Sidebar() {
               const member = threadByKey.get(key);
               if (!member) continue;
               const memberRef = scopeThreadRef(member.environmentId, member.id);
-              if (member.pinnedAt != null && !(await run(unpinThread(memberRef), "Failed to unpin thread"))) return;
+              if (
+                member.pinnedAt != null &&
+                !(await run(unpinThread(memberRef), "Failed to unpin thread"))
+              )
+                return;
               if (activeSection !== "active") {
-                if (member.settledOverride === "settled" && !(await run(unsettleThread(memberRef), "Failed to un-settle checkout"))) return;
-                if (effectiveSnoozed(member, { now: drop.occurredAt }) && !(await run(unsnoozeThread(memberRef), "Failed to wake checkout"))) return;
+                if (
+                  member.settledOverride === "settled" &&
+                  !(await run(unsettleThread(memberRef), "Failed to un-settle checkout"))
+                )
+                  return;
+                if (
+                  effectiveSnoozed(member, { now: drop.occurredAt }) &&
+                  !(await run(unsnoozeThread(memberRef), "Failed to wake checkout"))
+                )
+                  return;
               }
             }
             break;
@@ -4611,7 +4674,7 @@ export default function Sidebar() {
     [attemptUnsnooze],
   );
   const attemptSnoozeGroup = useCallback(
-    (group: SidebarWorktreeGroup, preset: SnoozePreset) => {
+    (group: SidebarWorktreeGroup, preset: Pick<SnoozePreset, "snoozedUntil">) => {
       void (async () => {
         const coSnoozingKeys = new Set(group.memberKeys);
         const snoozedRefs: ScopedThreadRef[] = [];
@@ -5556,25 +5619,52 @@ export default function Sidebar() {
                         const group = groupByThreadKey.get(threadKey);
                         if (section === "active" && group) {
                           const newest = group.threads[group.threads.length - 1]!;
-                          const projectKey = `${newest.environmentId}:${newest.projectId}`;
-                          const activeThreadKey = routeThreadKey !== null && group.memberKeys.includes(routeThreadKey) ? routeThreadKey : null;
-                          const renamingThreadKeyInGroup = renamingThreadKey !== null && group.memberKeys.includes(renamingThreadKey) ? renamingThreadKey : null;
+                          const projectKey = `${newest.environmentId}:${newest.projectId}` as const;
+                          const activeThreadKey =
+                            routeThreadKey !== null && group.memberKeys.includes(routeThreadKey)
+                              ? routeThreadKey
+                              : null;
+                          const renamingThreadKeyInGroup =
+                            renamingThreadKey !== null &&
+                            group.memberKeys.includes(renamingThreadKey)
+                              ? renamingThreadKey
+                              : null;
                           return (
                             <SidebarWorktreeCard
                               group={group}
                               sortable={sortable}
-                              dropVerb={dragState?.activeKey === threadKey ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection) : null}
+                              dropVerb={
+                                dragState?.activeKey === threadKey
+                                  ? resolveSidebarDropVerb(
+                                      dragState.activeSection,
+                                      dragTargetSection,
+                                    )
+                                  : null
+                              }
                               onFileDropThreads={handleThreadFileDrop}
                               activeThreadKey={activeThreadKey}
-                              settlementSupported={serverConfigs.get(newest.environmentId)?.environment.capabilities.threadSettlement === true}
-                              snoozeSupported={serverConfigs.get(newest.environmentId)?.environment.capabilities.threadSnooze === true}
+                              settlementSupported={
+                                serverConfigs.get(newest.environmentId)?.environment.capabilities
+                                  .threadSettlement === true
+                              }
+                              snoozeSupported={
+                                serverConfigs.get(newest.environmentId)?.environment.capabilities
+                                  .threadSnooze === true
+                              }
                               snoozeNow={snoozeNow}
                               currentEnvironmentId={primaryEnvironmentId}
-                              environmentLabel={environmentLabelById.get(newest.environmentId) ?? null}
-                              environmentMachine={environmentMachineById.get(newest.environmentId) ?? "server"}
+                              environmentLabel={
+                                environmentLabelById.get(newest.environmentId) ?? null
+                              }
+                              environmentMachine={
+                                environmentMachineById.get(newest.environmentId) ?? "server"
+                              }
                               project={projectByKey.get(projectKey) ?? null}
                               projectDisplayName={projectDisplayNameByKey.get(projectKey) ?? null}
-                              providerEntryByInstanceId={providerEntriesByEnvironment.get(newest.environmentId) ?? EMPTY_PROVIDER_ENTRIES}
+                              providerEntryByInstanceId={
+                                providerEntriesByEnvironment.get(newest.environmentId) ??
+                                EMPTY_PROVIDER_ENTRIES
+                              }
                               timestampFormat={timestampFormat}
                               jumpLabelByKey={showThreadJumpHints ? jumpLabelByKey : null}
                               renamingThreadKey={renamingThreadKeyInGroup}
@@ -5684,10 +5774,18 @@ export default function Sidebar() {
                             isRenaming={renamingThreadKey === threadKey}
                             renamingTitle={renamingThreadKey === threadKey ? renamingTitle : ""}
                             onContextMenu={handleThreadContextMenu}
-                            onSettle={(ref) => group ? attemptSettleGroup(group) : attemptSettle(ref)}
-                            onUnsettle={(ref) => group ? attemptUnsettleGroup(group) : attemptUnsettle(ref)}
-                            onSnooze={(ref, preset) => group ? attemptSnoozeGroup(group, preset) : attemptSnooze(ref, preset)}
-                            onUnsnooze={(ref) => group ? attemptUnsnoozeGroup(group) : attemptUnsnooze(ref)}
+                            onSettle={(ref) =>
+                              group ? attemptSettleGroup(group) : attemptSettle(ref)
+                            }
+                            onUnsettle={(ref) =>
+                              group ? attemptUnsettleGroup(group) : attemptUnsettle(ref)
+                            }
+                            onSnooze={(ref, preset) =>
+                              group ? attemptSnoozeGroup(group, preset) : attemptSnooze(ref, preset)
+                            }
+                            onUnsnooze={(ref) =>
+                              group ? attemptUnsnoozeGroup(group) : attemptUnsnooze(ref)
+                            }
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
