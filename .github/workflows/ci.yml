@@ -55,25 +55,6 @@ jobs:
       - name: Typecheck
         run: vpr typecheck
 
-      - name: Diagnose type errors after a failed check
-        if: failure()
-        run: vp run typecheck
-
-      - name: Capture formatting suggestions
-        if: failure()
-        run: |
-          vp fmt apps/desktop/src/app/DesktopEnvironment.ts apps/web/src/components/ChatView.tsx apps/web/src/components/Sidebar.tsx apps/web/src/components/SidebarV2.logic.test.ts apps/web/src/components/SidebarV2.logic.ts apps/web/src/components/ThreadNotificationCoordinator.test.tsx apps/web/src/components/ThreadNotificationCoordinator.tsx apps/web/src/components/chat/MessagesTimeline.logic.test.ts apps/web/src/components/chat/MessagesTimeline.logic.ts apps/web/src/hooks/useThreadActions.ts apps/web/src/remoteOpen.test.ts apps/web/src/rightPanelStore.ts apps/web/src/state/assets.ts
-          git diff --no-ext-diff > "$RUNNER_TEMP/formatting.patch"
-
-      - name: Upload formatting suggestions
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: formatting-suggestions
-          path: ${{ runner.temp }}/formatting.patch
-          retention-days: 1
-          if-no-files-found: error
-
       - uses: ./.github/actions/setup-apt-mirrors
 
       - name: Install browser secret helper build libraries
