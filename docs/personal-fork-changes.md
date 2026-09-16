@@ -218,7 +218,9 @@ This file is both the current inventory and the retirement record used during up
 - The project-scoped `server.listProviderSkills` RPC and its contracts, registry hooks, and client
   query are removed. Web, desktop, and mobile use upstream workspace snapshots for skill menus.
 - Do not restore these provider overrides during syncs. Upstream Codex turn handling and workspace
-  discovery are authoritative, including their future changes.
+  discovery are authoritative, including their future changes. The upstream Queue/Steer follow-up
+  preference and send-now shortcut use upstream's message queue and provider dispatch; they do not
+  restore the retired fork queues or Codex steering override.
 
 ## Retired on 2026-08-18
 
