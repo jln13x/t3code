@@ -1,6 +1,6 @@
 # Personal fork changes
 
-The fork maintains worktree grouping in the web/desktop sidebar, its success sound, and a distinct
+The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
 ## Maintained differences
@@ -9,9 +9,11 @@ locally installable desktop identity. Other product behavior follows upstream.
 
 - Group conversations by environment, project, and checkout independently within Active, Snoozed,
   and Settled. A checkout can appear in multiple sections; settled siblings remain findable.
-- Keep upstream conversation rows, status/typography, model/provider icons, unread state, drafts,
-  PR controls, search, shelf persistence, and individual pin ordering. Headers identify the checkout
-  and project without aggregate status, selection, or group lifecycle actions.
+- Headers show the project icon and name above the checkout. Grouped active conversations use a
+  single compact row, with PR, diff, and environment indicators beside the title. Status uses icons
+  with accessible labels, without visible status text or elapsed timers.
+- Keep upstream model/provider icons, unread state, drafts, PR controls, search, shelf persistence,
+  and individual pin ordering. Headers have no aggregate status, selection, or group lifecycle actions.
 - Snooze, settle, wake, archive, pin, and drag affect individual conversations. Creating a sibling
   uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
 - Terminals, previews, files, and diff state belong to individual threads as in upstream.
@@ -41,8 +43,9 @@ locally installable desktop identity. Other product behavior follows upstream.
 
 - Cross-environment chat transfer, Git snapshot transport, imported-history overlays, and transfer
   actions are removed. No user data or previously transferred checkout files are deleted.
-- Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, custom sidebar typography
-  and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
+- Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, the previous sidebar
+  typography and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
+  The compact rows and icon-only status described above are the current presentation changes.
 - Always-on completion/attention detection, the cuelume dependency/volume patch, and native macOS
   completion delivery/acknowledgement/reconnect queues are replaced by upstream notification handling.
   System notifications require upstream settings and permission, appear while the app is unfocused,
