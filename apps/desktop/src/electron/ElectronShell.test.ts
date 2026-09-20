@@ -1,18 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
-import { buildRemoteOpenUrl } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { beforeEach, vi } from "vite-plus/test";
 
-const { getApplicationNameForProtocolMock, openExternalMock, writeTextMock } = vi.hoisted(() => ({
-  getApplicationNameForProtocolMock: vi.fn(),
+const { openExternalMock, writeTextMock } = vi.hoisted(() => ({
   openExternalMock: vi.fn(),
   writeTextMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
-  app: {
-    getApplicationNameForProtocol: getApplicationNameForProtocolMock,
-  },
   shell: {
     openExternal: openExternalMock,
   },
@@ -25,33 +20,9 @@ import * as ElectronShell from "./ElectronShell.ts";
 
 describe("ElectronShell", () => {
   beforeEach(() => {
-    getApplicationNameForProtocolMock.mockReset();
     openExternalMock.mockReset();
     writeTextMock.mockReset();
   });
-
-  it.effect("detects registered editor protocol handlers", () =>
-    Effect.gen(function* () {
-      getApplicationNameForProtocolMock.mockImplementation((url: string) =>
-        url === "zed://" ? "Zed" : "",
-      );
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      assert.equal(yield* electronShell.hasProtocolHandler("zed"), true);
-      assert.equal(yield* electronShell.hasProtocolHandler("vscode"), false);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
-
-  it.effect("treats failed protocol lookups as unavailable", () =>
-    Effect.gen(function* () {
-      getApplicationNameForProtocolMock.mockImplementation(() => {
-        throw new Error("protocol lookup unavailable");
-      });
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      assert.equal(yield* electronShell.hasProtocolHandler("zed"), false);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
 
   it.effect("opens safe external URLs", () =>
     Effect.gen(function* () {
@@ -135,23 +106,6 @@ describe("ElectronShell", () => {
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
 
-  it.effect("hands a generated Zed worktree link to the OS without losing path characters", () =>
-    Effect.gen(function* () {
-      openExternalMock.mockResolvedValue(undefined);
-      const url = buildRemoteOpenUrl({
-        editor: "zed",
-        host: "zeus",
-        absolutePath: "/home/agent/code/my repo/feature#1%done",
-      });
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      assert.equal(yield* electronShell.openExternal(url), true);
-      assert.deepEqual(openExternalMock.mock.calls, [
-        ["zed://ssh/zeus/home/agent/code/my%20repo/feature%231%25done"],
-      ]);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
-
   it.effect("does not open editor URLs that mix up link shapes", () =>
     Effect.gen(function* () {
       openExternalMock.mockResolvedValue(undefined);
@@ -207,24 +161,6 @@ describe("ElectronShell", () => {
       );
 
       assert.equal(result, false);
-      assert.equal(openExternalMock.mock.calls.length, 0);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
-
-  it.effect("does not open non-SSH or malformed Zed URLs", () =>
-    Effect.gen(function* () {
-      openExternalMock.mockResolvedValue(undefined);
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      const results = yield* Effect.all([
-        electronShell.openExternal("zed://file/example.com/home/user/project"),
-        electronShell.openExternal("zed://user@ssh/example.com/home/user/project"),
-        electronShell.openExternal("zed://ssh/example.com"),
-        electronShell.openExternal("zed://ssh//home/user/project"),
-        electronShell.openExternal("zed://:secret@ssh/example.com/home/user/project"),
-      ]);
-
-      assert.deepEqual(results, [false, false, false, false, false]);
       assert.equal(openExternalMock.mock.calls.length, 0);
     }).pipe(Effect.provide(ElectronShell.layer)),
   );

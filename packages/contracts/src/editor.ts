@@ -118,7 +118,7 @@ export const buildRemoteOpenUrl = (input: {
   if (scheme === undefined) {
     return undefined;
   }
-  // Windows server paths (`C:\...`) appear as `/C:/...` in remote editor URIs.
+  // Windows server paths (`C:\...`) appear as `/C:/...` in vscode-remote URIs.
   const posixPath = input.absolutePath.replaceAll("\\", "/");
   const rootedPath = posixPath.startsWith("/") ? posixPath : `/${posixPath}`;
   const encodedHost = encodeURIComponent(input.host);

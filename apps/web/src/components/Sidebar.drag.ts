@@ -8,6 +8,7 @@ import {
   type SidebarListMarker,
   type SidebarSection,
 } from "./Sidebar.logic";
+import { groupSidebarListItems } from "./Sidebar.worktrees";
 
 const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 const hidden = { ...stationary, scaleY: 0 };
@@ -96,12 +97,15 @@ export function createSidebarCollisionDetection(
  * A zero scaleY marks rows/markers to hide while retaining their measured nodes. */
 export function createSidebarSortingStrategy(input: {
   items: readonly SidebarListItem[];
+  worktreeKeys?: ReadonlyMap<string, string>;
   settledOrder: readonly string[];
   settledExpanded: boolean;
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
   snoozedThreadCount?: number;
   cardHeight?: number;
+  /** Grouped active rows omit the repeated checkout label. Pinned cards stay full-size. */
+  activeCardHeight?: number;
   slimHeight?: number;
   /** Space each pinned boundary opens for its label while dragging. The
    * markers stay zero height at rest, so nothing is reserved until pickup. */
@@ -125,9 +129,11 @@ export function createSidebarSortingStrategy(input: {
       settled: [],
     };
     let cardHeight = input.cardHeight;
+    let activeCardHeight: number | undefined;
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
     for (const [index, item] of items.entries()) {
+      if (item.kind === "worktree") continue;
       if (item.kind === "marker") {
         if (item.marker === "settled-header" || item.marker === "snoozed-header") {
           const height = rects[index]?.height;
@@ -135,15 +141,21 @@ export function createSidebarSortingStrategy(input: {
         }
         continue;
       }
-      if (item.section === "pinned" || item.section === "active")
-        cardHeight ??= rects[index]?.height;
+      if (item.section === "pinned") cardHeight ??= rects[index]?.height;
+      else if (item.section === "active") activeCardHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;
       if (item.key !== active.key) groups[item.section].push(item);
     }
     // Cards are 4.875rem + 0.25rem padding; slim rows/placeholders are h-9.
     const scale =
-      slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
+      slimHeight !== undefined
+        ? slimHeight / 36
+        : (headerScale ??
+          (cardHeight !== undefined
+            ? cardHeight / 82
+            : (activeCardHeight ?? input.activeCardHeight ?? 82) / (input.activeCardHeight ?? 82)));
     cardHeight ??= 82 * scale;
+    activeCardHeight ??= (input.activeCardHeight ?? 82) * scale;
     slimHeight ??= 36 * scale;
     const labelHeight = (input.boundaryLabelHeight ?? 0) * scale;
     const group = groups[target.section];
@@ -170,7 +182,7 @@ export function createSidebarSortingStrategy(input: {
       visible.push(routeKey);
     }
     groups.settled = visible.map((key) => ({ kind: "thread", key, section: "settled" }));
-    const projected: SidebarListItem[] = [];
+    let projected: SidebarListItem[] = [];
     const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
     const section = (name: "active" | "settled") => {
       if (groups[name].length > 0) projected.push(...groups[name]);
@@ -190,13 +202,17 @@ export function createSidebarSortingStrategy(input: {
     }
     marker("settled-header");
     section("settled");
+    if (input.worktreeKeys) projected = groupSidebarListItems(projected, input.worktreeKeys);
     const heights = projected.map((item) => {
       const index = indices.get(sidebarListItemId(item));
       const rect = index === undefined ? undefined : rects[index];
+      if (item.kind === "worktree") return rect?.height ?? 32 * scale;
       const fallback =
-        item.kind === "thread" && (item.section === "pinned" || item.section === "active")
+        item.kind === "thread" && item.section === "pinned"
           ? cardHeight
-          : slimHeight;
+          : item.kind === "thread" && item.section === "active"
+            ? activeCardHeight
+            : slimHeight;
       const moved = item.kind === "thread" && item.key === active.key;
       return item.kind === "marker" &&
         (item.marker === "pinned-header" || item.marker === "pinned-divider")

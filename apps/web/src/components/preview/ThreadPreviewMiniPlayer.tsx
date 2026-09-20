@@ -32,11 +32,10 @@ import {
   usePreviewMiniPlayerStore,
 } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { useWorktreeCanonicalThreadRef } from "~/worktreeScope";
 import { useDeviceState } from "~/state/device";
 
 import { DeviceStreamView } from "../device/DeviceStreamView";
-import type { DeviceScreenSize } from "../device/deviceStream";
+import type { DeviceScreenSize } from "@t3tools/client-runtime/device/stream";
 import { previewBridge } from "./previewBridge";
 import {
   clampPreviewMiniPlayerPosition,
@@ -154,13 +153,12 @@ function BrowserMiniPlayer({
   composerOverlayElement,
 }: Props & { readonly tabId: string }) {
   const previewState = useThreadPreviewState(threadRef);
-  const canonicalThreadRef = useWorktreeCanonicalThreadRef(threadRef) ?? threadRef;
   const snapshot = previewState.sessions[tabId] ?? null;
-  const runtimeTabId = previewRuntimeTabId(canonicalThreadRef, previewState.serverEpoch, tabId);
+  const runtimeTabId = previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId);
   const recordingTabIds = useActiveBrowserRecordingTabIds();
   const recording =
     recordingTabIds.has(runtimeTabId) ||
-    findActiveBrowserRecordingRuntimeTabId(canonicalThreadRef, tabId) !== null;
+    findActiveBrowserRecordingRuntimeTabId(threadRef, tabId) !== null;
   const desktopOverlay = previewState.desktopByTabId[tabId] ?? null;
   const fittedSourceContent = useBrowserSurfaceStore(
     (state) => state.byTabId[runtimeTabId]?.fittedSourceContent ?? null,

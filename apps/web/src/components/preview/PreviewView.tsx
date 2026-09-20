@@ -40,7 +40,6 @@ import {
   usePreviewMiniPlayerStore,
 } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { useWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
@@ -128,7 +127,6 @@ export function PreviewView({
   const environmentHostname = environmentHttpBaseUrl
     ? new URL(environmentHttpBaseUrl).hostname
     : null;
-  const canonicalThreadRef = useWorktreeCanonicalThreadRef(threadRef) ?? threadRef;
   const open = useAtomCommand(previewEnvironment.open);
   const resize = useAtomCommand(previewEnvironment.resize, "preview viewport resize");
 
@@ -143,13 +141,13 @@ export function PreviewView({
 
   const tabId = requestedTabId ?? previewState.activeTabId;
   const runtimeTabId = tabId
-    ? previewRuntimeTabId(canonicalThreadRef, previewState.serverEpoch, tabId)
+    ? previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId)
     : null;
   const recordingRuntimeTabId =
     tabId && runtimeTabId
       ? activeRecordingTabIds.has(runtimeTabId)
         ? runtimeTabId
-        : findActiveBrowserRecordingRuntimeTabId(canonicalThreadRef, tabId)
+        : findActiveBrowserRecordingRuntimeTabId(threadRef, tabId)
       : null;
   const snapshot = tabId ? (previewState.sessions[tabId] ?? null) : null;
   const desktopOverlay = tabId ? (previewState.desktopByTabId[tabId] ?? null) : null;
@@ -605,7 +603,7 @@ export function PreviewView({
         // instead of holding the composer for an attachment that never lands.
         // The stored copy drops the screenshot on failure, otherwise the prompt
         // would tell the agent a crop is attached when none was sent.
-        const capture = await capturePreviewAnnotationScreenshot(picked);
+        const capture = capturePreviewAnnotationScreenshot(picked);
         // Main reports a crop that failed or timed out on its side; the local
         // conversion can fail too. Either way the user should hear about it.
         const cropDropped = screenshotFailed || capture.status === "failed";

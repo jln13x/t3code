@@ -174,7 +174,7 @@ describe("thread notifications", () => {
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.add).toHaveBeenLastCalledWith(expect.objectContaining({ title }));
-    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
     expect(state.notification).not.toHaveBeenCalled();
 
     state[event] = false;
@@ -230,34 +230,13 @@ describe("thread notifications", () => {
     expect(state.add).not.toHaveBeenCalled();
   });
 
-  it("leaves completion audio to the fork coordinator while showing a toast", async () => {
+  it("keeps sound but replaces the system popup when showing a toast", async () => {
     state.mode = "notifications-and-sound";
     await render();
     await complete();
-    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.notification).not.toHaveBeenCalled();
-  });
-
-  it("does not duplicate native macOS completion alerts but keeps attention alerts", async () => {
-    Object.assign(window, {
-      desktopBridge: {
-        getClientPlatform: () => "darwin",
-        showThreadCompletionNotification: vi.fn(),
-      },
-    });
-    state.mode = "notifications-and-sound";
-    state.focused = false;
-    await render();
-    await complete();
-    expect(state.notification).not.toHaveBeenCalled();
-    expect(state.sound).not.toHaveBeenCalled();
-    state.input = true;
-    await render();
-    expect(state.notification).toHaveBeenCalledWith(
-      "Input needed",
-      expect.objectContaining({ silent: true }),
-    );
   });
 
   it("keeps system alerts when the app is in the background", async () => {

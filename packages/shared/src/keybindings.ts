@@ -38,15 +38,14 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
   { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
+  { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
+  { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
   { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
   { key: "mod+shift+enter", command: "thread.steerQueuedMessage", when: "!terminalFocus" },
   { key: "mod+n", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
-  // "New thread on {branch}": joins the active thread's worktree/branch
-  // instead of creating a fresh checkout.
-  { key: "mod+t", command: "chat.newInWorktree", when: "!terminalFocus" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+h", command: "composer.host", when: "!terminalFocus" },
   { key: "mod+shift+e", command: "composer.effort", when: "!terminalFocus" },
@@ -66,11 +65,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `mod+${index + 1}`,
     command,
+    when: "isDesktop",
   })),
   ...MODEL_PICKER_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `mod+${index + 1}`,
     command,
-    when: "modelPickerOpen",
+    when: "modelPickerOpen && isDesktop",
   })),
 ];
 

@@ -1,4 +1,4 @@
-import { type EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -13,7 +13,6 @@ import {
 } from "@tanstack/react-router";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { play } from "cuelume";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
@@ -36,6 +35,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useDefaultThemeAdoption } from "../hooks/useDefaultTheme";
 import { useEnvironmentThemeSync } from "../hooks/useEnvironmentTheme";
 import { Button } from "../components/ui/button";
+import { StandalonePage, StandalonePageHeader } from "../components/ui/standalone-page";
 import {
   AnchoredToastProvider,
   stackedThreadToast,
@@ -57,8 +57,8 @@ import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
-import { environmentSnapshotAtom, environmentShell, shellEnvironment } from "../state/shell";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
+import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
@@ -67,26 +67,7 @@ import {
   primaryServerConfigEventAtom,
   primaryServerWelcomeAtom,
 } from "../state/server";
-import {
-  readProject,
-  setActiveEnvironmentId,
-  useActiveEnvironmentId,
-  useThreadShells,
-} from "../state/entities";
-import {
-  captureThreadSoundState,
-  COMPLETION_SOUND_VOLUME,
-  deriveThreadFeedbackEvents,
-  type ThreadSoundStateByKey,
-} from "../interactionSounds";
-import {
-  initializeThreadCompletionNotificationState,
-  readThreadCompletionNotificationState,
-  reduceThreadCompletionNotificationState,
-  removeDeliveredThreadCompletionNotification,
-  writeThreadCompletionNotificationState,
-  type ThreadCompletionNotificationState,
-} from "../threadCompletionNotifications";
+import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -251,8 +232,6 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? (
             <EventRouter skipInitialBootstrapNavigation={returningFromWelcomeRef.current} />
           ) : null}
-          {primaryEnvironmentAuthenticated ? <ThreadCompletionSoundCoordinator /> : null}
-          <ThreadCompletionNotificationCoordinator />
           {primaryEnvironmentAuthenticated ? <PlanAgentSelectionHeal /> : null}
           {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
           {appShell}
@@ -263,151 +242,6 @@ function RootRouteView() {
       </AnchoredToastProvider>
     </ToastProvider>
   );
-}
-
-function ThreadCompletionSoundCoordinator() {
-  const threads = useThreadShells();
-  const previousStateRef = useRef<ThreadSoundStateByKey | null>(null);
-
-  useEffect(() => {
-    const previous = previousStateRef.current;
-    if (previous !== null) {
-      for (const event of deriveThreadFeedbackEvents(previous, threads)) {
-        play(event.cue, event.cue === "success" ? COMPLETION_SOUND_VOLUME : 1);
-      }
-    }
-    previousStateRef.current = captureThreadSoundState(threads);
-  }, [threads]);
-
-  return null;
-}
-
-function ThreadCompletionNotificationCoordinator() {
-  const navigate = useNavigate();
-  const { environments } = useEnvironments();
-
-  useEffect(() => {
-    const subscribe = window.desktopBridge?.onThreadCompletionNotificationClick;
-    if (typeof subscribe !== "function") return;
-
-    return subscribe((threadRef) => {
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: {
-          environmentId: threadRef.environmentId,
-          threadId: threadRef.threadId,
-        },
-      });
-    });
-  }, [navigate]);
-
-  if (typeof window.desktopBridge?.showThreadCompletionNotification !== "function") {
-    return null;
-  }
-
-  return environments.map((environment) => (
-    <EnvironmentThreadCompletionNotificationCoordinator
-      key={environment.environmentId}
-      environmentId={environment.environmentId}
-    />
-  ));
-}
-
-function EnvironmentThreadCompletionNotificationCoordinator({
-  environmentId,
-}: {
-  readonly environmentId: EnvironmentId;
-}) {
-  const snapshot = useAtomValue(environmentSnapshotAtom(environmentId));
-  const shellState = useAtomValue(environmentShell.stateValueAtom(environmentId));
-  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
-  const memoryStateRef = useRef<ThreadCompletionNotificationState | null>(null);
-  const retryAttemptRef = useRef(0);
-  const retryTimerRef = useRef<number | null>(null);
-  const [retryGeneration, setRetryGeneration] = useState(0);
-
-  useEffect(
-    () => () => {
-      if (retryTimerRef.current !== null) {
-        window.clearTimeout(retryTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const show = window.desktopBridge?.showThreadCompletionNotification;
-    if (snapshot === null || shellState.status !== "live" || typeof show !== "function") {
-      return;
-    }
-
-    const synchronize = async () => {
-      const readState = (): ThreadCompletionNotificationState | null => {
-        try {
-          return (
-            readThreadCompletionNotificationState(window.localStorage, environmentId) ??
-            memoryStateRef.current
-          );
-        } catch {
-          return memoryStateRef.current;
-        }
-      };
-      const persistState = (state: ThreadCompletionNotificationState) => {
-        memoryStateRef.current = state;
-        try {
-          writeThreadCompletionNotificationState(window.localStorage, environmentId, state);
-        } catch {
-          // The in-memory state still prevents duplicate delivery for this renderer session.
-        }
-      };
-
-      let state = readState();
-      if (state === null) {
-        persistState(initializeThreadCompletionNotificationState(snapshot.threads));
-        return;
-      }
-
-      state = reduceThreadCompletionNotificationState(state, snapshot.threads);
-      persistState(state);
-
-      for (const notification of state.pending) {
-        let shown = false;
-        try {
-          shown = await show({
-            threadRef: { environmentId, threadId: notification.threadId },
-            threadTitle: notification.threadTitle,
-          });
-        } catch {
-          shown = false;
-        }
-        if (!shown) break;
-        state = removeDeliveredThreadCompletionNotification(state, notification.id);
-        persistState(state);
-      }
-
-      if (state.pending.length > 0) {
-        const retryDelaysMs = [1_000, 5_000, 15_000] as const;
-        const retryDelayMs = retryDelaysMs[retryAttemptRef.current];
-        if (retryDelayMs !== undefined && retryTimerRef.current === null) {
-          retryAttemptRef.current += 1;
-          retryTimerRef.current = window.setTimeout(() => {
-            retryTimerRef.current = null;
-            setRetryGeneration((generation) => generation + 1);
-          }, retryDelayMs);
-        }
-      } else {
-        retryAttemptRef.current = 0;
-        if (retryTimerRef.current !== null) {
-          window.clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = null;
-        }
-      }
-    };
-
-    syncChainRef.current = syncChainRef.current.then(synchronize, synchronize);
-  }, [environmentId, retryGeneration, shellState.status, snapshot]);
-
-  return null;
 }
 
 /** Follows the palette the primary environment's machine publishes, if any. */
@@ -535,39 +369,30 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const report = useMemo(() => errorReport(error, pathname), [error, pathname]);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
-      <div className="pointer-events-none absolute inset-0 opacity-80">
-        <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />
+    <StandalonePage tone="error">
+      <StandalonePageHeader
+        eyebrow={APP_DISPLAY_NAME}
+        title="Something went wrong."
+        description={message}
+      />
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => void router.invalidate()}>
+          Try again
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+          Reload app
+        </Button>
+        <CopyErrorButton report={report} />
       </div>
 
-      <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
-        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-          {APP_DISPLAY_NAME}
-        </p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Something went wrong.
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void router.invalidate()}>
-            Try again
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-            Reload app
-          </Button>
-          <CopyErrorButton report={report} />
-        </div>
-
-        <div className="mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
-          <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">Error report</p>
-          <pre className="max-h-64 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs whitespace-pre-wrap text-foreground/85">
-            {report}
-          </pre>
-        </div>
-      </section>
-    </div>
+      <div className="mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
+        <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground">Error report</p>
+        <pre className="max-h-64 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs whitespace-pre-wrap text-foreground/85">
+          {report}
+        </pre>
+      </div>
+    </StandalonePage>
   );
 }
 

@@ -54,7 +54,6 @@ export class ElectronShell extends Context.Service<
   ElectronShell,
   {
     readonly openExternal: (rawUrl: unknown) => Effect.Effect<boolean>;
-    readonly hasProtocolHandler: (scheme: string) => Effect.Effect<boolean>;
     /** Opens a known System Settings pane by identifier, not by URL. */
     readonly openSystemSettings: (pane: SystemSettingsPane) => Effect.Effect<boolean>;
     readonly copyText: (text: string) => Effect.Effect<void>;
@@ -73,14 +72,6 @@ export const make = ElectronShell.of({
             () => false,
           ),
         ),
-    }),
-  hasProtocolHandler: (scheme) =>
-    Effect.sync(() => {
-      try {
-        return Electron.app.getApplicationNameForProtocol(`${scheme}://`) !== "";
-      } catch {
-        return false;
-      }
     }),
   openSystemSettings: (pane) =>
     Effect.promise(() =>

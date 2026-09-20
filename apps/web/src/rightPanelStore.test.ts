@@ -109,22 +109,27 @@ describe("rightPanelStore", () => {
     number: 42,
   });
 
-  it.each(["diff-first", "pull-request-first"])(
-    "prioritizes the linked pull request over browser and diff with %s delivery",
-    (order) => {
+  it.each([
+    { order: "diff-first", surface: linkedPullRequest },
+    { order: "pull-request-first", surface: linkedPullRequest },
+    { order: "diff-first", surface: { id: "pull-requests", kind: "pull-requests" } as const },
+    {
+      order: "pull-request-first",
+      surface: { id: "pull-requests", kind: "pull-requests" } as const,
+    },
+  ])(
+    "prioritizes $surface.kind over browser and diff with $order delivery",
+    ({ order, surface }) => {
       const store = useRightPanelStore.getState();
       store.openBrowser(refA, "existing-browser");
       const revision = store.getUserActionRevision(refA);
-      const requests =
-        order === "diff-first"
-          ? [completedDiff, linkedPullRequest]
-          : [linkedPullRequest, completedDiff];
+      const requests = order === "diff-first" ? [completedDiff, surface] : [surface, completedDiff];
       for (const surface of requests) store.openProactive(refA, surface, revision);
       store.reconcileBrowserSurfaces(refA, ["existing-browser", "agent-browser"]);
 
       expect(
         selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
-      ).toEqual(linkedPullRequest);
+      ).toEqual(surface);
 
       store.open(refA, "diff");
       expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
@@ -167,6 +172,9 @@ describe("rightPanelStore", () => {
 
     expect(store.openProactive(refA, completedDiff, revision)).toBe(false);
     expect(store.openProactive(refA, linkedPullRequest, revision)).toBe(false);
+    expect(
+      store.openProactive(refA, { id: "pull-requests", kind: "pull-requests" }, revision),
+    ).toBe(false);
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toBe(
       chosen,
     );
@@ -465,6 +473,36 @@ describe("rightPanelStore", () => {
         },
       ],
     });
+  });
+
+  it.each([
+    ["generated\\", "generated"],
+    ["notes/meeting ", "notes/meeting"],
+    [" notes/meeting", "notes/meeting"],
+  ])("keeps %j and %j in separate file tabs", (firstPath, secondPath) => {
+    useRightPanelStore.getState().openFile(refA, firstPath);
+    useRightPanelStore.getState().openFile(refA, secondPath);
+
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toMatchObject([
+      { id: `file:${firstPath}`, relativePath: firstPath },
+      { id: `file:${secondPath}`, relativePath: secondPath },
+    ]);
+  });
+
+  it.each([
+    ["docs/", "docs"],
+    ["docs///", "docs"],
+    ["/", "/"],
+    ["C:/", "C:/"],
+  ])("reuses the folder tab for %j and %j", (linkPath, treePath) => {
+    useRightPanelStore.getState().openFile(refA, linkPath);
+    useRightPanelStore.getState().openFile(refA, treePath);
+
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toMatchObject([{ id: `file:${treePath}`, relativePath: treePath, revealRequestId: 2 }]);
   });
 
   it("opens an attachment as a file surface without the standalone explorer", () => {
@@ -807,20 +845,6 @@ describe("rightPanelStore", () => {
       resourceId: "term-1",
       terminalIds: ["term-2"],
       activeTerminalId: "term-2",
-    });
-  });
-
-  it("removes terminal surfaces without discarding other checkout panels", () => {
-    useRightPanelStore.getState().open(refA, "diff");
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-
-    const stateKey = Object.keys(useRightPanelStore.getState().byThreadKey)[0]!;
-    useRightPanelStore.getState().removeTerminalSurfacesForKey(stateKey);
-
-    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      isOpen: true,
-      activeSurfaceId: "diff",
-      surfaces: [{ id: "diff", kind: "diff" }],
     });
   });
 

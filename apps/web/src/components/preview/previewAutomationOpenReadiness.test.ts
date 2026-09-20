@@ -1,9 +1,4 @@
-import {
-  EnvironmentId,
-  type PreviewAutomationOpenInput,
-  type PreviewSessionSnapshot,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { PreviewAutomationOpenInput, PreviewSessionSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,7 +6,6 @@ import {
   explicitlySuppressesPreviewMiniPlayer,
   previewAutomationDefaultViewport,
   previewAutomationOpenNeedsOverlay,
-  previewAutomationOpenResizeTarget,
   shouldAutoShowPreviewForAutomationUse,
   shouldOpenPreviewMiniPlayer,
 } from "./previewAutomationOpenReadiness";
@@ -83,30 +77,6 @@ describe("preview automation open readiness", () => {
         viewport: { _tag: "freeform", width: 900, height: 600 },
       }),
     ).toBeNull();
-  });
-
-  it("resizes a new tab through the canonical worktree owner", () => {
-    const requestThreadId = ThreadId.make("thread-request");
-    const canonicalThreadRef = {
-      environmentId: EnvironmentId.make("environment-1"),
-      threadId: ThreadId.make("thread-canonical"),
-    };
-
-    expect(requestThreadId).not.toBe(canonicalThreadRef.threadId);
-    expect(
-      previewAutomationOpenResizeTarget(
-        canonicalThreadRef,
-        "tab-1",
-        DEFAULT_PREVIEW_AUTOMATION_VIEWPORT,
-      ),
-    ).toEqual({
-      environmentId: "environment-1",
-      input: {
-        threadId: "thread-canonical",
-        tabId: "tab-1",
-        viewport: DEFAULT_PREVIEW_AUTOMATION_VIEWPORT,
-      },
-    });
   });
 });
 

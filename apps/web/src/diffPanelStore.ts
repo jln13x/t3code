@@ -1,17 +1,16 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
-import { migrateWorktreeScopedRecord, readWorktreeScopedRecordValue } from "./worktreeScope";
 
 export type DiffPanelSelection =
   | { kind: "branch"; baseRef: string | null }
   | { kind: "unstaged" }
   | { kind: "turn"; turnId: TurnId; filePath: string | null; revealRequestId: number };
 
-const DEFAULT_SELECTION: DiffPanelSelection = { kind: "branch", baseRef: null };
-const DEFAULT_WORKING_TREE_SELECTION: DiffPanelSelection = { kind: "unstaged" };
+const DEFAULT_SELECTION: DiffPanelSelection = { kind: "unstaged" };
 
 interface DiffPanelStoreState {
   byThreadKey: Record<string, DiffPanelSelection>;
@@ -35,17 +34,15 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
       branchBaseRefByThreadKey: {},
       selectGitScope: (ref, scope) =>
         set((state) => {
-          const migratedSelections = migrateWorktreeScopedRecord(state.byThreadKey, ref);
-          const migratedBaseRefs = migrateWorktreeScopedRecord(state.branchBaseRefByThreadKey, ref);
-          const threadKey = migratedSelections.key;
-          const previous = migratedSelections.record[threadKey];
+          const threadKey = scopedThreadKey(ref);
+          const previous = state.byThreadKey[threadKey];
           const previousBaseRef =
             previous?.kind === "branch"
               ? previous.baseRef
-              : (migratedBaseRefs.record[threadKey] ?? null);
+              : (state.branchBaseRefByThreadKey[threadKey] ?? null);
           return {
             byThreadKey: {
-              ...migratedSelections.record,
+              ...state.byThreadKey,
               [threadKey]:
                 scope === "branch"
                   ? { kind: "branch", baseRef: previousBaseRef }
@@ -53,35 +50,32 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
             },
             branchBaseRefByThreadKey:
               previous?.kind === "branch"
-                ? { ...migratedBaseRefs.record, [threadKey]: previous.baseRef }
-                : migratedBaseRefs.record,
+                ? { ...state.branchBaseRefByThreadKey, [threadKey]: previous.baseRef }
+                : state.branchBaseRefByThreadKey,
           };
         }),
       selectBranchBaseRef: (ref, baseRef) =>
         set((state) => {
-          const migratedSelections = migrateWorktreeScopedRecord(state.byThreadKey, ref);
-          const migratedBaseRefs = migrateWorktreeScopedRecord(state.branchBaseRefByThreadKey, ref);
-          const threadKey = migratedSelections.key;
+          const threadKey = scopedThreadKey(ref);
           const normalizedBaseRef = normalizeBaseRef(baseRef);
           return {
             byThreadKey: {
-              ...migratedSelections.record,
+              ...state.byThreadKey,
               [threadKey]: { kind: "branch", baseRef: normalizedBaseRef },
             },
             branchBaseRefByThreadKey: {
-              ...migratedBaseRefs.record,
+              ...state.branchBaseRefByThreadKey,
               [threadKey]: normalizedBaseRef,
             },
           };
         }),
       selectTurn: (ref, turnId, filePath) =>
         set((state) => {
-          const migrated = migrateWorktreeScopedRecord(state.byThreadKey, ref);
-          const threadKey = migrated.key;
-          const previous = migrated.record[threadKey];
+          const threadKey = scopedThreadKey(ref);
+          const previous = state.byThreadKey[threadKey];
           return {
             byThreadKey: {
-              ...migrated.record,
+              ...state.byThreadKey,
               [threadKey]: {
                 kind: "turn",
                 turnId,
@@ -93,63 +87,38 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
         }),
       reconcileTurnSelection: (ref, availableTurnIds) =>
         set((state) => {
-          const migratedSelections = migrateWorktreeScopedRecord(state.byThreadKey, ref);
-          const migratedBaseRefs = migrateWorktreeScopedRecord(state.branchBaseRefByThreadKey, ref);
-          const threadKey = migratedSelections.key;
-          const previous = migratedSelections.record[threadKey];
+          const threadKey = scopedThreadKey(ref);
+          const previous = state.byThreadKey[threadKey];
           const latestTurnId = availableTurnIds[0];
-          if (previous?.kind !== "turn" || availableTurnIds.includes(previous.turnId)) {
-            return migratedSelections.record === state.byThreadKey &&
-              migratedBaseRefs.record === state.branchBaseRefByThreadKey
-              ? state
-              : {
-                  byThreadKey: migratedSelections.record,
-                  branchBaseRefByThreadKey: migratedBaseRefs.record,
-                };
+          if (
+            previous?.kind !== "turn" ||
+            latestTurnId === undefined ||
+            availableTurnIds.includes(previous.turnId)
+          ) {
+            return state;
           }
           return {
             byThreadKey: {
-              ...migratedSelections.record,
-              [threadKey]:
-                latestTurnId === undefined
-                  ? {
-                      kind: "branch",
-                      baseRef: migratedBaseRefs.record[threadKey] ?? null,
-                    }
-                  : { ...previous, turnId: latestTurnId, filePath: null },
+              ...state.byThreadKey,
+              [threadKey]: { ...previous, turnId: latestTurnId },
             },
-            branchBaseRefByThreadKey: migratedBaseRefs.record,
           };
         }),
       removeThread: (ref) =>
         set((state) => {
-          const migratedSelections = migrateWorktreeScopedRecord(state.byThreadKey, ref);
-          const migratedBaseRefs = migrateWorktreeScopedRecord(state.branchBaseRefByThreadKey, ref);
-          const threadKey = migratedSelections.key;
-          if (
-            !(threadKey in migratedSelections.record) &&
-            !(threadKey in migratedBaseRefs.record)
-          ) {
+          const threadKey = scopedThreadKey(ref);
+          if (!(threadKey in state.byThreadKey) && !(threadKey in state.branchBaseRefByThreadKey)) {
             return state;
           }
-          const { [threadKey]: _removed, ...byThreadKey } = migratedSelections.record;
+          const { [threadKey]: _removed, ...byThreadKey } = state.byThreadKey;
           const { [threadKey]: _removedBaseRef, ...branchBaseRefByThreadKey } =
-            migratedBaseRefs.record;
+            state.branchBaseRefByThreadKey;
           return { byThreadKey, branchBaseRefByThreadKey };
         }),
     }),
     {
       name: "t3code:diff-panel-state:v1",
-      // v2 re-keyed entries from thread keys to worktree scope keys; older
-      // thread-keyed entries can never match again, so they are dropped.
-      version: 2,
-      migrate: (persistedState, version) =>
-        version < 2 || !persistedState || typeof persistedState !== "object"
-          ? { byThreadKey: {}, branchBaseRefByThreadKey: {} }
-          : (persistedState as {
-              byThreadKey: Record<string, DiffPanelSelection>;
-              branchBaseRefByThreadKey: Record<string, string | null>;
-            }),
+      version: 1,
       storage: createJSONStorage(() =>
         resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
@@ -164,11 +133,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
 export function selectThreadDiffPanelSelection(
   byThreadKey: Record<string, DiffPanelSelection>,
   ref: ScopedThreadRef | null | undefined,
-  hasWorkingTreeChanges = false,
 ): DiffPanelSelection {
   if (!ref) return DEFAULT_SELECTION;
-  return (
-    readWorktreeScopedRecordValue(byThreadKey, ref) ??
-    (hasWorkingTreeChanges ? DEFAULT_WORKING_TREE_SELECTION : DEFAULT_SELECTION)
-  );
+  return byThreadKey[scopedThreadKey(ref)] ?? DEFAULT_SELECTION;
 }
