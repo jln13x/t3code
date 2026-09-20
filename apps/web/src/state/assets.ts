@@ -2,8 +2,6 @@ import {
   createAssetEnvironmentAtoms,
   createProjectFaviconUrlAtomFamily,
 } from "@t3tools/client-runtime/state/assets";
-import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
-import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
@@ -12,10 +10,6 @@ import { isElectron } from "../env";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import { environmentSession } from "./session";
 
-export const createAssetUrlOnce = createEnvironmentRpcCommand(connectionAtomRuntime, {
-  label: "web:assets:create-url-once",
-  tag: WS_METHODS.assetsCreateUrl,
-});
 const localMediaEnvironment = Atom.make((get) => {
   if (!isElectron) return null;
   const environmentId = get(primaryEnvironmentIdAtom);

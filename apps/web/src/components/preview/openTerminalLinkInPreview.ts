@@ -11,7 +11,6 @@ import { isWebUrl, resolveBrowserLinkTargetPreference } from "~/browser/browserL
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { applyPreviewServerSnapshot, isPreviewSupportedInRuntime } from "~/previewStateStore";
-import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 const terminalLinkErrorContext = {
@@ -64,13 +63,11 @@ export async function openTerminalLinkInPreview<E>(
     targetOrigin: new URL(input.url).origin,
   };
 
-  // Preview sessions are worktree-scoped so sibling threads share tabs.
-  const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
   const defaults = await resolveBrowserDefaults();
   const result = await input.openPreview({
-    environmentId: canonicalRef.environmentId,
+    environmentId: input.threadRef.environmentId,
     input: {
-      threadId: canonicalRef.threadId,
+      threadId: input.threadRef.threadId,
       url: input.url,
       // Same reason as `openUrlInPreview`: this path handles its own result
       // mapping, so the configured defaults are applied explicitly.

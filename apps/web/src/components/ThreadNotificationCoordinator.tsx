@@ -4,13 +4,15 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useCallback, useEffect, useRef } from "react";
 
-import { useClientSettings } from "../hooks/useSettings";
+import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import {
   hasDesktopNotifications,
-  hasNativeCompletionNotifications,
+  hasNotificationSound,
+  playNotificationSound,
   setNotificationBadge,
+  unlockNotificationAudio,
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 import { toastManager } from "./ui/toast";
@@ -55,6 +57,16 @@ export function ThreadNotificationCoordinator() {
       unsubscribe?.();
       window.removeEventListener("focus", clear);
       clear();
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (!hasNotificationSound(mode)) return;
+    document.addEventListener("pointerdown", unlockNotificationAudio);
+    document.addEventListener("keydown", unlockNotificationAudio);
+    return () => {
+      document.removeEventListener("pointerdown", unlockNotificationAudio);
+      document.removeEventListener("keydown", unlockNotificationAudio);
     };
   }, [mode]);
 
@@ -127,7 +139,11 @@ function EnvironmentNotifications({
             : status === "failed"
               ? "Thread failed"
               : "Input needed";
-      // The always-on fork coordinator owns completion/attention audio.
+      if (hasNotificationSound(mode)) {
+        void playNotificationSound(kind, () =>
+          hasNotificationSound(getClientSettings().notificationMode),
+        );
+      }
       if (
         inAppNotificationsEnabled &&
         document.visibilityState === "visible" &&
@@ -153,7 +169,6 @@ function EnvironmentNotifications({
         continue;
       }
       if (
-        (kind === "completion" && hasNativeCompletionNotifications()) ||
         !hasDesktopNotifications(mode) ||
         (document.visibilityState === "visible" && document.hasFocus()) ||
         typeof Notification === "undefined" ||

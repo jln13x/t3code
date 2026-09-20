@@ -16,7 +16,6 @@ import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
-import { continueBranchTargetIndex, resolveContinueBranchTargets } from "../continueBranch";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -28,7 +27,7 @@ import {
   readThreadShell,
   useProjects,
 } from "../state/entities";
-import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
+import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -38,7 +37,6 @@ import {
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
-import { useContinueBranch } from "./useContinueBranch";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
@@ -72,7 +70,6 @@ export function useThreadActionMenu(input: {
   const { threadRef, projectCwd, onStartRename } = input;
   const router = useRouter();
   const projects = useProjects();
-  const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const logicalProjectKeyByPhysicalKey = useMemo(
@@ -98,7 +95,6 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
-  const continueBranch = useContinueBranch();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
@@ -142,14 +138,11 @@ export function useThreadActionMenu(input: {
         };
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
-        const continueBranchTargets = resolveContinueBranchTargets({
-          sourceProjectRef: scopeProjectRef(threadRef.environmentId, thread.projectId),
-          projects,
-          environments,
-        });
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
-          continueBranchTargetLabels: continueBranchTargets.map((target) => target.label),
+          // The chat header has no project-scoped thread list behind the
+          // menu, so the "Filter by project" affordance is sidebar-only.
+          projectFilter: null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
@@ -162,20 +155,6 @@ export function useThreadActionMenu(input: {
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
-        const continueTargetIndex = continueBranchTargetIndex(action);
-        if (continueTargetIndex !== null && thread.branch) {
-          const target = continueBranchTargets[continueTargetIndex];
-          const sourceCwd = thread.worktreePath ?? projectCwd;
-          if (!target || !sourceCwd) return;
-          await continueBranch({
-            sourceEnvironmentId: threadRef.environmentId,
-            sourceThreadId: thread.id,
-            sourceCwd,
-            branch: thread.branch,
-            target,
-          });
-          return;
-        }
         if (action.startsWith("snooze:")) {
           const preset =
             action === "snooze:custom"
@@ -360,7 +339,6 @@ export function useThreadActionMenu(input: {
       archiveThread,
       confirmThreadArchive,
       confirmThreadDelete,
-      continueBranch,
       confirmAndUnpinThread,
       copyBranchToClipboard,
       copyPathToClipboard,
@@ -372,7 +350,6 @@ export function useThreadActionMenu(input: {
       onStartRename,
       pinThread,
       projectCwd,
-      environments,
       projectGroupingSettings,
       projects,
       router,

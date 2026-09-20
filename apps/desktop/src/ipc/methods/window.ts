@@ -2,7 +2,6 @@ import {
   ContextMenuItemSchema,
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
-  DesktopThreadCompletionNotificationInput,
   DesktopThemeSchema,
   EDITORS,
   EditorId,
@@ -10,13 +9,13 @@ import {
   PickFolderOptionsSchema,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   REMOTE_CAPABLE_EDITOR_IDS,
-  remoteSchemeForEditor,
   SystemSettingsPaneSchema,
   type DesktopEnvironmentBootstrap,
   type PickedThemeFile,
 } from "@t3tools/contracts";
 import { WORKSPACE_IMAGE_PREVIEW_EXTENSIONS } from "@t3tools/shared/filePreview";
-import { isCommandAvailable } from "@t3tools/shared/shell";
+import { resolveEditorCommand } from "@t3tools/shared/editor";
+import * as HostProcess from "@t3tools/shared/hostProcess";
 import * as NodeOS from "node:os";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -33,7 +32,6 @@ import * as DesktopWslEnvironment from "../../wsl/DesktopWslEnvironment.ts";
 import * as ElectronApp from "../../electron/ElectronApp.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../../electron/ElectronMenu.ts";
-import * as ElectronNotification from "../../electron/ElectronNotification.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
@@ -313,37 +311,6 @@ export const openExternal = DesktopIpc.makeIpcMethod({
   }),
 });
 
-export const showThreadCompletionNotification = DesktopIpc.makeIpcMethod({
-  channel: IpcChannels.SHOW_THREAD_COMPLETION_NOTIFICATION_CHANNEL,
-  payload: DesktopThreadCompletionNotificationInput,
-  result: Schema.Boolean,
-  handler: Effect.fn("desktop.ipc.window.showThreadCompletionNotification")(function* (input) {
-    const notifications = yield* ElectronNotification.ElectronNotification;
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const context = yield* Effect.context<never>();
-    const runFork = Effect.runForkWith(context);
-    const openThread = Effect.gen(function* () {
-      const window = yield* electronWindow.currentMainOrFirst;
-      if (Option.isNone(window)) return;
-      yield* electronWindow.reveal(window.value);
-      yield* Effect.sync(() => {
-        window.value.webContents.send(
-          IpcChannels.THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL,
-          input.threadRef,
-        );
-      });
-    });
-
-    return yield* notifications.show({
-      title: "Thread finished",
-      body: input.threadTitle,
-      onClick: () => {
-        runFork(openThread);
-      },
-    });
-  }),
-});
-
 export const openSystemSettings = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.OPEN_SYSTEM_SETTINGS_CHANNEL,
   payload: SystemSettingsPaneSchema,
@@ -367,26 +334,13 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL,
   payload: Schema.Undefined,
   result: Schema.Array(EditorId),
-  // Probes THIS machine (where the renderer runs), unlike the server's probe
-  // which walks the environment host's PATH. Protocol handlers cover packaged
-  // editors whose optional CLI is absent from a Finder-launched app's PATH.
   handler: Effect.fn("desktop.ipc.window.probeRemoteEditors")(function* () {
-    const shell = yield* ElectronShell.ElectronShell;
     const available: Array<EditorId> = [];
+    const env = yield* HostProcess.HostProcessEnvironment;
     for (const editorId of REMOTE_CAPABLE_EDITOR_IDS) {
-      const scheme = remoteSchemeForEditor(editorId);
-      if (scheme !== undefined && (yield* shell.hasProtocolHandler(scheme))) {
+      const editor = EDITORS.find((editor) => editor.id === editorId);
+      if (editor && Option.isSome(yield* resolveEditorCommand(editor, env))) {
         available.push(editorId);
-        continue;
-      }
-
-      const commands = EDITORS.find((editor) => editor.id === editorId)?.commands;
-      if (!commands) continue;
-      for (const command of commands) {
-        if (yield* isCommandAvailable(command, { env: process.env })) {
-          available.push(editorId);
-          break;
-        }
       }
     }
     return available;

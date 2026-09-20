@@ -1,11 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
-import { isCommandAvailable } from "@t3tools/shared/shell";
-import * as Effect from "effect/Effect";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import { beforeEach, vi } from "vite-plus/test";
+import { vi } from "vite-plus/test";
 
 import type * as Electron from "electron";
 
@@ -21,10 +22,7 @@ vi.mock("electron", () => ({
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
-import * as ElectronNotification from "../../electron/ElectronNotification.ts";
-import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
-import { THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL } from "../channels.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import type { DesktopSettings } from "../../settings/DesktopAppSettings.ts";
 import {
@@ -33,56 +31,7 @@ import {
   pasteAsText,
   pickProjectFavicon,
   probeRemoteEditors,
-  showThreadCompletionNotification,
 } from "./window.ts";
-
-vi.mock("@t3tools/shared/shell", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@t3tools/shared/shell")>()),
-  isCommandAvailable: vi.fn(),
-}));
-
-describe("probeRemoteEditors", () => {
-  beforeEach(() => {
-    vi.mocked(isCommandAvailable).mockReset();
-    vi.mocked(isCommandAvailable).mockReturnValue(Effect.succeed(false));
-  });
-
-  const shellLayer = (registeredSchemes: ReadonlyArray<string>) =>
-    Layer.mergeAll(
-      Layer.succeed(ElectronShell.ElectronShell, {
-        hasProtocolHandler: (scheme) => Effect.succeed(registeredSchemes.includes(scheme)),
-        openExternal: () => Effect.succeed(true),
-        openSystemSettings: () => Effect.succeed(true),
-        copyText: () => Effect.void,
-      }),
-      FileSystem.layerNoop({}),
-      Path.layer,
-    );
-
-  it.effect("finds Zed through its registered handler when no editor CLI is on PATH", () =>
-    Effect.gen(function* () {
-      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["zed"]);
-    }).pipe(Effect.provide(shellLayer(["zed"]))),
-  );
-
-  it.effect("keeps CLI discovery and does not duplicate editors with a handler", () =>
-    Effect.gen(function* () {
-      vi.mocked(isCommandAvailable).mockImplementation((command) =>
-        Effect.succeed(command === "cursor" || command === "zed"),
-      );
-      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["cursor", "zed"]);
-    }).pipe(Effect.provide(shellLayer(["zed"]))),
-  );
-
-  it.effect("supports the zeditor CLI alias when protocol detection is unavailable", () =>
-    Effect.gen(function* () {
-      vi.mocked(isCommandAvailable).mockImplementation((command) =>
-        Effect.succeed(command === "zeditor"),
-      );
-      assert.deepEqual(yield* probeRemoteEditors.handler(undefined), ["zed"]);
-    }).pipe(Effect.provide(shellLayer([]))),
-  );
-});
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",
@@ -221,60 +170,6 @@ describe("getWindowFullscreenState", () => {
   });
 });
 
-describe("showThreadCompletionNotification", () => {
-  it.effect(
-    "reveals the app and forwards the scoped thread when the notification is clicked",
-    () => {
-      const send = vi.fn();
-      const reveal = vi.fn(() => Effect.void);
-      const window = {
-        webContents: { send },
-      } as unknown as Electron.BrowserWindow;
-
-      return Effect.gen(function* () {
-        assert.isTrue(
-          yield* showThreadCompletionNotification.handler({
-            threadRef: {
-              environmentId: "environment-1",
-              threadId: "thread-1",
-            },
-            threadTitle: "Refactor notifications",
-          }),
-        );
-        yield* Effect.promise(() =>
-          vi.waitFor(() => {
-            assert.equal(reveal.mock.calls.length, 1);
-            assert.deepEqual(send.mock.calls, [
-              [
-                THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL,
-                { environmentId: "environment-1", threadId: "thread-1" },
-              ],
-            ]);
-          }),
-        );
-      }).pipe(
-        Effect.provide(
-          Layer.merge(
-            Layer.mock(ElectronNotification.ElectronNotification)({
-              show: (input) =>
-                Effect.sync(() => {
-                  assert.equal(input.title, "Thread finished");
-                  assert.equal(input.body, "Refactor notifications");
-                  input.onClick();
-                  return true;
-                }),
-            }),
-            Layer.mock(ElectronWindow.ElectronWindow)({
-              currentMainOrFirst: Effect.succeed(Option.some(window)),
-              reveal,
-            }),
-          ),
-        ),
-      );
-    },
-  );
-});
-
 describe("pasteAsText", () => {
   it.effect(
     "pastes into the focused guest only after the main renderer acknowledges the menu action",
@@ -372,3 +267,34 @@ describe("pickProjectFavicon", () => {
     }),
   );
 });
+
+it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
+  "finds remote editors installed without PATH launchers",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-remote-editors-" });
+      for (const app of ["Cursor", "Visual Studio Code", "WebStorm"]) {
+        const executable = path.join(
+          home,
+          "Applications",
+          `${app}.app`,
+          app === "WebStorm" ? "Contents/MacOS/webstorm" : "Contents/Resources/app/bin/code",
+        );
+        yield* fs.makeDirectory(path.dirname(executable), { recursive: true });
+        yield* fs.writeFileString(executable, "#!/bin/sh\n");
+        yield* fs.chmod(executable, 0o755);
+      }
+      const editors = yield* probeRemoteEditors.handler(undefined).pipe(
+        Effect.provideService(HostProcessEnvironment, {
+          HOME: home,
+          PATH: path.join(home, "empty"),
+        }),
+        Effect.provideService(HostProcessPlatform, "darwin"),
+      );
+      assert.include(editors, "cursor");
+      assert.include(editors, "vscode");
+      assert.notInclude(editors, "webstorm");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

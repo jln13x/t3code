@@ -8,8 +8,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  */
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
-  | "continue-branch-on"
-  | `continue-branch-on:${number}`
+  | "filter-by-project"
   | "project-settings"
   | "pin"
   | "unpin"
@@ -30,7 +29,15 @@ export type ThreadActionMenuId =
 
 export interface ThreadActionMenuState {
   readonly branch: string | null;
-  readonly continueBranchTargetLabels: ReadonlyArray<string>;
+  /**
+   * Project scoping for the thread list. Null on surfaces with no scoped
+   * list behind the menu (the chat header), where the item must not show.
+   */
+  readonly projectFilter: {
+    readonly label: string;
+    /** True when the list is already scoped to this thread's project. */
+    readonly isActive: boolean;
+  } | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly isSnoozed: boolean;
@@ -49,8 +56,8 @@ export interface ThreadActionMenuState {
 
 /**
  * Single source for the per-thread action menu: the sidebar row's right-click
- * menu and the chat header menu both render exactly this list, so labels,
- * ordering, and capability gating cannot drift between the two surfaces.
+ * menu and the chat header menu share labels, ordering, and capability gating.
+ * Each surface supplies state for the actions it supports.
  */
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
@@ -63,19 +70,6 @@ export function buildThreadActionMenuItems(
             label: `New thread on ${state.branch}`,
             icon: "message-square-plus",
           },
-          ...(state.continueBranchTargetLabels.length > 0
-            ? [
-                {
-                  id: "continue-branch-on" as const,
-                  label: "Move chat to…",
-                  disabled: state.isRunning,
-                  children: state.continueBranchTargetLabels.map((label, index) => ({
-                    id: `continue-branch-on:${index}` as const,
-                    label,
-                  })),
-                },
-              ]
-            : []),
         ]
       : []),
     ...(state.supports.pinning
@@ -126,6 +120,17 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+    ...(state.projectFilter
+      ? [
+          {
+            id: "filter-by-project" as const,
+            label: state.projectFilter.isActive
+              ? "Show all projects"
+              : `Filter by ${state.projectFilter.label}`,
+            icon: "folder-tree",
+          },
+        ]
+      : []),
     {
       id: "copy",
       label: "Copy",

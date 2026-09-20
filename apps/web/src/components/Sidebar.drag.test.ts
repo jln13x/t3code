@@ -15,6 +15,8 @@ import {
   type SidebarSection,
 } from "./Sidebar.logic";
 
+import { groupSidebarListItems } from "./Sidebar.worktrees";
+
 const thread = (key: string, section: SidebarSection): SidebarListItem => ({
   kind: "thread",
   key,
@@ -38,9 +40,11 @@ function layout(
     const height =
       item.kind === "thread"
         ? (item.section === "pinned" || item.section === "active" ? cardHeight : 36) * scale
-        : item.marker === "pinned-header" || item.marker === "pinned-divider"
-          ? 0
-          : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
+        : item.kind === "worktree"
+          ? 32 * scale
+          : item.marker === "pinned-header" || item.marker === "pinned-divider"
+            ? 0
+            : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
     const rect = { top, height, bottom: top + height, left: 0, right: 260, width: 260 };
     top += height + 1;
     return rect;
@@ -833,5 +837,59 @@ describe("lifted card clearance", () => {
   it("follows the list when it scrolls and includes content preceding Pins", () => {
     expect(511 + apply(511, 36, -500, 96).y).toBe(128);
     expect(511 + apply(511, 36, -500, 136, 114).y).toBe(250);
+  });
+});
+
+describe("worktree header drag geometry", () => {
+  it("keeps the sibling group header when settling one of its conversations", () => {
+    const worktreeKeys = new Map([
+      ["a", "checkout"],
+      ["b", "checkout"],
+      ["done", "checkout"],
+    ]);
+    const items = groupSidebarListItems(
+      [
+        pinnedHeader,
+        divider,
+        thread("a", "active"),
+        thread("b", "active"),
+        settledHeader,
+        thread("done", "settled"),
+      ],
+      worktreeKeys,
+    );
+    const transforms = preview(
+      { items, worktreeKeys, settledOrder: ["a", "done"], settledExpanded: true },
+      "a",
+      sidebarMarkerId("settled-header"),
+    );
+    expect(transforms.get("sidebar-worktree:active:checkout")?.scaleY).toBe(1);
+    expect(transforms.get("sidebar-worktree:settled:checkout")?.scaleY).toBe(1);
+    const args = layout(items, "a", sidebarMarkerId("settled-header"));
+    const projectedTop = (id: string) => {
+      const index = items.findIndex((item) => sidebarListItemId(item) === id);
+      return args.rects[index]!.top + transforms.get(id)!.y;
+    };
+    expect(projectedTop("b") - projectedTop("sidebar-worktree:active:checkout")).toBe(33);
+    // The newly settled conversation has one slim row between the header and its sibling.
+    expect(projectedTop("done") - projectedTop("sidebar-worktree:settled:checkout")).toBe(70);
+  });
+
+  it("removes an empty checkout header after its final conversation is pinned", () => {
+    const worktreeKeys = new Map([
+      ["a", "checkout"],
+      ["b", "other"],
+    ]);
+    const items = groupSidebarListItems(
+      [pinnedHeader, divider, thread("a", "active"), thread("b", "active"), settledHeader],
+      worktreeKeys,
+    );
+    const transforms = preview(
+      { items, worktreeKeys, settledOrder: [], settledExpanded: false },
+      "a",
+      sidebarMarkerId("pinned-header"),
+    );
+    expect(transforms.get("sidebar-worktree:active:checkout")?.scaleY).toBe(0);
+    expect(transforms.get("sidebar-worktree:active:other")?.scaleY).toBe(1);
   });
 });

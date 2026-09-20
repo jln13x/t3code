@@ -4,7 +4,7 @@ import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./thread
 
 const baseState: ThreadActionMenuState = {
   branch: null,
-  continueBranchTargetLabels: [],
+  projectFilter: null,
   isPinned: false,
   isSettled: false,
   isSnoozed: false,
@@ -48,24 +48,33 @@ describe("buildThreadActionMenuItems", () => {
     expect(items[copyIndex + 2]?.id).toBe("archive");
   });
 
+  it("offers project filtering only for surfaces with a scoped thread list", () => {
+    expect(ids(baseState)).not.toContain("filter-by-project");
+    expect(
+      buildThreadActionMenuItems({
+        ...baseState,
+        projectFilter: { label: "Beta Project", isActive: false },
+      }).find((item) => item.id === "filter-by-project"),
+    ).toMatchObject({ label: "Filter by Beta Project", icon: "folder-tree" });
+  });
+
+  it("offers the way back to all projects once the list is scoped", () => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      projectFilter: { label: "Beta Project", isActive: true },
+    });
+    const filterIndex = items.findIndex((candidate) => candidate.id === "filter-by-project");
+    expect(items[filterIndex]).toMatchObject({ label: "Show all projects", icon: "folder-tree" });
+    expect(items[filterIndex - 1]?.id).toBe("mark-unread");
+    expect(items[filterIndex + 1]?.id).toBe("copy");
+  });
+
   it("includes branch items only for threads with a branch", () => {
     const withBranch = allIds({ ...baseState, branch: "feat/menu" });
     expect(withBranch).toContain("new-thread-on-branch");
     expect(withBranch).toContain("copy-branch");
     expect(allIds(baseState)).not.toContain("new-thread-on-branch");
     expect(allIds(baseState)).not.toContain("copy-branch");
-  });
-
-  it("offers connected handoff destinations below the branch action", () => {
-    const items = buildThreadActionMenuItems({
-      ...baseState,
-      branch: "feat/menu",
-      continueBranchTargetLabels: ["My Mac", "VPS 2"],
-    });
-    expect(items.find((item) => item.id === "continue-branch-on")?.children).toEqual([
-      { id: "continue-branch-on:0", label: "My Mac" },
-      { id: "continue-branch-on:1", label: "VPS 2" },
-    ]);
   });
 
   it("flips lifecycle labels with thread state", () => {

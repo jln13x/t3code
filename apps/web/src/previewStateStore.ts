@@ -1,12 +1,12 @@
 /**
- * Per-worktree preview UI state.
+ * Per-thread preview UI state.
  *
- * Each worktree (checkout) owns an independent atom; callers pass a thread
- * ref that resolves to its worktree scope key. Most consumers read exactly
- * one worktree; the desktop browser host uses the aggregate session atom
- * because it is the one place that must enumerate every live preview tab.
+ * Each thread owns an independent atom. Most consumers read exactly one
+ * thread; the desktop browser host uses the aggregate session atom because it
+ * is the one place that must enumerate every live preview tab.
  */
 import { useAtomValue } from "@effect/atom-react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type DesktopPreviewColorScheme,
   type DesktopPreviewFavicon,
@@ -19,7 +19,6 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { PREVIEW_RECENT_URL_LIMIT } from "./components/preview/previewConstants";
 import { appAtomRegistry } from "./rpc/atomRegistry";
-import { resolveWorktreeCanonicalThreadRef, worktreeStateKeysForThreadRef } from "./worktreeScope";
 
 export interface DesktopPreviewOverlay {
   hasWebContents: boolean;
@@ -76,84 +75,42 @@ export const previewStateAtom = Atom.family((threadKey: string) =>
 // Only the Electron browser host needs a cross-thread view. Keep that index
 // separate so thread-local readers never subscribe to unrelated previews.
 interface ActivePreviewThreadIndex {
-  readonly threadRefByScopeKey: ReadonlyMap<string, ScopedThreadRef>;
+  readonly keys: ReadonlySet<string>;
 }
 
 const activePreviewThreadKeysAtom = Atom.make<ActivePreviewThreadIndex>({
-  threadRefByScopeKey: new Map<string, ScopedThreadRef>(),
+  keys: new Set<string>(),
 }).pipe(Atom.keepAlive, Atom.withLabel("preview:active-thread-keys"));
 
 const activePreviewSessionsAtom = Atom.make((get) => {
-  const sessions: Array<{ threadRef: ScopedThreadRef; state: ThreadPreviewState }> = [];
-  for (const [scopeKey, threadRef] of get(activePreviewThreadKeysAtom).threadRefByScopeKey) {
-    const state = get(previewStateAtom(scopeKey));
+  const byThreadKey: Record<string, ThreadPreviewState> = {};
+  for (const threadKey of get(activePreviewThreadKeysAtom).keys) {
+    const state = get(previewStateAtom(threadKey));
     if (Object.keys(state.sessions).length > 0) {
-      sessions.push({ threadRef, state });
+      byThreadKey[threadKey] = state;
     }
   }
-  return sessions;
+  return byThreadKey;
 }).pipe(Atom.withLabel("preview:active-sessions"));
 
 const changedPreviewThreadKeys = new Set<string>();
 
-function syncActivePreviewThread(
-  threadKey: string,
-  ref: ScopedThreadRef,
-  state: ThreadPreviewState,
-): void {
+function syncActivePreviewThread(threadKey: string, state: ThreadPreviewState): void {
   const active = Object.keys(state.sessions).length > 0;
-  const canonicalRef = resolveWorktreeCanonicalThreadRef(ref);
   appAtomRegistry.update(activePreviewThreadKeysAtom, (current) => {
-    const existing = current.threadRefByScopeKey.get(threadKey);
-    if (
-      active &&
-      existing?.environmentId === canonicalRef.environmentId &&
-      existing.threadId === canonicalRef.threadId
-    ) {
-      return current;
-    }
-    if (!active && existing === undefined) return current;
-    const next = new Map(current.threadRefByScopeKey);
-    if (active) next.set(threadKey, canonicalRef);
+    if (current.keys.has(threadKey) === active) return current;
+    const next = new Set(current.keys);
+    if (active) next.add(threadKey);
     else next.delete(threadKey);
-    return { threadRefByScopeKey: next };
+    return { keys: next };
   });
-}
-
-function previewStateAtomForRead(ref: ScopedThreadRef) {
-  const { primaryKey, fallbackKey } = worktreeStateKeysForThreadRef(ref);
-  const primaryAtom = previewStateAtom(primaryKey);
-  if (primaryKey === fallbackKey) return primaryAtom;
-  const fallbackAtom = previewStateAtom(fallbackKey);
-  return appAtomRegistry.get(primaryAtom) === EMPTY_THREAD_PREVIEW_STATE &&
-    appAtomRegistry.get(fallbackAtom) !== EMPTY_THREAD_PREVIEW_STATE
-    ? fallbackAtom
-    : primaryAtom;
-}
-
-function migratePreviewState(ref: ScopedThreadRef): string {
-  const { primaryKey, fallbackKey } = worktreeStateKeysForThreadRef(ref);
-  if (primaryKey === fallbackKey) return primaryKey;
-  const fallbackAtom = previewStateAtom(fallbackKey);
-  const fallbackState = appAtomRegistry.get(fallbackAtom);
-  if (fallbackState === EMPTY_THREAD_PREVIEW_STATE) return primaryKey;
-  const primaryAtom = previewStateAtom(primaryKey);
-  const primaryState = appAtomRegistry.get(primaryAtom);
-  const migratedState = primaryState === EMPTY_THREAD_PREVIEW_STATE ? fallbackState : primaryState;
-  appAtomRegistry.set(primaryAtom, migratedState);
-  appAtomRegistry.set(fallbackAtom, EMPTY_THREAD_PREVIEW_STATE);
-  syncActivePreviewThread(fallbackKey, ref, EMPTY_THREAD_PREVIEW_STATE);
-  syncActivePreviewThread(primaryKey, ref, migratedState);
-  changedPreviewThreadKeys.delete(fallbackKey);
-  changedPreviewThreadKeys.add(primaryKey);
-  return primaryKey;
 }
 
 function updateThreadPreviewState(
   ref: ScopedThreadRef,
   update: (current: ThreadPreviewState) => ThreadPreviewState,
 ): void {
-  const threadKey = migratePreviewState(ref);
+  const threadKey = scopedThreadKey(ref);
   const atom = previewStateAtom(threadKey);
   let nextState = appAtomRegistry.get(atom);
   const changed = appAtomRegistry.modify(atom, (current) => {
@@ -162,7 +119,7 @@ function updateThreadPreviewState(
   });
   if (!changed) return;
   changedPreviewThreadKeys.add(threadKey);
-  syncActivePreviewThread(threadKey, ref, nextState);
+  syncActivePreviewThread(threadKey, nextState);
 }
 
 const dedupeRecentUrls = (existing: string[], url: string): string[] => {
@@ -204,19 +161,16 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
 };
 
 export function useThreadPreviewState(ref: ScopedThreadRef | null | undefined): ThreadPreviewState {
-  const atom = ref ? previewStateAtomForRead(ref) : emptyPreviewStateAtom;
+  const atom = ref ? previewStateAtom(scopedThreadKey(ref)) : emptyPreviewStateAtom;
   return useAtomValue(atom);
 }
 
-export function useActivePreviewSessions(): ReadonlyArray<{
-  threadRef: ScopedThreadRef;
-  state: ThreadPreviewState;
-}> {
+export function useActivePreviewSessions(): Record<string, ThreadPreviewState> {
   return useAtomValue(activePreviewSessionsAtom);
 }
 
 export function readThreadPreviewState(ref: ScopedThreadRef): ThreadPreviewState {
-  return appAtomRegistry.get(previewStateAtomForRead(ref));
+  return appAtomRegistry.get(previewStateAtom(scopedThreadKey(ref)));
 }
 
 export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEvent): void {
@@ -515,9 +469,7 @@ export function resetPreviewStateForTests(): void {
     appAtomRegistry.set(previewStateAtom(threadKey), EMPTY_THREAD_PREVIEW_STATE);
   }
   changedPreviewThreadKeys.clear();
-  appAtomRegistry.set(activePreviewThreadKeysAtom, {
-    threadRefByScopeKey: new Map<string, ScopedThreadRef>(),
-  });
+  appAtomRegistry.set(activePreviewThreadKeysAtom, { keys: new Set<string>() });
 }
 
 export const __testing = {

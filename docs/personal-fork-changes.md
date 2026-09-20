@@ -1,214 +1,56 @@
-# Personal Fork Changes
+# Personal fork changes
 
-The personal fork intentionally maintains five product differences from `upstream/main`: desktop
-fork identity, completion/attention sounds, native macOS completion notifications,
-worktree-grouped web/desktop threads, and cross-environment chat transfer. Everything else follows upstream directly.
-
-This file is both the current inventory and the retirement record used during upstream syncs.
-
-## Pending upstream integration
-
-### Desktop remote-editor detection
-
-- Remote Zed links now use upstream's editor definitions and URL builder. Desktop detection checks
-  registered protocol handlers as well as editor commands, so a Finder-launched app can find Zed
-  without its CLI on PATH.
-- The remaining temporary integration is protocol-handler discovery and the `zeditor` command
-  alias. Upstream's CLI-only discovery does not yet provide equivalent Finder-launch behavior;
-  retire these additions when it does.
-- Changes stay in the clients and shared editor URL helpers. Server behavior and wire schemas
-  remain compatible with unmodified upstream environments. Zed and Zed Preview share the OS URL
-  handler; the registered application determines which one opens.
+The fork maintains worktree grouping in the web/desktop sidebar, its success sound, and a distinct
+locally installable desktop identity. Other product behavior follows upstream.
 
 ## Maintained differences
 
-### Desktop fork identity
+### Sidebar worktree grouping
 
-- Packaged desktop builds use the `T3 Code (Fork)` product name and
-  `com.t3tools.t3code.fork` application identity.
-- macOS packages use the orange fork icon for latest and nightly builds. Development builds retain
-  upstream's development identity and artwork.
-- The packaged fork stores Electron data in `t3code-fork`, separate from upstream's `t3code`
-  directory, so both applications can coexist.
-- Identity is a build-time distinction, not a runtime feature flag. A runtime switch would not
-  safely change OS registration, package identity, or storage paths.
-- Personal-fork maintainers can create one persistent self-signed Keychain certificate and use the
-  explicit local signing mode. Its fingerprints and first validated designated requirement are
-  pinned in machine-local state outside the repository; missing, changed, and ambiguous identities
-  fail instead of falling back to ad-hoc signing. The requirement accepts macOS's equivalent
-  certificate-root and hash-anchor syntax only when it constrains the pinned certificate.
-- `install:desktop:arm64` builds a production ZIP, verifies the stable bundle/signing identity of
-  the app and all nested native code, and uses a rollback-safe `/Applications` replacement. It
-  passes certificate extraction prefixes as attached `codesign` option values for compatibility
-  with the macOS command-line parser. It remains local maintainer tooling: release signing,
-  unsigned artifacts, wire contracts, and app runtime behavior are unchanged.
-- Sync boundary: preserve the three signing modes and the local setup/validation/install scripts.
-  Never commit the local certificate or its fingerprint state, and never turn the local identity
-  into a distribution credential.
+- Group conversations by environment, project, and checkout independently within Active, Snoozed,
+  and Settled. A checkout can appear in multiple sections; settled siblings remain findable.
+- Keep upstream conversation rows, status/typography, model/provider icons, unread state, drafts,
+  PR controls, search, shelf persistence, and individual pin ordering. Headers identify the checkout
+  and project without aggregate status, selection, or group lifecycle actions.
+- Snooze, settle, wake, archive, pin, and drag affect individual conversations. Creating a sibling
+  uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
+- Terminals, previews, files, and diff state belong to individual threads as in upstream.
+- Grouping is web/desktop-only. Mobile remains upstream.
 
-### Completion and attention sounds
+### Completion sound
 
-- A `success` cue plays when a thread's latest turn transitions to completed. Its gain is 110% of
-  the sound library's default.
-- A `bloom` cue plays when a thread begins waiting for user input or approval.
-- Existing completed or attention-waiting threads establish a silent baseline when the app loads,
-  so opening the app does not replay old cues.
-- Both cues are always enabled. There is no fork feature flag or app preference for sounds.
-- Upstream's notification coordinator retains its toast, badge, and optional system-alert behavior,
-  but does not play a second sound. Notification settings do not expose upstream sound controls.
-- The fork patches `cuelume@0.1.0` to accept an optional per-play volume multiplier.
+- Use the fork's cuelume 0.1.0 `success` cue, rendered as a static audio asset at the previous 110%
+  gain. Upstream owns audio playback, completion detection, notification settings, and system alerts.
+- Attention audio follows upstream. There is no second completion detector, custom audio engine,
+  always-on override, native notification bridge, or offline completion queue.
 
-### Native macOS completion notifications
+### Desktop identity and local installation
 
-- When a live thread transitions to completed, the desktop host posts a silent native macOS
-  notification titled `Thread finished` with the thread title as its body. The app's completion
-  sound remains the only audio cue.
-- Clicking the notification reveals the desktop window and opens the exact environment-scoped
-  thread.
-- The Electron bridge reports whether macOS acknowledged the notification and retains the native
-  notification object until it is clicked, closed, or fails.
-- The renderer keeps a per-environment completion ledger and pending-delivery queue in local
-  storage. A VPS completion that lands while its connection is unavailable is delivered when the
-  environment reconnects; the first snapshot on a new installation remains a silent baseline.
-- Notifications are always enabled when Electron and macOS report support. Notification permission
-  and presentation remain controlled by macOS System Settings; there is no fork feature flag.
-- Detection uses the existing shell snapshots and does not add a server RPC or wire-contract fork.
-- Upstream's completion popup is suppressed when the native macOS completion bridge is present;
-  its attention alerts remain available. The native ledger, delivery queue, and click routing stay
-  authoritative for completion notifications.
+- Preserve `T3 Code (Fork)`, the orange macOS icon, `com.t3tools.t3code.fork`, and the separate
+  `t3code-fork` Electron data directory. Development builds retain upstream identity and artwork.
+- Keep the existing pinned, machine-local signing certificate and rollback-safe install commands
+  needed for local macOS builds. No certificate or fingerprint state belongs in the repository.
+- Do not install over the live app during routine development or syncs.
 
-### Worktree-grouped threads and checkout resources
+### Fork CI
 
-- Unpinned active threads that share the same Git worktree, or the same project's main checkout,
-  render in one sidebar card. Settled siblings stay hidden while that card has active work, and
-  snoozed and fully settled checkouts collapse to one shelf row per checkout.
-- Opening or multi-selecting a conversation highlights only that conversation's inner row; the
-  surrounding checkout card adds no selection or hover fill, so it stays visually neutral and does
-  not imply checkout-wide scope.
-- Each settled inner conversation row exposes its own archive action on hover or keyboard focus. It
-  uses the existing archive confirmation preference; running rows keep their status indicator and
-  do not expose the archive action.
-  A temporary success toast offers Undo through the existing unarchive path.
-- Checkout headers show identity and shared resource icons, not aggregate lifecycle labels such as
-  Done, Woke, Approval, Input, or Failed. The project name recedes behind the branch, and checkout
-  actions appear only while the header itself is hovered or keyboard-focused. Each conversation
-  owns one compact right-edge status slot: working and monitoring use blue activity, approval and
-  input share an amber attention icon, failure uses a red alert, a thread that is still snoozed uses
-  a blue clock, and a newly completed unread conversation uses an orange dot. Read completions and
-  threads returning from snooze have no persistent marker. The newly completed conversation keeps
-  its brighter, stronger title until it opens; ordinary idle siblings recede slightly without
-  adding a row tint.
-- Conversation typography has two states: finished-unread, focused, and multi-selected titles are
-  medium at full foreground; every other title is normal and muted. Working, monitoring, snoozed,
-  approval, input, and failure keep their status markers without changing title typography or
-  dimming the parent checkout.
-- Active pinned threads retain upstream's dedicated pinned block and drag ordering. Settled and
-  snoozed pinned threads follow upstream into their lifecycle sections, keep a visible pin marker,
-  and participate in the fork's checkout grouping there. This compatibility boundary keeps
-  upstream pinning behavior intact instead of replacing it with a fork-specific group-order model.
-- Upstream active ordering and cross-section dragging operate on checkout cards. Reordering writes
-  ordinary active-order keys for every active sibling as one contiguous block; it does not wake
-  parked siblings. Dragging a checkout to Settled or back to Active preserves checkout-wide lifecycle
-  scope. Dropping on Pinned pins the conversation picked up, not an arbitrary sibling. Older servers
-  retain their supported actions without receiving unsupported ordering commands.
-- Each conversation keeps independent messages and agent state, while terminal sessions, terminal
-  layout, preview tabs, open-file state, and Git diff state use a canonical checkout identity.
-- Checkout-level terminal and dev-server indicators appear on the grouped card. Removing one thread
-  preserves shared resources while siblings remain; removing the final sibling performs cleanup.
-- Settle, snooze, wake, and un-settle actions expand from a selected grouped thread to the checkout's
-  member threads. Search results, drafts, archive/delete, copying, title regeneration, provider
-  badges, durable PR display state, and project filtering continue to follow upstream behavior.
-- Upstream file drops, unsent-draft markers, and linked-PR/stack controls are available on the inner
-  conversation rows. Live status subscriptions follow upstream's visible-row leases.
-- `chat.newInWorktree` creates a sibling conversation in the current checkout and defaults to
-  `mod+t`. This is a narrow explicit command; the retired arbitrary-worktree picker, mobile checkout
-  flow, PR-to-worktree resolution, and cross-project checkout inheritance remain retired.
-- The behavior is always enabled on web/desktop and has no fork feature flag or app preference.
-- Sync boundary: grouping helpers live in `SidebarV2.logic.ts`, checkout resource identity lives in
-  `worktreeScope.ts` and `packages/shared/src/worktreeResource.ts`, and the upstream sidebar is
-  extended rather than replaced. Future merges must preserve upstream search, drafts, pinning and
-  reorder, lifecycle/context-menu actions, provider badges, shelf persistence, and PR snapshots.
+- Preserve repository-aware GitHub-hosted runner selection. Upstream's private Blacksmith runners
+  are unavailable to the fork. Keep upstream jobs and validation commands.
 
-### Cross-environment chat transfer
+## Retired on 2026-09-20
 
-- On web/desktop, **Move chat to…** transfers an idle thread to a connected environment that has the
-  same canonical repository project. It creates an ordinary destination thread with the source
-  title, model (or a destination fallback), runtime/interaction modes, branch, and worktree. The
-  complete source snapshot remains visible ahead of future destination-native turns, including
-  message timestamps, image attachments, generic file-attachment metadata, plans, activities, and
-  checkpoint metadata. Imported generic files remain visible but non-downloadable because their
-  source-environment asset bytes are not part of the documented portable capsule; image bytes are.
-- The client captures the source HEAD, index, and non-ignored worktree as separate temporary Git
-  trees. It pushes those trees, the exact local branch as `origin/<branch>`, and checkpoint objects
-  through operation-scoped remote refs in one atomic push. The captured HEAD has its own remote
-  ref, so later branch pushes cannot change the snapshot being restored. The worktree snapshot
-  starts from the real index to include force-added ignored files; verification tracks exported
-  paths even when the destination has different local ignore rules.
-  The destination creates or reuses the branch's normal
-  worktree, rejects unrelated existing changes or checkpoint refs, and restores committed, staged,
-  unstaged, and non-ignored untracked state exactly. Source and destination Git state are verified
-  before the source lifecycle changes. Temporary local, tracking, and remote refs are cleaned on
-  success and bounded failure paths. Hidden terminal Git commands disable Git, Credential Manager,
-  and SSH askpass prompts. A destination without usable credentials fails with its terminal error
-  instead of waiting on an invisible prompt.
-- Restoration rejects destination-only commits and uses Git's no-overwrite-ignore checkout before
-  restoring the captured HEAD and staged index. Ignored file and directory collisions fail before
-  modifying the destination, and the error includes the conflicting paths.
-- The implementation uses only unmodified upstream server operations. It pages the stock thread
-  snapshot API where supported, downloads every referenced image once, and writes a versioned
-  history capsule through the stock project-file RPC. Capsules live in the destination checkout at
-  `.t3/chat-transfers/<destination-thread-id>/`, are split below the upstream one-megabyte read
-  limit, SHA-256 verified after writing, and excluded through the repository's local Git exclude
-  file. The web client loads and verifies the capsule after reload, then overlays later native
-  destination events by ID.
-- Subsequent moves reload and verify the existing capsule, merge it with the native source
-  snapshot, and reuse its embedded image bytes. Export strips prior provider context envelopes
-  from user messages so later moves do not nest the transcript. Race detection fingerprints the
-  native source snapshot independently of the combined exported history.
-- A move never deletes the source. After the capsule, destination thread, and both Git states pass
-  integrity checks, the client archives the source as a recoverable backup. It reads the source
-  again after archiving and compares a content fingerprint that ignores only archive lifecycle
-  timestamps. A detected race restores the source and archives the destination copy.
-- Provider-native sessions are not portable across machines. The first destination-native turn gets
-  a provider-neutral, bounded recent transcript; the complete imported transcript remains stored and
-  visible in the client. The context envelope is retained by the ordinary destination thread for
-  future provider resumes but stripped from the rendered user message. Historical source approvals,
-  plan actions, and checkpoint reverts stay read-only because their database IDs are not present on
-  the destination server; new destination-native history remains fully interactive.
-- The shared timeline receives destination-native rollback checkpoints separately from displayed
-  imported metadata, including its incremental row cache. Imported diff links never query the
-  destination using source-only turn IDs.
-- Fork implementation: [jln13x/t3code#31](https://github.com/jln13x/t3code/pull/31), corrected
-  to the client-only boundary in [#38](https://github.com/jln13x/t3code/pull/38), then updated to
-  publish by local branch name in [#39](https://github.com/jln13x/t3code/pull/39) and fetch only the
-  exact destination branch in [#40](https://github.com/jln13x/t3code/pull/40).
-  Destination checkout failures are made bounded and visible in
-  [#45](https://github.com/jln13x/t3code/pull/45).
-- Sync boundary: keep the action, history capsule, context overlay, integrity checks, and Git
-  transport in `apps/web`. Preserve upstream contracts, `apps/server`, client-runtime command
-  unions, and server databases unchanged.
-
-## Fork CI infrastructure
-
-- Pull-request CI and mobile fingerprint checks use GitHub-hosted Ubuntu 24.04 and macOS 26
-  runners outside `pingdotgg/t3code`. Upstream's Blacksmith labels have no registered runners in
-  this fork, so retaining those labels leaves validation queued indefinitely.
-- Preserve the repository-aware runner selection during upstream syncs. Keep the upstream jobs,
-  test commands, and checks intact.
-
-## Replaced during the 2026-09-15 sync
-
-- The temporary Zed URL representation is replaced by upstream's `remoteScheme` definitions and
-  URL builder, which provide the same SSH project/worktree links. Handler discovery remains pending
-  as described above.
-- The preview MCP acknowledgement wrapper is replaced by upstream's object-shaped action results
-  and wrapped evaluate value. These retain valid structured results while supporting preview tool
-  icons, screenshot saving, and recording transfers without a separate fork response schema.
-- Desktop identity/signing, always-on cues, native completion delivery, checkout resource identity,
-  and chat transfer remain maintained. Upstream's proactive panels and device surfaces use the
-  existing checkout-scoped store and share its user-action revision and dismissal state.
-- Existing checkout terminal cleanup and instant preview scrolling remain preserved; neither is
-  silently discarded merely because it was absent from the earlier inventory.
+- Cross-environment chat transfer, Git snapshot transport, imported-history overlays, and transfer
+  actions are removed. No user data or previously transferred checkout files are deleted.
+- Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, custom sidebar typography
+  and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
+- Always-on completion/attention detection, the cuelume dependency/volume patch, and native macOS
+  completion delivery/acknowledgement/reconnect queues are replaced by upstream notification handling.
+  System notifications require upstream settings and permission, appear while the app is unfocused,
+  and do not replay completions missed during a disconnection.
+- Remote-editor protocol-handler discovery and the browser Zed fallback are removed. Upstream owns
+  Zed SSH links, the `zeditor` alias, and editor discovery outside PATH.
+- The preview instant-scroll click patch and incidental fork-only code cleanups are removed.
+- The fork server and wire API follow upstream; the checkout terminal archive cleanup override is gone.
 
 ## Retired on 2026-09-06
 
@@ -234,19 +76,19 @@ The following customizations and their centralized feature flags were removed in
 upstream behavior. Their migrations, contracts, settings controls, UI branches, native bridges, and
 tests were removed with them.
 
-| Retired customization                 | Historical fork behavior and retirement decision                                                                                                                                                                                                                                                                                  |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Projectless standalone chats          | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                               |
-| Native macOS sidebar                  | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                 |
-| Server event replay for notifications | Replayed raw orchestration events through a fork-only RPC. The maintained notification now compares standard shell snapshots against client-local state, so remote servers need no fork behavior.                                                                                                                                 |
-| Sidebar worktree navigation           | The former native-style project/worktree hierarchy exposed checkout actions and preserved empty checkout groups. That hierarchy remains retired. The maintained grouping is narrower: it groups live threads by checkout inside the upstream sidebar and does not restore empty checkout navigation.                              |
-| Worktree source control               | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork now uses upstream source-control surfaces.                                                                                                                                         |
-| Checkout-aware thread creation        | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. Grouping now carries only the explicit web/desktop `chat.newInWorktree` sibling-thread command described above. |
-| Fork-aware pull-request targeting     | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                           |
-| Durable pull-request status           | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                          |
-| Markdown and text attachments         | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                            |
-| Generated-image rendering             | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                 |
-| Fork backports and integration ledger | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                        |
+| Retired customization                 | Historical fork behavior and retirement decision                                                                                                                                                                                                                                                                                    |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Projectless standalone chats          | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                                 |
+| Native macOS sidebar                  | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                   |
+| Server event replay for notifications | Replayed raw orchestration events through a fork-only RPC. It was replaced by client-local snapshot detection, which was itself retired on 2026-09-20 in favor of upstream notifications.                                                                                                                                           |
+| Sidebar worktree navigation           | The former native-style project/worktree hierarchy exposed checkout actions and preserved empty checkout groups. That hierarchy remains retired. The maintained grouping is narrower: it groups live threads by checkout inside the upstream sidebar and does not restore empty checkout navigation.                                |
+| Worktree source control               | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork uses upstream source-control surfaces.                                                                                                                                               |
+| Checkout-aware thread creation        | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. The remaining `chat.newInWorktree` command was retired on 2026-09-20; sibling creation now uses upstream actions. |
+| Fork-aware pull-request targeting     | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                             |
+| Durable pull-request status           | Persisted canonical PR identity and last-known state, retained stale state through provider failures, and refreshed through a shared rate-limited cache. The fork now uses upstream change-request discovery and status.                                                                                                            |
+| Markdown and text attachments         | Allowed text files to be attached directly to prompts. The fork now uses upstream attachment behavior.                                                                                                                                                                                                                              |
+| Generated-image rendering             | Rendered generated image artifacts inline in chat. The fork now uses upstream artifact rendering.                                                                                                                                                                                                                                   |
+| Fork backports and integration ledger | Fork-carried upstream fixes and `docs/upstream-integrations.md` were removed after syncing to an upstream revision that contains or supersedes the applicable work. Future sync history belongs in Git and this inventory.                                                                                                          |
 
 ## Earlier retirements
 

@@ -20,6 +20,22 @@ on Windows and Linux to start a new thread and immediately open another draft. T
 next draft keeps the workspace mode and base branch you selected. With **New
 worktree**, each background submission creates its own worktree.
 
+To send the same prompt to several models on web or desktop, **Shift-click** models
+in a new thread's model picker to add or remove them. A regular click returns to a
+single model. Choose a base branch and send. Each selection starts a separate thread
+and worktree while you stay in the new thread composer. This requires a Git project.
+
+## Worktree groups
+
+On web and desktop, conversations in the same project checkout appear together within Active,
+Snoozed, and Settled. A checkout can appear in more than one section. Pinning keeps individual
+conversations in the pinned section.
+
+Use the worktree header's **New conversation** action, or the branch toolbar's **New thread in
+this worktree**, to start another conversation in that checkout. Snoozing, settling, archiving,
+and dragging affect only the conversation you choose. Each conversation has its own terminals,
+previews, and file/diff view state; code changes still share the checkout's files.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
@@ -51,7 +67,8 @@ thread is over takes the accent color. Section labels also
 identify empty sections and a collapsed settled shelf.
 
 Drag within the pinned or active section to change its order. Other rows slide aside to show the
-spot where the thread will land. Drops into either section keep the position you choose. On
+spot where the thread will land. Pinned drops keep the position you choose. Active conversations stay with their checkout;
+the first conversation in the saved order determines the checkout's position. On
 mobile, open a thread's menu and choose **Arrange threads**. Drag a handle within or between
 **Pinned** and **Active** to reorder, pin, or unpin. Drop onto the **Settled** divider to
 settle a thread. The dragged card shows the action before you release it. Expand **Snoozed**
@@ -88,40 +105,13 @@ prevent automatic settlement. An open pull request does not prevent inactivity
 settlement, but an old closed or merged pull request does not settle work you
 resumed after it closed.
 
-Change these rules in **Settings → General**. They continue to run when your apps
-are closed. On web and desktop, choose an environment at the top to change only
-its rules, or **All environments** to update connected environments together.
+Change these rules in **Settings → General** on web and desktop, or **Settings → Thread behavior** on mobile.
+They continue to run when your apps are closed. On web and desktop, choose an environment at the
+top to change only its rules, or **All environments** to update connected environments together.
 Mixed values show where the selected environments disagree. Mobile applies these
 rules to connected environments that support shared settings. Offline environments
 and older servers keep their previous values. Changing a rule does not reopen
 already settled threads.
-
-## Move a chat to another environment
-
-When the same repository project is available on two connected environments, open a thread's menu,
-choose **Move chat to…**, and select the destination. T3 Code recreates the same branch and standard
-worktree name there, then transfers the complete stored conversation, including messages, image
-attachments, plans, activity history, and checkpoint history.
-
-Committed, staged, unstaged, and non-ignored untracked Git work is restored exactly on the other
-machine. The branch is published as `origin/<branch>`; its configured upstream is ignored. Ignored
-untracked files stay in the source checkout. Files already staged remain included even if their
-names match an ignore rule. Both machines need non-interactive access to that `origin`, and the
-remote must support atomic pushes. A move refuses to overwrite existing destination files,
-including ignored files, or replace destination commits outside the source history.
-
-The complete conversation is stored as a verified, Git-ignored history capsule in the destination
-checkout and remains available after reconnecting or reloading. Historical approvals, plan actions,
-and checkpoint reverts are read-only there; new destination turns remain fully interactive.
-Moving the chat again includes this imported history and its saved images along with later turns.
-
-The source chat is archived only after the destination history and both Git states have been
-verified, and it remains available under Archive as a recovery copy. If verification fails or the
-source changes during the move, the source stays active or is restored and the partial destination
-thread is archived.
-
-Provider-native session IDs cannot move between machines. The first destination turn receives a
-bounded recent transcript as context while the complete imported history remains visible.
 
 ## Link a pull request
 

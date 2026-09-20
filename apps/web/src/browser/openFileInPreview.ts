@@ -22,7 +22,6 @@ import {
   rememberPreviewUrl,
 } from "~/previewStateStore";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { resolveWorktreeCanonicalThreadRef } from "~/worktreeScope";
 
 import {
   browserDefaultOpenProfileId,
@@ -57,9 +56,6 @@ export async function openUrlInPreview<E>(input: {
   readonly url: string;
   readonly openPreview: OpenPreviewMutation<E>;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  // Preview sessions are worktree-scoped: open through the worktree's
-  // canonical thread id so sibling threads share one set of tabs.
-  const canonicalRef = resolveWorktreeCanonicalThreadRef(input.threadRef);
   const defaults = await resolveBrowserDefaults().catch(
     (cause: unknown) => new BrowserSettingsReadError({ cause }),
   );
@@ -67,9 +63,9 @@ export async function openUrlInPreview<E>(input: {
     return AsyncResult.failure(Cause.fail(defaults));
   }
   const result = await input.openPreview({
-    environmentId: canonicalRef.environmentId,
+    environmentId: input.threadRef.environmentId,
     input: {
-      threadId: canonicalRef.threadId,
+      threadId: input.threadRef.threadId,
       url: input.url,
       // Built here rather than via `openPreviewSession` because this path
       // maps the result differently, so the configured defaults have to be

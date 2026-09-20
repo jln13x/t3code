@@ -11,10 +11,6 @@ export const MENU_ACTION_CHANNEL = "desktop:menu-action";
 export const PASTE_AS_TEXT_CHANNEL = "desktop:paste-as-text";
 export const SNAP_SHOT_EVENT_CHANNEL = "desktop:snap-shot-event";
 export const QUIT_SHORTCUT_CHANNEL = "desktop:quit-shortcut";
-export const SHOW_THREAD_COMPLETION_NOTIFICATION_CHANNEL =
-  "desktop:show-thread-completion-notification";
-export const THREAD_COMPLETION_NOTIFICATION_CLICK_CHANNEL =
-  "desktop:thread-completion-notification-click";
 export const GET_WINDOW_FULLSCREEN_STATE_CHANNEL = "desktop:get-window-fullscreen-state";
 export const WINDOW_FULLSCREEN_STATE_CHANNEL = "desktop:window-fullscreen-state";
 export const DESKTOP_APP_ACTIVATION_READY_CHANNEL = "desktop:app-activation-ready";

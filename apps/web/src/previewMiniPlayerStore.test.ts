@@ -1,9 +1,7 @@
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
-import { worktreeResourceThreadId } from "@t3tools/shared/worktreeResource";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { DraftId, useComposerDraftStore } from "./composerDraftStore";
 import {
   browserMiniPlayerSource,
   type PreviewMiniPlayerSource,
@@ -26,11 +24,6 @@ const pixel: PreviewMiniPlayerSource = {
 
 beforeEach(() => {
   usePreviewMiniPlayerStore.setState({ byThreadKey: {} });
-  useComposerDraftStore.setState({
-    draftsByThreadKey: {},
-    draftThreadsByThreadKey: {},
-    logicalProjectDraftThreadKeyByLogicalProjectKey: {},
-  });
 });
 
 describe("previewMiniPlayerStore", () => {
@@ -72,38 +65,6 @@ describe("previewMiniPlayerStore", () => {
       position: null,
       width: null,
     });
-  });
-
-  it("shares one entry between a worktree's canonical ref and a sibling thread ref", () => {
-    const environmentId = "env-1" as EnvironmentId;
-    const projectId = ProjectId.make("project-1");
-    const worktreePath = "/repo/worktree";
-    const siblingThreadId = ThreadId.make("thread-A");
-    const siblingRef = scopeThreadRef(environmentId, siblingThreadId);
-    const canonicalRef = scopeThreadRef(
-      environmentId,
-      worktreeResourceThreadId(projectId, worktreePath),
-    );
-
-    useComposerDraftStore
-      .getState()
-      .setProjectDraftThreadId(scopeProjectRef(environmentId, projectId), DraftId.make("draft-1"), {
-        threadId: siblingThreadId,
-        worktreePath,
-      });
-
-    // Automation opens the player through the worktree's canonical thread ref
-    // while ChatView selects it with whichever sibling thread is being viewed.
-    usePreviewMiniPlayerStore.getState().open(canonicalRef, tabA);
-
-    expect(
-      selectThreadPreviewMiniPlayer(usePreviewMiniPlayerStore.getState().byThreadKey, siblingRef),
-    ).toMatchObject({ source: tabA });
-
-    usePreviewMiniPlayerStore.getState().close(siblingRef);
-    expect(
-      selectThreadPreviewMiniPlayer(usePreviewMiniPlayerStore.getState().byThreadKey, canonicalRef),
-    ).toBeNull();
   });
 
   it("preserves a thread-bound width while switching tabs", () => {

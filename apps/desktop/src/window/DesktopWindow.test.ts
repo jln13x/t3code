@@ -302,7 +302,6 @@ function makeTestLayer(input: {
               input.openedExternalUrls?.push(url);
               return true;
             }),
-          hasProtocolHandler: () => Effect.succeed(false),
           openSystemSettings: () => Effect.succeed(true),
           copyText: (text) =>
             Effect.sync(() => {
@@ -408,7 +407,6 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
           electronMenuLayer,
           Layer.succeed(ElectronShell.ElectronShell, {
             openExternal: () => Effect.succeed(true),
-            hasProtocolHandler: () => Effect.succeed(false),
             openSystemSettings: () => Effect.succeed(true),
             copyText: () => Effect.void,
           } satisfies ElectronShell.ElectronShell["Service"]),
