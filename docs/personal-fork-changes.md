@@ -36,8 +36,12 @@ locally installable desktop identity. Other product behavior follows upstream.
 
 ### Fork CI
 
-- Preserve repository-aware GitHub-hosted runner selection. Upstream's private Blacksmith runners
-  are unavailable to the fork. Keep upstream jobs and validation commands.
+- Preserve repository-aware GitHub-hosted runner selection in `ci.yml`. Upstream's private
+  Blacksmith runners are unavailable to the fork. Keep upstream jobs and validation commands.
+- `CI` is the only enabled workflow. Every other workflow is disabled in the GitHub repository
+  settings (`gh workflow disable`), not in files, and keeps its upstream contents. They need
+  Blacksmith, Expo, release secrets, or upstream-only integrations; enabled, they queue for 24 hours
+  or do nothing useful.
 
 ## Retired on 2026-09-20
 
