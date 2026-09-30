@@ -3,10 +3,9 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `d2c9281b8` on 2026-09-29. All maintained differences below are preserved;
+Reviewed against upstream `c18e5ea6e` on 2026-09-30. All maintained differences below are preserved;
 no customizations were replaced or retired in this sync. Grouped sidebar rows retain upstream's
-accessible names and keyboard focus indicators. Desktop packaging retains upstream's Linux
-compression change alongside local macOS signing.
+multi-PR badge behavior. Managed ChatGPT authentication follows upstream across clients and server.
 
 ## Maintained differences
 
