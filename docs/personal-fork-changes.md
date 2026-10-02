@@ -3,20 +3,23 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `c18e5ea6e` on 2026-09-30. All maintained differences below are preserved;
-no customizations were replaced or retired in this sync. Grouped sidebar rows retain upstream's
-multi-PR badge behavior. Managed ChatGPT authentication follows upstream across clients and server.
+Reviewed against upstream `cc1e634bf` on 2026-10-02. All maintained differences below are preserved;
+no customizations were replaced or retired in this sync. Grouping now includes upstream's optional
+Working section and retains provider stacks, thread context dragging, and individual thread actions.
+Desktop profile selection moved to upstream's new module while retaining the fork's existing profile.
+The server, orchestration V2 contracts, mobile client, and notification delivery follow upstream.
 
 ## Maintained differences
 
 ### Sidebar worktree grouping
 
 - Group conversations by environment, project, and checkout independently within Active, Snoozed,
-  and Settled. A checkout can appear in multiple sections; settled siblings remain findable.
+  and Settled, plus Working when enabled. A checkout can appear in multiple sections; settled
+  siblings remain findable.
 - Headers show the project icon and name above the checkout. Grouped active conversations use a
   single compact row, with PR, diff, and environment indicators beside the title. Status uses icons
   with accessible labels, without visible status text or elapsed timers.
-- Keep upstream model/provider icons, unread state, drafts, PR controls, search, shelf persistence,
+- Keep upstream model/provider stacks, unread state, drafts, PR controls, search, shelf persistence,
   and individual pin ordering. Headers have no aggregate status, selection, or group lifecycle actions.
 - Snooze, settle, wake, archive, pin, and drag affect individual conversations. Creating a sibling
   uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
