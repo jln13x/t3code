@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   planSidebarThreadDrop,
   resolveSidebarDropTarget,
+  resolveSidebarSweepKeys,
   sidebarListItemId,
   type SidebarListItem,
   type SidebarSection,
@@ -92,6 +93,18 @@ it("keeps settled siblings visible in their own section and pins independently o
   ]);
   expect(new Set(grouped.map(sidebarListItemId)).size).toBe(grouped.length);
   expect(groupSidebarListItems(grouped, keys)).toEqual(grouped);
+});
+
+it.each([
+  ["b", "c"],
+  ["c", "b"],
+])("sweeps the visible range from %s to %s without adding checkout siblings", (origin, target) => {
+  const rows = groupSidebarListItems(items, keys).filter((item) => item.kind === "thread");
+  const sections = new Map(rows.map((item) => [item.key, item.section]));
+  const orderedKeys = rows.map((item) => item.key);
+  expect(
+    resolveSidebarSweepKeys(orderedKeys, origin, target, (key) => sections.get(key) === "active"),
+  ).toEqual(["b", "c"]);
 });
 
 it("does not materialize hidden shelf threads or merge snoozed and active siblings", () => {

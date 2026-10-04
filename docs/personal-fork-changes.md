@@ -3,11 +3,11 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `cc1e634bf` on 2026-10-02. All maintained differences below are preserved;
-no customizations were replaced or retired in this sync. Grouping now includes upstream's optional
-Working section and retains provider stacks, thread context dragging, and individual thread actions.
-Desktop profile selection moved to upstream's new module while retaining the fork's existing profile.
-The server, orchestration V2 contracts, mobile client, and notification delivery follow upstream.
+Reviewed against upstream `e19a48d22` on 2026-10-04. All maintained differences below are preserved;
+no customizations were replaced or retired in this sync. Grouped rows retain upstream's sidebar
+sweep actions, draft cleanup, and shared inbox ordering. A sweep applies only to the eligible rows
+in the range the user selects. Desktop identity and local signing remain intact. The server,
+wire contracts, mobile client, and notification delivery follow upstream.
 
 ## Maintained differences
 
@@ -21,8 +21,9 @@ The server, orchestration V2 contracts, mobile client, and notification delivery
   with accessible labels, without visible status text or elapsed timers.
 - Keep upstream model/provider stacks, unread state, drafts, PR controls, search, shelf persistence,
   and individual pin ordering. Headers have no aggregate status, selection, or group lifecycle actions.
-- Snooze, settle, wake, archive, pin, and drag affect individual conversations. Creating a sibling
-  uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
+- Snooze, settle, wake, archive, pin, and drag affect individual conversations. Upstream action
+  sweeps apply only to the selected row range, without expanding to checkout siblings. Creating a
+  sibling uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
 - Terminals, previews, files, and diff state belong to individual threads as in upstream.
 - Grouping is web/desktop-only. Mobile remains upstream.
 
