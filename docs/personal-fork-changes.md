@@ -3,11 +3,11 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `e19a48d22` on 2026-10-04. All maintained differences below are preserved;
-no customizations were replaced or retired in this sync. Grouped rows retain upstream's sidebar
-sweep actions, draft cleanup, and shared inbox ordering. A sweep applies only to the eligible rows
-in the range the user selects. Desktop identity and local signing remain intact. The server,
-wire contracts, mobile client, and notification delivery follow upstream.
+Reviewed against upstream `4ee6bfd50` on 2026-10-04. All maintained differences below are preserved;
+no customizations were replaced or retired in this sync. Grouped rows retain upstream's ordering
+by latest send within each Working checkout and its sidebar actions for secondary hovering pointers.
+Desktop identity, local signing, and the success cue remain intact. The server, wire contracts,
+mobile client, and notification delivery follow upstream.
 
 ## Maintained differences
 
