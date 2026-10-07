@@ -49,8 +49,8 @@ On web and desktop, conversations in the same project checkout appear together w
 Snoozed, and Settled, plus Working when enabled. A checkout can appear in more than one section. Pinning keeps individual
 conversations in the pinned section.
 
-Use the worktree header's **New conversation** action, or the branch toolbar's **New thread in
-this worktree**, to start another conversation in that checkout. Snoozing, settling, archiving,
+Use a conversation's **New thread on this branch** action or the branch toolbar's **New thread in
+this worktree** to start another conversation in that checkout. Snoozing, settling, archiving,
 and dragging affect only the conversation you choose. Dragging a row action across conversations
 applies it to the eligible rows in that range. Each conversation has its own terminals,
 previews, and file/diff view state; code changes still share the checkout's files.
@@ -147,6 +147,13 @@ sending an answer or restarting the agent. Settling also closes the thread's
 terminals that wait at an idle prompt, and keeps their output. A terminal that
 runs a command, such as a dev server, stays open.
 
+To reclaim disk space from settled work, turn on **Run in the thread's worktree when the
+thread settles** for one of the project's actions, or set `"runOnSettle": true` on a
+`t3.json` script, for example `cargo clean`. It runs each time a thread in its own
+worktree settles, manually or automatically, even if a terminal there still runs a
+command such as a dev server. Threads in the project's main checkout skip it. Its terminal
+closes when the command succeeds and stays open when it fails.
+
 On web and desktop, press a thread's **Settle** button and drag up or down to
 settle every thread in that section between it and the one you release on.
 The **Un-settle** and **Wake** buttons work the same way in their sections.
@@ -221,6 +228,7 @@ snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
 On web and desktop, use **Agents** to follow work delegated to subagents.
+Stop on a thread also stops the subagents it delegated to.
 
 Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent
