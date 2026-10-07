@@ -3,11 +3,12 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `4ee6bfd50` on 2026-10-04. All maintained differences below are preserved;
-no customizations were replaced or retired in this sync. Grouped rows retain upstream's ordering
-by latest send within each Working checkout and its sidebar actions for secondary hovering pointers.
-Desktop identity, local signing, and the success cue remain intact. The server, wire contracts,
-mobile client, and notification delivery follow upstream.
+Reviewed against upstream `079e4bccdc` on 2026-10-07. Sidebar worktree grouping, the success cue,
+desktop identity, local signing, and fork CI runners are preserved. Grouped rows retain upstream's
+permission checks, read-only local Git status, native goal labels, and drag ordering fixes.
+The leftover worktree-header new-conversation shortcut is removed to match the retired custom
+creation behavior; sibling creation uses upstream's thread action and branch toolbar.
+The server, wire contracts, mobile client, and notification delivery follow upstream.
 
 ## Maintained differences
 
