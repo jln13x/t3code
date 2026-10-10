@@ -76,6 +76,7 @@ import {
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
+  ListFilterIcon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -173,6 +174,7 @@ import {
 } from "../threadRoutes";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
@@ -1132,6 +1134,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   currentEnvironmentId: string | null;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
+  scratchMachineLabel: string | null;
   project: EnvironmentProject | null;
   projectDisplayName: string | null;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
@@ -1361,6 +1364,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // that is every thread, which is the point: the glyph is what tells rows on
   // different machines apart.
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
+  const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -1756,7 +1760,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               type="button"
               aria-label="Unpin thread"
               onClick={handleUnpinClick}
-              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             />
           }
         >
@@ -1818,7 +1822,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               hover so the tail stays scannable when you're hunting. */}
             <span
               className={cn(
-                "shrink-0 transition-opacity",
+                "flex shrink-0 items-center transition-opacity",
                 (!props.isActive || variantAction === "unsettle") &&
                   "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
               )}
@@ -1873,7 +1877,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             type="button"
                             aria-label="Dismiss Woke notification"
                             onClick={handleAcknowledgeWokeClick}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                           >
                             <AlarmClockIcon aria-hidden className="size-3" />
                             <span role="status" className="sr-only">
@@ -1963,7 +1967,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           <span className="text-diff-deletion-foreground">−{diff.deletions}</span>
         </span>
       ) : null}
-      {isRemote ? (
+      {isRemote && !showsScratchMachine ? (
         <span
           aria-hidden
           className="pointer-events-none inline-flex shrink-0 items-center text-sidebar-muted-foreground/70"
@@ -2083,7 +2087,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 aria-label="Dismiss Woke notification"
                                 onClick={handleAcknowledgeWokeClick}
                                 className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                                   topStatus.className,
                                 )}
                               >
@@ -2202,6 +2206,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
+
                 {thread.branch ? (
                   <>
                     <ThreadWorktreeIndicator thread={thread} />
@@ -2209,11 +2214,46 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       <MiddleTruncate value={thread.branch} showTitle={false} />
                     </span>
                   </>
+                ) : showsScratchMachine ? (
+                  <>
+                    <EnvironmentMachineIcon
+                      aria-hidden
+                      kind={props.environmentMachine}
+                      className="size-3 shrink-0 text-muted-foreground/40"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
+                      {props.scratchMachineLabel}
+                    </span>
+                  </>
                 ) : (
                   <span className="flex-1" />
                 )}
-                {rowMetadata}
-                {providerIcon}
+                {terminalStatusIcon}
+                {prBadge}
+                {diff ? (
+                  <span className="shrink-0 font-mono">
+                    <span className="text-diff-addition-foreground">+{diff.insertions}</span>{" "}
+                    <span className="text-diff-deletion-foreground">−{diff.deletions}</span>
+                  </span>
+                ) : null}
+                <span
+                  aria-hidden
+                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+                >
+                  {isRemote && !showsScratchMachine ? (
+                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+                      <EnvironmentMachineIcon
+                        aria-hidden
+                        kind={props.environmentMachine}
+                        className="size-3.5"
+                      />
+                    </span>
+                  ) : null}
+                  <SidebarProviderStack
+                    thread={thread}
+                    providerEntryByInstanceId={props.providerEntryByInstanceId}
+                  />
+                </span>
               </div>
             ) : null}
           </div>
@@ -2616,6 +2656,20 @@ export default function Sidebar() {
   const showProjectEnvironments = useMemo(
     () => projectGroupsSpanEnvironments(projectGroups),
     [projectGroups],
+  );
+  const scratchMachineLabelFor = useCallback(
+    (thread: Pick<SidebarThreadSummary, "environmentId" | "projectId">) => {
+      if (!showProjectEnvironments) return null;
+      const project = projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
+      if (
+        !project ||
+        !isScratchProject(project, serverConfigs.get(thread.environmentId)?.scratchWorkspaceRoot)
+      ) {
+        return null;
+      }
+      return environmentLabelById.get(thread.environmentId) ?? null;
+    },
+    [environmentLabelById, projectByKey, serverConfigs, showProjectEnvironments],
   );
   const projectGroupByScopeKey = useMemo(
     () => new Map(projectGroups.map((project) => [project.projectKey, project] as const)),
@@ -5043,7 +5097,7 @@ export default function Sidebar() {
                         <ProjectFavicon project={scopedProjectGroup} className="size-4" />
                       </span>
                     ) : (
-                      <FolderIcon className="size-4" />
+                      <ListFilterIcon className="size-4" />
                     )}
                   </ComboboxTrigger>
                   <ComboboxPopup
@@ -5337,6 +5391,7 @@ export default function Sidebar() {
                             environmentMachine={
                               environmentMachineById.get(thread.environmentId) ?? "server"
                             }
+                            scratchMachineLabel={scratchMachineLabelFor(thread)}
                             project={
                               projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
                               null
@@ -5420,8 +5475,12 @@ export default function Sidebar() {
                           const thread = threadByKey.get(item.threadKey)!;
                           const projectKey = `${thread.environmentId}:${thread.projectId}` as const;
                           const project = projectByKey.get(projectKey);
+                          const scratchMachineLabel = scratchMachineLabelFor(thread);
+                          const showsScratchMachine =
+                            !thread.branch && scratchMachineLabel !== null;
                           const checkoutLabel =
                             thread.branch ??
+                            scratchMachineLabel ??
                             thread.worktreePath?.split(/[\\/]/).filter(Boolean).at(-1) ??
                             "Main checkout";
                           items.push(
@@ -5461,7 +5520,21 @@ export default function Sidebar() {
                                           <div className="flex h-4 min-w-0 items-center gap-1.5 text-muted-foreground" />
                                         }
                                       >
-                                        <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+                                        {showsScratchMachine ? (
+                                          <EnvironmentMachineIcon
+                                            aria-hidden
+                                            kind={
+                                              environmentMachineById.get(thread.environmentId) ??
+                                              "server"
+                                            }
+                                            className="size-3.5 shrink-0"
+                                          />
+                                        ) : (
+                                          <GitBranchIcon
+                                            aria-hidden
+                                            className="size-3.5 shrink-0"
+                                          />
+                                        )}
                                         <span className="min-w-0 truncate">{checkoutLabel}</span>
                                       </TooltipTrigger>
                                       <TooltipPopup>
