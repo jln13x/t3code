@@ -3,11 +3,12 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `079e4bccdc` on 2026-10-07. Sidebar worktree grouping, the success cue,
+Reviewed against upstream `98beed1a22` on 2026-10-10. Sidebar worktree grouping, the success cue,
 desktop identity, local signing, and fork CI runners are preserved. Grouped rows retain upstream's
 permission checks, read-only local Git status, native goal labels, and drag ordering fixes.
-The leftover worktree-header new-conversation shortcut is removed to match the retired custom
-creation behavior; sibling creation uses upstream's thread action and branch toolbar.
+Upstream's projectless-thread machine labels and sidebar drag performance fixes are retained.
+The desktop runtime name follows upstream's browser-compatible naming while the packaged app
+keeps its fork identity. The new CI job uses the fork's GitHub-hosted runner fallback.
 The server, wire contracts, mobile client, and notification delivery follow upstream.
 
 ## Maintained differences
