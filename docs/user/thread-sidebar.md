@@ -8,7 +8,8 @@ need a separate branch and working directory.
 On web and desktop, a new thread keeps the current project and carries your model
 and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
-an existing worktree, use **New thread in this worktree** from the branch toolbar.
+an existing worktree, right-click one of its threads and choose **New thread on [branch]**.
+For the most recently used worktree, select **Previous worktree** in a new thread's workspace menu.
 
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
@@ -49,8 +50,8 @@ On web and desktop, conversations in the same project checkout appear together w
 Snoozed, and Settled, plus Working when enabled. A checkout can appear in more than one section. Pinning keeps individual
 conversations in the pinned section.
 
-Use a conversation's **New thread on this branch** action or the branch toolbar's **New thread in
-this worktree** to start another conversation in that checkout. Snoozing, settling, archiving,
+Right-click a conversation and choose **New thread on [branch]** to start another conversation
+in that checkout. Snoozing, settling, archiving,
 and dragging affect only the conversation you choose. Dragging a row action across conversations
 applies it to the eligible rows in that range. Each conversation has its own terminals,
 previews, and file/diff view state; code changes still share the checkout's files.
