@@ -3,13 +3,13 @@
 The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
 locally installable desktop identity. Other product behavior follows upstream.
 
-Reviewed against upstream `98beed1a22` on 2026-10-10. Sidebar worktree grouping, the success cue,
+Reviewed against upstream `5753207d53` on 2026-10-12. Sidebar worktree grouping, the success cue,
 desktop identity, local signing, and fork CI runners are preserved. Grouped rows retain upstream's
-permission checks, read-only local Git status, native goal labels, and drag ordering fixes.
-Upstream's projectless-thread machine labels and sidebar drag performance fixes are retained.
-The desktop runtime name follows upstream's browser-compatible naming while the packaged app
-keeps its fork identity. The new CI job uses the fork's GitHub-hosted runner fallback.
-The server, wire contracts, mobile client, and notification delivery follow upstream.
+project scope migration, per-machine project settings targeting, settled search styling, PR search,
+and compact diff counts. The desktop retains upstream's Hyprland startup fix.
+The server, wire contracts, mobile client, and notification delivery follow upstream. Upstream's
+worktree setup and attachment fixes are retained. The retired worktree-header creation shortcut
+remains retired; the per-thread new-thread-on-branch action still reuses the existing checkout.
 
 ## Maintained differences
 
@@ -25,7 +25,8 @@ The server, wire contracts, mobile client, and notification delivery follow upst
   and individual pin ordering. Headers have no aggregate status, selection, or group lifecycle actions.
 - Snooze, settle, wake, archive, pin, and drag affect individual conversations. Upstream action
   sweeps apply only to the selected row range, without expanding to checkout siblings. Creating a
-  sibling uses upstream's explicit new-thread-on-branch action and branch toolbar, with no custom shortcut.
+  sibling uses upstream's explicit new-thread-on-branch action. New drafts can also select the
+  most recently used checkout through Previous worktree, with no custom shortcut.
 - Terminals, previews, files, and diff state belong to individual threads as in upstream.
 - Grouping is web/desktop-only. Mobile remains upstream.
 
@@ -52,6 +53,12 @@ The server, wire contracts, mobile client, and notification delivery follow upst
   settings (`gh workflow disable`), not in files, and keeps its upstream contents. They need
   Blacksmith, Expo, release secrets, or upstream-only integrations; enabled, they queue for 24 hours
   or do nothing useful.
+
+## Retired on 2026-10-07
+
+- The leftover worktree-header hover button, "New conversation in this worktree", was removed in
+  PR [#74](https://github.com/jln13x/t3code/pull/74). Creating a sibling remains available through
+  a thread's upstream "New thread on [branch]" action, which carries its existing worktree path.
 
 ## Retired on 2026-09-20
 
