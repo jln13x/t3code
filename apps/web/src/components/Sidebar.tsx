@@ -1,9 +1,4 @@
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
-import {
-  groupSidebarListItems,
-  orderSidebarThreadsByWorktree,
-  sidebarWorktreeKey,
-} from "./Sidebar.worktrees";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { setThreadChangeRequestSnapshot } from "./ThreadStatusIndicators";
@@ -75,6 +70,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   ClockIcon,
+  EyeIcon,
   FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -196,6 +192,7 @@ import {
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
+  formatWorkingDurationLabel,
   firstValidTimestampMs,
   hasUnseenCompletion,
   isSidebarNestedLinkClick,
@@ -217,6 +214,7 @@ import {
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   shouldRecedeSidebarThread,
+  resolveWorkingStartedAt,
   sidebarListItemId,
   sidebarMarkerId,
   sidebarThreadKeyAtY,
@@ -296,6 +294,10 @@ import {
 
 // Settled-tail paging: recent history is the common lookup; the deep tail
 // stays behind an explicit Show more.
+const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
+// Collapsed shelves share one empty list so a route change alone does not
+// give the sidebar list a new identity.
+const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
@@ -363,10 +365,18 @@ function JumpHintBadge(props: { label: string }) {
   );
 }
 
-const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
-// Collapsed shelves share one empty list so a route change alone does not
-// give the sidebar list a new identity.
-const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
+// Self-ticking so only this span re-renders each second, not the whole row.
+function WorkingDuration(props: { startedAt: string | null }) {
+  const startedMs = props.startedAt !== null ? Date.parse(props.startedAt) : Number.NaN;
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (Number.isNaN(startedMs)) return;
+    const id = window.setInterval(() => setTick((tick) => tick + 1), 1_000);
+    return () => window.clearInterval(id);
+  }, [startedMs]);
+  if (Number.isNaN(startedMs)) return null;
+  return <span className="tabular-nums">{formatWorkingDurationLabel(Date.now() - startedMs)}</span>;
+}
 
 function terminalProcessLabel(count: number): string {
   return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
@@ -1100,7 +1110,6 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
-  grouped: boolean;
   // Settled rows un-settle, snoozed rows wake, and cards settle.
   variantAction: SidebarSweepAction;
   // False on environments whose server predates thread.settle/unsettle:
@@ -1302,7 +1311,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             // Waiting is calm background presence (post-settle background
             // roster), not active progress, so the label keeps full strength.
             label: "Waiting",
-            icon: "waiting" as const,
+            icon: null,
             className: "text-muted-foreground",
           }
         : status === "approval"
@@ -1748,12 +1757,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
-  const providerIcon = (
-    <SidebarProviderStack
-      thread={thread}
-      providerEntryByInstanceId={props.providerEntryByInstanceId}
-    />
-  );
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1832,11 +1835,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
               )}
             >
-              {props.grouped ? (
-                providerIcon
-              ) : props.project ? (
-                <ProjectFavicon project={props.project} className="size-4" />
-              ) : null}
+              {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
             </span>
             {draftIndicator}
             {title}
@@ -1885,9 +1884,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                           >
                             <AlarmClockIcon aria-hidden className="size-3" />
-                            <span role="status" className="sr-only">
-                              Woke
-                            </span>
+                            <span role="status">Woke</span>
                           </button>
                         }
                       />
@@ -1962,30 +1959,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   }
 
   const diff = latestRunDiff(thread);
-  const rowMetadata = (
-    <>
-      {terminalStatusIcon}
-      {prBadge}
-      {diff ? (
-        <span className="shrink-0 font-mono">
-          <span className="text-diff-addition-foreground">+{formatDiffCount(diff.insertions)}</span>{" "}
-          <span className="text-diff-deletion-foreground">−{formatDiffCount(diff.deletions)}</span>
-        </span>
-      ) : null}
-      {isRemote && !showsScratchMachine ? (
-        <span
-          aria-hidden
-          className="pointer-events-none inline-flex shrink-0 items-center text-sidebar-muted-foreground/70"
-        >
-          <EnvironmentMachineIcon
-            aria-hidden
-            kind={props.environmentMachine}
-            className="size-3.5"
-          />
-        </span>
-      ) : null}
-    </>
-  );
 
   return (
     <li
@@ -1993,8 +1966,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        "list-none py-0.5 [content-visibility:auto]",
-        props.grouped ? "[contain-intrinsic-size:auto_32px]" : "[contain-intrinsic-size:auto_78px]",
+        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
+        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -2018,45 +1991,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div
-            className={cn(
-              "relative z-10 px-(--sidebar-row-content-inset)",
-              props.grouped ? "h-8 py-1.5" : "h-[4.875rem] py-(--sidebar-content-inset)",
-            )}
-          >
-            <div
-              className={cn(
-                "flex h-5 min-w-0 items-center gap-1.5",
-                props.grouped && "text-xs text-secondary-label",
-              )}
-            >
+          <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+            <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
-              {props.grouped ? (
-                <>
-                  {providerIcon}
-                  {title}
-                </>
-              ) : (
-                <>
-                  {props.project ? (
-                    <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-                  ) : null}
-                  {props.projectDisplayName ? (
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                        shouldRecede ? "font-normal" : "font-medium",
-                      )}
-                    >
-                      {props.projectDisplayName}
-                    </span>
-                  ) : (
-                    <span className="flex-1" />
+              {props.project ? (
+                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+              ) : null}
+              {props.projectDisplayName ? (
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
+                    shouldRecede ? "font-normal" : "font-medium",
                   )}
-                </>
+                >
+                  {props.projectDisplayName}
+                </span>
+              ) : (
+                <span className="flex-1" />
               )}
               {pinIndicator}
-              {props.grouped ? rowMetadata : null}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
                   the hidden state out of flow lets the project label reclaim
@@ -2066,7 +2019,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span
                   className={cn(
-                    "group/sidebar-status-slot relative ml-auto flex h-5 min-w-4 shrink-0 items-stretch justify-end text-xs",
+                    "group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs",
                     props.sweepAction !== null && "hidden",
                   )}
                 >
@@ -2097,9 +2050,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                                 )}
                               >
                                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status" className="sr-only">
-                                  {topStatus.label}
-                                </span>
+                                <span role="status">{topStatus.label}</span>
                               </button>
                             }
                           />
@@ -2114,8 +2065,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                         >
                           {topStatus.icon === "working" ? (
                             <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
-                          ) : topStatus.icon === "waiting" ? (
-                            <ClockIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "input" ? (
                             <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "approval" ? (
@@ -2125,9 +2074,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           ) : topStatus.icon === "done" ? (
                             <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
                           ) : null}
-                          <span role="status" className="sr-only">
-                            {topStatus.label}
-                          </span>
+                          {/* The label alone is the live region: a role="status"
+                            wrapper around the ticking duration would make
+                            screen readers announce every second. */}
+                          <span role="status">{topStatus.label}</span>
+                          {status === "working" ? (
+                            <span aria-hidden>
+                              <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
+                            </span>
+                          ) : null}
                         </span>
                       )
                     ) : (
@@ -2185,6 +2140,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             }
                           >
                             <CheckIcon className="size-3.5" />
+                            Settle
                           </TooltipTrigger>
                           <TooltipPopup>Settle thread</TooltipPopup>
                         </Tooltip>
@@ -2198,72 +2154,70 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className={cn("mt-1 flex min-w-0", props.grouped && "sr-only")}>
-              {!props.grouped ? title : null}
+            <div className="mt-1 flex min-w-0">
+              {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
                 </span>
               ) : null}
             </div>
-            {!props.grouped ? (
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-                {/* Always the branch. The plan step used to take this slot while
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+              {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
-                {thread.branch ? (
-                  <>
-                    <ThreadWorktreeIndicator thread={thread} />
-                    <span className="flex min-w-0 flex-1 text-muted-foreground/40">
-                      <MiddleTruncate value={thread.branch} showTitle={false} />
-                    </span>
-                  </>
-                ) : showsScratchMachine ? (
-                  <>
+              {thread.branch ? (
+                <>
+                  <ThreadWorktreeIndicator thread={thread} />
+                  <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+                    <MiddleTruncate value={thread.branch} showTitle={false} />
+                  </span>
+                </>
+              ) : showsScratchMachine ? (
+                <>
+                  <EnvironmentMachineIcon
+                    aria-hidden
+                    kind={props.environmentMachine}
+                    className="size-3 shrink-0 text-muted-foreground/40"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
+                    {props.scratchMachineLabel}
+                  </span>
+                </>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {terminalStatusIcon}
+              {prBadge}
+              {diff ? (
+                <span className="shrink-0 font-mono">
+                  <span className="text-diff-addition-foreground">
+                    +{formatDiffCount(diff.insertions)}
+                  </span>{" "}
+                  <span className="text-diff-deletion-foreground">
+                    −{formatDiffCount(diff.deletions)}
+                  </span>
+                </span>
+              ) : null}
+              <span
+                aria-hidden
+                className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+              >
+                {isRemote && !showsScratchMachine ? (
+                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
                     <EnvironmentMachineIcon
                       aria-hidden
                       kind={props.environmentMachine}
-                      className="size-3 shrink-0 text-muted-foreground/40"
+                      className="size-3.5"
                     />
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-                      {props.scratchMachineLabel}
-                    </span>
-                  </>
-                ) : (
-                  <span className="flex-1" />
-                )}
-                {terminalStatusIcon}
-                {prBadge}
-                {diff ? (
-                  <span className="shrink-0 font-mono">
-                    <span className="text-diff-addition-foreground">
-                      +{formatDiffCount(diff.insertions)}
-                    </span>{" "}
-                    <span className="text-diff-deletion-foreground">
-                      −{formatDiffCount(diff.deletions)}
-                    </span>
                   </span>
                 ) : null}
-                <span
-                  aria-hidden
-                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-                >
-                  {isRemote && !showsScratchMachine ? (
-                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                      <EnvironmentMachineIcon
-                        aria-hidden
-                        kind={props.environmentMachine}
-                        className="size-3.5"
-                      />
-                    </span>
-                  ) : null}
-                  <SidebarProviderStack
-                    thread={thread}
-                    providerEntryByInstanceId={props.providerEntryByInstanceId}
-                  />
-                </span>
-              </div>
-            ) : null}
+                <SidebarProviderStack
+                  thread={thread}
+                  providerEntryByInstanceId={props.providerEntryByInstanceId}
+                />
+              </span>
+            </div>
           </div>
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>
@@ -2882,7 +2836,7 @@ export default function Sidebar() {
     pinnedThreads,
     draggableThreadKeys,
     activeReorderableThreadKeys,
-    activeThreads: upstreamActiveThreads,
+    activeThreads,
     workingThreads,
     snoozedThreads,
     settledThreads,
@@ -3006,21 +2960,6 @@ export default function Sidebar() {
     workingShelfEnabled,
   ]);
 
-  const activeThreads = useMemo(
-    () => orderSidebarThreadsByWorktree(upstreamActiveThreads),
-    [upstreamActiveThreads],
-  );
-  const worktreeKeys = useMemo(
-    () =>
-      new Map(
-        threads.map((thread) => [
-          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-          sidebarWorktreeKey(thread),
-        ]),
-      ),
-    [threads],
-  );
-
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
@@ -3128,7 +3067,7 @@ export default function Sidebar() {
     [setSettledShelfExpanded],
   );
   const renderedSettledThreads = useMemo(() => {
-    if (settledShelfExpanded) return orderSidebarThreadsByWorktree(visibleSettledThreads);
+    if (settledShelfExpanded) return visibleSettledThreads;
     if (routeThreadKey === null) return EMPTY_THREADS;
     const routeThread = visibleSettledThreads.find(
       (thread) =>
@@ -3150,7 +3089,7 @@ export default function Sidebar() {
     [setSnoozedShelfExpanded],
   );
   const visibleSnoozedThreads = useMemo(() => {
-    if (snoozedShelfExpanded) return orderSidebarThreadsByWorktree(snoozedThreads);
+    if (snoozedShelfExpanded) return snoozedThreads;
     // The open thread must never vanish behind the collapsed shelf: a
     // snoozed thread reached by route (deep link, open before snoozing
     // elsewhere) keeps its row — with highlight and wake affordance — same
@@ -3176,7 +3115,7 @@ export default function Sidebar() {
     [setWorkingShelfExpanded],
   );
   const visibleWorkingThreads = useMemo(() => {
-    if (workingShelfExpanded) return orderSidebarThreadsByWorktree(workingThreads);
+    if (workingShelfExpanded) return workingThreads;
     if (routeThreadKey === null) return EMPTY_THREADS;
     const routeThread = workingThreads.find(
       (thread) =>
@@ -3947,9 +3886,8 @@ export default function Sidebar() {
     const settledRows = rowsOf(renderedSettledThreads, "settled");
     items.push({ kind: "marker", marker: "settled-placeholder" });
     items.push(...settledRows);
-    return groupSidebarListItems(items, worktreeKeys);
+    return items;
   }, [
-    worktreeKeys,
     activeThreads,
     pinnedThreads,
     renderedSettledThreads,
@@ -3975,7 +3913,7 @@ export default function Sidebar() {
   const sidebarListOrderKey = useMemo(
     () =>
       sidebarListItems
-        .map((item) => (item.kind === "marker" ? item.marker : `${item.key}:${item.section}`))
+        .map((item) => (item.kind === "thread" ? `${item.key}:${item.section}` : item.marker))
         .join("\0"),
     [sidebarListItems],
   );
@@ -4037,8 +3975,6 @@ export default function Sidebar() {
     () =>
       createSidebarSortingStrategy({
         items: sidebarListItems,
-        worktreeKeys,
-        activeCardHeight: 36,
         enabled: !isContextDrag,
         boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
         settledOrder: draggedSettledOrder,
@@ -4051,7 +3987,6 @@ export default function Sidebar() {
     [
       draggedActiveOrder,
       draggedSettledOrder,
-      worktreeKeys,
       isContextDrag,
       routeThreadKey,
       settledShelfExpanded,
@@ -5399,7 +5334,11 @@ export default function Sidebar() {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        // Keep upstream row behavior while grouping each shelf by checkout.
+                        // Settled and snoozed are the ONLY things that collapse a
+                        // row: every other thread is a full card. Density comes
+                        // from users (or the auto rules) actually parking work,
+                        // not from the sidebar second-guessing what still matters.
+                        // Working rows stay cards so their live status shows.
                         const isCard =
                           section === "active" || section === "pinned" || section === "working";
                         const rowVariant = isCard ? "card" : "slim";
@@ -5410,7 +5349,6 @@ export default function Sidebar() {
                             key={`${threadKey}:${rowVariant}`}
                             thread={thread}
                             variant={rowVariant}
-                            grouped={section !== "pinned"}
                             // Snoozed rows wake, settled rows un-settle, and cards settle.
                             variantAction={
                               section === "snoozed"
@@ -5546,85 +5484,6 @@ export default function Sidebar() {
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
-                          continue;
-                        }
-                        if (item.kind === "worktree") {
-                          const thread = threadByKey.get(item.threadKey)!;
-                          const projectKey = `${thread.environmentId}:${thread.projectId}` as const;
-                          const project = projectByKey.get(projectKey);
-                          const scratchMachineLabel = scratchMachineLabelFor(thread);
-                          const showsScratchMachine =
-                            !thread.branch && scratchMachineLabel !== null;
-                          const checkoutLabel =
-                            thread.branch ??
-                            scratchMachineLabel ??
-                            thread.worktreePath?.split(/[\\/]/).filter(Boolean).at(-1) ??
-                            "Main checkout";
-                          items.push(
-                            <SortableThreadRow
-                              key={item.key}
-                              id={item.key}
-                              contextDrag={isContextDrag}
-                              environmentId={thread.environmentId}
-                              disabled
-                            >
-                              {(bag) => (
-                                <li
-                                  ref={bag.setNodeRef}
-                                  data-thread-selection-safe
-                                  className="group/worktree-header flex list-none items-center gap-1.5 px-2.5 pb-1 pt-2 text-xs"
-                                  style={{
-                                    transform: CSS.Translate.toString(bag.transform),
-                                    transition: bag.transition,
-                                    visibility: bag.transform?.scaleY === 0 ? "hidden" : undefined,
-                                  }}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex h-5 min-w-0 items-center gap-1.5 font-medium">
-                                      {project ? (
-                                        <ProjectFavicon
-                                          project={project}
-                                          className="size-3.5 shrink-0"
-                                        />
-                                      ) : null}
-                                      <span className="min-w-0 truncate">
-                                        {projectDisplayNameByKey.get(projectKey)}
-                                      </span>
-                                    </div>
-                                    <Tooltip>
-                                      <TooltipTrigger
-                                        render={
-                                          <div className="flex h-4 min-w-0 items-center gap-1.5 text-muted-foreground" />
-                                        }
-                                      >
-                                        {showsScratchMachine ? (
-                                          <EnvironmentMachineIcon
-                                            aria-hidden
-                                            kind={
-                                              environmentMachineById.get(thread.environmentId) ??
-                                              "server"
-                                            }
-                                            className="size-3.5 shrink-0"
-                                          />
-                                        ) : (
-                                          <GitBranchIcon
-                                            aria-hidden
-                                            className="size-3.5 shrink-0"
-                                          />
-                                        )}
-                                        <span className="min-w-0 truncate">{checkoutLabel}</span>
-                                      </TooltipTrigger>
-                                      <TooltipPopup>
-                                        {thread.worktreePath ??
-                                          project?.workspaceRoot ??
-                                          checkoutLabel}
-                                      </TooltipPopup>
-                                    </Tooltip>
-                                  </div>
-                                </li>
-                              )}
-                            </SortableThreadRow>,
-                          );
                           continue;
                         }
                         switch (item.marker) {

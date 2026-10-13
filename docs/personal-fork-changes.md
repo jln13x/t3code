@@ -1,34 +1,16 @@
 # Personal fork changes
 
-The fork maintains compact worktree grouping in the web/desktop sidebar, its success sound, and a distinct
-locally installable desktop identity. Other product behavior follows upstream.
+The fork maintains its success sound, a distinct locally installable desktop identity, and fork CI
+runners. Other product behavior, including the sidebar, follows upstream.
 
-Reviewed against upstream `5753207d53` on 2026-10-12. Sidebar worktree grouping, the success cue,
-desktop identity, local signing, and fork CI runners are preserved. Grouped rows retain upstream's
-project scope migration, per-machine project settings targeting, settled search styling, PR search,
-and compact diff counts. The desktop retains upstream's Hyprland startup fix.
+Reviewed against upstream `5753207d53` on 2026-10-13. Sidebar rendering, ordering, and drag behavior
+now match that revision. The success cue, desktop identity, local signing, and fork CI runners are
+preserved. The desktop retains upstream's Hyprland startup fix.
 The server, wire contracts, mobile client, and notification delivery follow upstream. Upstream's
 worktree setup and attachment fixes are retained. The retired worktree-header creation shortcut
 remains retired; the per-thread new-thread-on-branch action still reuses the existing checkout.
 
 ## Maintained differences
-
-### Sidebar worktree grouping
-
-- Group conversations by environment, project, and checkout independently within Active, Snoozed,
-  and Settled, plus Working when enabled. A checkout can appear in multiple sections; settled
-  siblings remain findable.
-- Headers show the project icon and name above the checkout. Grouped active conversations use a
-  single compact row, with PR, diff, and environment indicators beside the title. Status uses icons
-  with accessible labels, without visible status text or elapsed timers.
-- Keep upstream model/provider stacks, unread state, drafts, PR controls, search, shelf persistence,
-  and individual pin ordering. Headers have no aggregate status, selection, or group lifecycle actions.
-- Snooze, settle, wake, archive, pin, and drag affect individual conversations. Upstream action
-  sweeps apply only to the selected row range, without expanding to checkout siblings. Creating a
-  sibling uses upstream's explicit new-thread-on-branch action. New drafts can also select the
-  most recently used checkout through Previous worktree, with no custom shortcut.
-- Terminals, previews, files, and diff state belong to individual threads as in upstream.
-- Grouping is web/desktop-only. Mobile remains upstream.
 
 ### Completion sound
 
@@ -54,6 +36,14 @@ remains retired; the per-thread new-thread-on-branch action still reuses the exi
   Blacksmith, Expo, release secrets, or upstream-only integrations; enabled, they queue for 24 hours
   or do nothing useful.
 
+## Retired on 2026-10-13
+
+- Web/desktop sidebar worktree grouping, checkout headers, compact active rows, and icon-only
+  status presentation are removed. The sidebar uses upstream rows and individual thread ordering
+  within Active, Snoozed, Settled, and Working when enabled. Mobile already follows upstream.
+- Grouping helpers and drag geometry overrides are removed. Existing threads, checkouts, and
+  saved thread order remain intact. Future syncs must keep the sidebar upstream.
+
 ## Retired on 2026-10-07
 
 - The leftover worktree-header hover button, "New conversation in this worktree", was removed in
@@ -66,7 +56,7 @@ remains retired; the per-thread new-thread-on-branch action still reuses the exi
   actions are removed. No user data or previously transferred checkout files are deleted.
 - Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, the previous sidebar
   typography and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
-  The compact rows and icon-only status described above are the current presentation changes.
+  The compact rows and icon-only status retained then were retired on 2026-10-13.
 - Always-on completion/attention detection, the cuelume dependency/volume patch, and native macOS
   completion delivery/acknowledgement/reconnect queues are replaced by upstream notification handling.
   System notifications require upstream settings and permission, appear while the app is unfocused,
@@ -105,7 +95,7 @@ tests were removed with them.
 | Projectless standalone chats          | Allowed conversations without a project, including optimistic local drafts, completion feedback, and mobile activity. The fork now uses upstream's thread model and creation flows.                                                                                                                                                 |
 | Native macOS sidebar                  | Supplied the fork's denser project/worktree hierarchy, typography, empty-worktree handling, and archive actions. The fork now uses upstream's sidebar and its upstream legacy-sidebar preference.                                                                                                                                   |
 | Server event replay for notifications | Replayed raw orchestration events through a fork-only RPC. It was replaced by client-local snapshot detection, which was itself retired on 2026-09-20 in favor of upstream notifications.                                                                                                                                           |
-| Sidebar worktree navigation           | The former native-style project/worktree hierarchy exposed checkout actions and preserved empty checkout groups. That hierarchy remains retired. The maintained grouping is narrower: it groups live threads by checkout inside the upstream sidebar and does not restore empty checkout navigation.                                |
+| Sidebar worktree navigation           | The former native-style project/worktree hierarchy exposed checkout actions and preserved empty checkout groups. That hierarchy remains retired. The narrower grouping within upstream sidebar sections was also retired on 2026-10-13.                                                                                             |
 | Worktree source control               | Opened a checkout-scoped staged/unstaged viewer with stage, unstage, discard, review-draft, and mixed-version compatibility behavior. The fork uses upstream source-control surfaces.                                                                                                                                               |
 | Checkout-aware thread creation        | The broad implementation reused arbitrary existing worktrees, added a searchable mobile picker, resolved pull requests to worktrees, and changed cross-project draft inheritance. Those behaviors remain retired. The remaining `chat.newInWorktree` command was retired on 2026-09-20; sibling creation now uses upstream actions. |
 | Fork-aware pull-request targeting     | Targeted the upstream repository when creating a pull request from a fork. This remained a real fork difference when retired; it was removed by explicit product choice in favor of upstream targeting.                                                                                                                             |

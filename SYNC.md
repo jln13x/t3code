@@ -2,14 +2,13 @@
 
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before syncing.
 - Work on a task branch. Never reset, rebase, or develop directly on `personal`.
-- Merge current `pingdotgg/t3code` main, then reconcile only sidebar worktree grouping,
-  the completion sound asset, desktop identity/local signing, and fork CI runners.
-- Keep upstream sidebar rows, thread actions, search, drafts, pinning, ordering, provider/model
-  icons, shelf persistence, and PR state. Group independently within Active, Snoozed, Settled, and Working when enabled.
-  A conversation action must never expand to its worktree siblings.
+- Merge current `pingdotgg/t3code` main, then reconcile only the completion sound asset,
+  desktop identity/local signing, and fork CI runners.
+- Keep the sidebar entirely upstream, including rows, thread actions, search, drafts, pinning,
+  ordering, provider/model icons, shelf persistence, and PR state. Do not restore worktree grouping.
 - Keep server behavior, wire contracts, resources, notification delivery, and settings upstream.
 - Update the inventory when upstream replaces a customization. Do not restore retired features.
-- Run `vp check`, `vp run typecheck`, and focused grouping, notification, and desktop identity tests.
+- Run `vp check`, `vp run typecheck`, and focused sidebar, notification, and desktop identity tests.
   Run `vp run lint:mobile` if the sync changes native mobile code.
 - Only `CI` runs on the fork; every other workflow is disabled in GitHub, not in files. Keep
   upstream workflow files unedited, except the repository-aware `runs-on` lines in `ci.yml`.
