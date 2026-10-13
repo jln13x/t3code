@@ -44,18 +44,6 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
-## Worktree groups
-
-On web and desktop, conversations in the same project checkout appear together within Active,
-Snoozed, and Settled, plus Working when enabled. A checkout can appear in more than one section. Pinning keeps individual
-conversations in the pinned section.
-
-Right-click a conversation and choose **New thread on [branch]** to start another conversation
-in that checkout. Snoozing, settling, archiving,
-and dragging affect only the conversation you choose. Dragging a row action across conversations
-applies it to the eligible rows in that range. Each conversation has its own terminals,
-previews, and file/diff view state; code changes still share the checkout's files.
-
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
@@ -94,8 +82,7 @@ thread is over takes the accent color. Section labels also
 identify empty sections and a collapsed settled shelf.
 
 Drag within the pinned or active section to change its order. Other rows slide aside to show the
-spot where the thread will land. Pinned drops keep the position you choose. Active conversations stay with their checkout;
-the first conversation in the saved order determines the checkout's position. On
+spot where the thread will land. Drops into either section keep the position you choose. On
 mobile, open a thread's menu and choose **Arrange threads**. Drag a handle within or between
 **Pinned** and **Active** to reorder, pin, or unpin. Drop onto the **Settled** divider to
 settle a thread. The dragged card shows the action before you release it. Expand **Snoozed**

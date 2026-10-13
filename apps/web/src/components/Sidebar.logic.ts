@@ -168,16 +168,10 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 
 export type SidebarListItem =
   | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
-  | {
-      readonly kind: "worktree";
-      readonly key: string;
-      readonly threadKey: string;
-      readonly section: SidebarSection;
-    }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
 
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "marker" ? sidebarMarkerId(item.marker) : item.key;
+  return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
 }
 
 /** The section a slot belongs to, read off the markers around it: from
@@ -221,7 +215,6 @@ export function resolveSidebarDropTarget(
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
   for (const item of moved) {
-    if (item.kind === "worktree") continue;
     if (item.kind === "marker") {
       if (item.marker === "pinned-divider") currentSection = "active";
       else if (
