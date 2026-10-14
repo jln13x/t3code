@@ -1,4 +1,14 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { presentThreadShell } from "@t3tools/client-runtime/state/models";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+  type OrchestrationV2ThreadShell,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { act } from "react";
@@ -12,6 +22,7 @@ const state = vi.hoisted(() => ({
   focused: true,
   visible: "visible",
   live: true,
+  pinned: false,
   completedAt: null as string | null,
   archivedAt: null as string | null,
   input: false,
@@ -37,25 +48,25 @@ const SHELL_NOW = DateTime.makeUnsafe("2026-09-13T09:00:00.000Z");
 
 function mockThreadShell() {
   return {
-    id: "thread-1",
-    projectId: "project-1",
+    id: ThreadId.make("thread-1"),
+    projectId: ProjectId.make("project-1"),
     title: "Fix the login form",
-    providerInstanceId: "codex",
-    modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
     runtimeMode: "full-access",
     interactionMode: "default",
     branch: null,
     worktreePath: null,
     activeProviderThreadId: null,
     lineage: {
-      rootThreadId: "thread-1",
-      parentThreadId: state.subagent ? "parent" : null,
+      rootThreadId: ThreadId.make("thread-1"),
+      parentThreadId: state.subagent ? ThreadId.make("parent") : null,
       relationshipToParent: state.subagent ? "subagent" : null,
     },
     forkedFrom: null,
     createdBy: "user",
     creationSource: "web",
-    latestRunId: "run-1",
+    latestRunId: RunId.make("run-1"),
     activeRunId: null,
     status: state.completedAt
       ? "completed"
@@ -64,9 +75,9 @@ function mockThreadShell() {
         : "running",
     lastErrorClass: state.limited ? "usage_limit" : null,
     pendingRuntimeRequest: state.input
-      ? { id: "request-1", kind: "user_input", createdAt: SHELL_NOW }
+      ? { id: RuntimeRequestId.make("request-1"), kind: "user_input", createdAt: SHELL_NOW }
       : state.approval
-        ? { id: "request-1", kind: "command", createdAt: SHELL_NOW }
+        ? { id: RuntimeRequestId.make("request-1"), kind: "command", createdAt: SHELL_NOW }
         : null,
     latestVisibleMessage: null,
     latestUserMessageAt: null,
@@ -80,11 +91,12 @@ function mockThreadShell() {
     latestRunStartedAt: SHELL_NOW,
     latestRunCompletedAt: state.completedAt ? DateTime.makeUnsafe(state.completedAt) : undefined,
     archivedAt: state.archivedAt ? DateTime.makeUnsafe(state.archivedAt) : null,
+    pinnedAt: state.pinned ? SHELL_NOW : null,
     settledOverride: null,
     settledAt: null,
     lastVisitedAt: null,
     deletedAt: null,
-  };
+  } satisfies OrchestrationV2ThreadShell;
 }
 
 vi.mock("@effect/atom-react", () => ({
@@ -103,13 +115,20 @@ vi.mock("../hooks/useSettings", () => ({
       settings: Pick<ClientSettings, "notificationMode" | "inAppNotificationsEnabled">,
     ) => unknown,
   ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
-  getClientSettings: () => ({ notificationMode: state.mode }),
+  getClientSettings: () => ({
+    notificationMode: state.mode,
+    inAppNotificationsEnabled: state.inApp,
+  }),
 }));
 vi.mock("../state/environments", () => ({
   useEnvironmentIds: () => ["env-1"],
+  useConnectedEnvironmentIds: () => (state.live ? ["env-1"] : []),
 }));
 vi.mock("../state/shell", () => ({
   environmentShell: { stateValueAtom: vi.fn() },
+}));
+vi.mock("../state/entities", () => ({
+  readThreadShells: () => [presentThreadShell(EnvironmentId.make("env-1"), mockThreadShell())],
 }));
 vi.mock("../threadNotifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../threadNotifications")>()),
@@ -121,6 +140,7 @@ vi.mock("./ui/toast", () => ({
 }));
 
 import { ThreadNotificationCoordinator } from "./ThreadNotificationCoordinator";
+import { PINNED_REMINDER_INTERVAL_MS } from "./PinnedThreadReminders.logic";
 
 let renderer: ReactTestRenderer | undefined;
 
@@ -138,6 +158,8 @@ async function complete() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(DateTime.toEpochMillis(SHELL_NOW));
   Object.assign(state, {
     mode: "off",
     inApp: true,
@@ -145,6 +167,7 @@ beforeEach(() => {
     focused: true,
     visible: "visible",
     live: true,
+    pinned: false,
     completedAt: null,
     archivedAt: null,
     input: false,
@@ -156,7 +179,13 @@ beforeEach(() => {
     background: [],
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
+    }),
+  );
   vi.stubGlobal("document", {
     get visibilityState() {
       return state.visible;
@@ -171,6 +200,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -322,5 +352,91 @@ describe("thread notifications", () => {
       tag: "env-1:thread-1",
       silent: true,
     });
+  });
+});
+
+describe("pinned thread reminders", () => {
+  beforeEach(() => {
+    state.pinned = true;
+    state.completedAt = "2026-09-13T08:00:00.000Z";
+  });
+
+  it("repeats focused idle reminders and opens the thread from the toast", async () => {
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS - 1));
+    expect(state.add).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTime(1));
+    expect(state.add).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        title: "Pinned thread is idle",
+        description: "Fix the login form",
+      }),
+    );
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS));
+    expect(state.add).toHaveBeenCalledTimes(2);
+    state.add.mock.calls[0]?.[0].actionProps.onClick();
+    expect(state.navigate).toHaveBeenCalledWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: "env-1", threadId: "thread-1" },
+    });
+    expect(state.sound).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it("starts a full interval after leaving the viewed thread", async () => {
+    state.active.threadId = "thread-1";
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS * 2));
+    expect(state.add).not.toHaveBeenCalled();
+    state.active.threadId = "other-thread";
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS - 1));
+    expect(state.add).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTime(1));
+    expect(state.add).toHaveBeenCalledOnce();
+  });
+
+  it("uses sound and replaces background system reminders for the same thread", async () => {
+    state.mode = "notifications-and-sound";
+    state.focused = false;
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS));
+    expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
+    expect(state.notification).toHaveBeenCalledExactlyOnceWith("Pinned thread is idle", {
+      body: "Fix the login form",
+      tag: "env-1:thread-1",
+      silent: true,
+    });
+    const first = state.notification.mock.results[0]?.value;
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS));
+    expect(state.notification).toHaveBeenCalledTimes(2);
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(state.add).not.toHaveBeenCalled();
+  });
+
+  it("stops reminders and clears the timer when all alerts are disabled", async () => {
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS));
+    expect(state.add).toHaveBeenCalledOnce();
+    state.inApp = false;
+    await render();
+    expect(vi.getTimerCount()).toBe(0);
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS * 2));
+    expect(state.add).toHaveBeenCalledOnce();
+  });
+
+  it("ignores cached idle threads while disconnected and restarts after reconnecting", async () => {
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS - 15_000));
+    state.live = false;
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS * 2));
+    expect(state.add).not.toHaveBeenCalled();
+    state.live = true;
+    await render();
+    await act(() => vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS - 1));
+    expect(state.add).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTime(1));
+    expect(state.add).toHaveBeenCalledOnce();
   });
 });
