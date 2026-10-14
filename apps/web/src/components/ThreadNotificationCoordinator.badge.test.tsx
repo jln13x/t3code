@@ -22,8 +22,10 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
 vi.mock("../state/shell", () => ({ environmentShell: { stateValueAtom: (id: string) => id } }));
+vi.mock("../state/entities", () => ({ readThreadShells: () => [] }));
 vi.mock("../state/environments", () => ({
   useEnvironmentIds: () => state.environmentIds,
+  useConnectedEnvironmentIds: () => state.environmentIds,
 }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
@@ -157,7 +159,14 @@ beforeEach(() => {
   TestNotification.sent = [];
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Notification", TestNotification);
-  vi.stubGlobal("window", Object.assign(new EventTarget(), { focus: vi.fn() }));
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      focus: vi.fn(),
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
+    }),
+  );
   vi.stubGlobal(
     "document",
     Object.assign(new EventTarget(), {

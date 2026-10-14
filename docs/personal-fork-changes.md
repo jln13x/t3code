@@ -1,10 +1,11 @@
 # Personal fork changes
 
-The fork maintains its success sound, a distinct locally installable desktop identity, and fork CI
-runners. Other product behavior, including the sidebar, follows upstream.
+The fork maintains its success sound, icon-only working status, pinned-thread idle reminders, a
+distinct locally installable desktop identity, and fork CI runners. Other product behavior,
+including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `5753207d53` on 2026-10-13. Sidebar rendering, ordering, and drag behavior
-now match that revision. The success cue, desktop identity, local signing, and fork CI runners are
+Reviewed against upstream `5753207d53` on 2026-10-13. Sidebar ordering and drag behavior
+match that revision. The success cue, desktop identity, local signing, and fork CI runners are
 preserved. The desktop retains upstream's Hyprland startup fix.
 The server, wire contracts, mobile client, and notification delivery follow upstream. Upstream's
 worktree setup and attachment fixes are retained. The retired worktree-header creation shortcut
@@ -18,6 +19,17 @@ remains retired; the per-thread new-thread-on-branch action still reuses the exi
   gain. Upstream owns audio playback, completion detection, notification settings, and system alerts.
 - Attention audio follows upstream. There is no second completion detector, custom audio engine,
   always-on override, native notification bridge, or offline completion queue.
+
+### Sidebar working status and pinned-thread reminders
+
+- Sidebar rows show only the blue working icon for a running agent: no "Working"/"Goal" text or
+  elapsed time. The label stays available to screen readers. Other row statuses follow upstream.
+- Pinned threads act as high priority. In a connected environment, while a pinned thread has no
+  running agent or background work that can wake it and is not snoozed, archived, or open in a focused window,
+  the web/desktop client repeats an idle reminder every 2.5 minutes (`PinnedThreadReminders`). It
+  uses upstream's sound, toast, and system-notification settings and adds no server state, so it works
+  against unmodified upstream servers. A web tab or desktop window must stay open. Mobile follows
+  upstream and does not remind.
 
 ### Desktop identity and local installation
 
@@ -38,11 +50,11 @@ remains retired; the per-thread new-thread-on-branch action still reuses the exi
 
 ## Retired on 2026-10-13
 
-- Web/desktop sidebar worktree grouping, checkout headers, compact active rows, and icon-only
-  status presentation are removed. The sidebar uses upstream rows and individual thread ordering
-  within Active, Snoozed, Settled, and Working when enabled. Mobile already follows upstream.
+- Web/desktop sidebar worktree grouping, checkout headers, and compact active rows are removed.
+  The sidebar uses upstream rows and individual thread ordering within Active, Snoozed, Settled,
+  and Working when enabled, with the working-status label exception above. Mobile follows upstream.
 - Grouping helpers and drag geometry overrides are removed. Existing threads, checkouts, and
-  saved thread order remain intact. Future syncs must keep the sidebar upstream.
+  saved thread order remain intact. Future syncs must keep the rest of the sidebar upstream.
 
 ## Retired on 2026-10-07
 

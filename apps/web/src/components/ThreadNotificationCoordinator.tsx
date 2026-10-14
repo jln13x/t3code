@@ -21,6 +21,7 @@ import {
   setNotificationBadge,
   unlockNotificationAudio,
 } from "../threadNotifications";
+import { PinnedThreadReminders } from "./PinnedThreadReminders";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 import { toastManager } from "./ui/toast";
 
@@ -79,13 +80,18 @@ export function ThreadNotificationCoordinator() {
 
   if (mode === "off" && !inAppNotificationsEnabled) return null;
 
-  return environmentIds.map((environmentId) => (
-    <EnvironmentNotifications
-      key={environmentId}
-      environmentId={environmentId}
-      onNotification={onNotification}
-    />
-  ));
+  return (
+    <>
+      {environmentIds.map((environmentId) => (
+        <EnvironmentNotifications
+          key={environmentId}
+          environmentId={environmentId}
+          onNotification={onNotification}
+        />
+      ))}
+      <PinnedThreadReminders onNotification={onNotification} />
+    </>
+  );
 }
 
 interface NotificationState {

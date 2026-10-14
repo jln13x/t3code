@@ -10,9 +10,9 @@ You can think of T3 Code as an open source "bring-your-own-subscription" alterna
 - Follow `SYNC.md` when syncing or rebuilding the fork.
 - Track meaningful fork-specific behavior in `docs/personal-fork-changes.md`; update it in the same change.
 - Check that inventory during upstream merges and record preserved, replaced, or retired customizations.
-- Preserve only the success sound asset and minimal desktop fork identity/local signing.
-  The sidebar, thread actions, resources, notification delivery,
-  settings, and provider behavior follow upstream.
+- Preserve only the success sound asset, icon-only sidebar working status, pinned-thread idle
+  reminders, and minimal desktop fork identity/local signing. The rest of the sidebar, thread
+  actions, resources, notification delivery, settings, and provider behavior follow upstream.
 - Keep the remaining differences at narrow boundaries. Do not restore retired group lifecycle
   actions, worktree grouping, shared checkout resources, chat transfer, sound overrides, or native notification queues.
 - Keep personal-fork changes primarily in the UI client and client-local state. In general, do not
