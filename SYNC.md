@@ -3,8 +3,9 @@
 - Read [docs/personal-fork-changes.md](docs/personal-fork-changes.md) before syncing.
 - Work on a task branch. Never reset, rebase, or develop directly on `personal`.
 - Merge current `pingdotgg/t3code` main, then reconcile only the completion sound asset,
-  desktop identity/local signing, and fork CI runners.
-- Keep the sidebar entirely upstream, including rows, thread actions, search, drafts, pinning,
+  icon-only sidebar working status, pinned-thread idle reminders, desktop identity/local signing,
+  and fork CI runners.
+- Keep the rest of the sidebar upstream, including rows, thread actions, search, drafts, pinning,
   ordering, provider/model icons, shelf persistence, and PR state. Do not restore worktree grouping.
 - Keep server behavior, wire contracts, resources, notification delivery, and settings upstream.
 - Update the inventory when upstream replaces a customization. Do not restore retired features.

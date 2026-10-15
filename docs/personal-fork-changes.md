@@ -4,12 +4,13 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `5753207d53` on 2026-10-13. Sidebar ordering and drag behavior
-match that revision. The success cue, desktop identity, local signing, and fork CI runners are
-preserved. The desktop retains upstream's Hyprland startup fix.
-The server, wire contracts, mobile client, and notification delivery follow upstream. Upstream's
-worktree setup and attachment fixes are retained. The retired worktree-header creation shortcut
-remains retired; the per-thread new-thread-on-branch action still reuses the existing checkout.
+Reviewed against upstream `42da166d13` on 2026-10-15. The success cue, icon-only working status,
+pinned-thread idle reminders, desktop identity/local signing, and fork CI runners are preserved.
+Worktree grouping remains retired. Upstream's waiting indicator and elapsed time, clickable terminal
+status, and settle shortcut navigation are retained. The sidebar's running status keeps its accessible
+label without visible text or a timer. Upstream's subagent attention notifications and macOS one-time
+code autofill opt-out are retained. The server, wire contracts, mobile client, and other notification
+behavior follow upstream. The per-thread new-thread-on-branch action still reuses its existing checkout.
 
 ## Maintained differences
 
