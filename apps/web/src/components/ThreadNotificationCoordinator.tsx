@@ -23,6 +23,7 @@ import {
   hasNotificationSound,
   playNotificationSound,
   setNotificationBadge,
+  threadNotificationTag,
   unlockNotificationAudio,
 } from "../threadNotifications";
 import { PinnedThreadReminders } from "./PinnedThreadReminders";
@@ -159,7 +160,9 @@ function EnvironmentNotifications({
       const kind =
         attention && attention !== prior.attention
           ? "input"
-          : completion !== null && (prior.completion === null || completion > prior.completion)
+          : !rawThread.latestRunStopRequested &&
+              completion !== null &&
+              (prior.completion === null || completion > prior.completion)
             ? "completion"
             : null;
       if (!kind) continue;
@@ -224,13 +227,14 @@ function EnvironmentNotifications({
       try {
         const notification = new Notification(title, {
           body: thread.title,
-          tag: `${environmentId}:${thread.id}`,
+          tag: threadNotificationTag(environmentId, thread.id),
           silent: true,
         });
         onNotification(environmentId, notification);
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();
+          void window.desktopBridge?.revealWindow?.().catch(() => undefined);
           void navigate({
             to: "/$environmentId/$threadId",
             params: { environmentId, threadId: thread.id },

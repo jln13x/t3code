@@ -4,14 +4,15 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `9c161462c9` on 2026-10-18. The success cue, icon-only working status,
+Reviewed against upstream `680152e27b` on 2026-10-21. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and fork CI runners are preserved.
-Worktree grouping remains retired. Upstream's sidebar sections, waiting indicator and elapsed time,
-thread actions, and permission checks are retained. The sidebar's running status keeps its accessible
-label without visible text or a timer. Desktop builds keep the fork identity as upstream moves to
-Beta branding. Notification tests follow upstream's browser-test migration. The server, wire contracts,
-mobile client, and other notification behavior follow upstream. The per-thread new-thread-on-branch
-action still reuses its existing checkout.
+Worktree grouping remains retired. The working-status customization follows upstream's extracted
+sidebar row; other sidebar sections, statuses, thread actions, and permission checks stay upstream.
+Pinned reminders now use upstream's shortened notification tags and window-reveal behavior, preserving
+replacement of completion alerts and reliable Windows delivery. Desktop builds retain the fork
+identity and local signing alongside upstream's packaging changes. The server, wire contracts, mobile
+client, and other notification behavior follow upstream. The per-thread new-thread-on-branch action
+still reuses its existing checkout.
 
 ## Maintained differences
 
@@ -70,7 +71,8 @@ action still reuses its existing checkout.
   actions are removed. No user data or previously transferred checkout files are deleted.
 - Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, the previous sidebar
   typography and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
-  The compact rows and icon-only status retained then were retired on 2026-10-13.
+  The compact row layout retained then was retired on 2026-10-13; the current icon-only working
+  status is described above.
 - Always-on completion/attention detection, the cuelume dependency/volume patch, and native macOS
   completion delivery/acknowledgement/reconnect queues are replaced by upstream notification handling.
   System notifications require upstream settings and permission, appear while the app is unfocused,
