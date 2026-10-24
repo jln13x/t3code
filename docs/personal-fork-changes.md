@@ -37,7 +37,8 @@ still reuses its existing checkout.
 ### Desktop identity and local installation
 
 - Preserve `T3 Code (Fork)`, the orange macOS icon, `com.t3tools.t3code.fork`, and the separate
-  `t3code-fork` Electron data directory. Development builds retain upstream identity and artwork.
+  `t3code-fork` Electron data directory. Production builds keep the Fork label across release
+  channels; update-channel behavior stays upstream. Development builds retain upstream identity and artwork.
 - Keep the existing pinned, machine-local signing certificate and rollback-safe install commands
   needed for local macOS builds. No certificate or fingerprint state belongs in the repository.
 - Do not install over the live app during routine development or syncs.
