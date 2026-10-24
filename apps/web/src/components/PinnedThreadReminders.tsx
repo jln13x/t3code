@@ -11,6 +11,7 @@ import {
   hasDesktopNotifications,
   hasNotificationSound,
   playNotificationSound,
+  threadNotificationTag,
 } from "../threadNotifications";
 import { collectDuePinnedReminders } from "./PinnedThreadReminders.logic";
 import { toastManager } from "./ui/toast";
@@ -95,13 +96,14 @@ export function PinnedThreadReminders({
           const notification = new Notification(TITLE, {
             body: thread.title,
             // Shares the completion notification's tag so reminders replace it.
-            tag: `${thread.environmentId}:${thread.id}`,
+            tag: threadNotificationTag(thread.environmentId, thread.id),
             silent: true,
           });
           onNotification(thread.environmentId, notification);
           notification.addEventListener("click", () => {
             notification.close();
             window.focus();
+            void window.desktopBridge?.revealWindow?.().catch(() => undefined);
             open(thread.environmentId, thread.id);
           });
         } catch {

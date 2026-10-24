@@ -4,13 +4,15 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `42da166d13` on 2026-10-15. The success cue, icon-only working status,
+Reviewed against upstream `680152e27b` on 2026-10-21. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and fork CI runners are preserved.
-Worktree grouping remains retired. Upstream's waiting indicator and elapsed time, clickable terminal
-status, and settle shortcut navigation are retained. The sidebar's running status keeps its accessible
-label without visible text or a timer. Upstream's subagent attention notifications and macOS one-time
-code autofill opt-out are retained. The server, wire contracts, mobile client, and other notification
-behavior follow upstream. The per-thread new-thread-on-branch action still reuses its existing checkout.
+Worktree grouping remains retired. The working-status customization follows upstream's extracted
+sidebar row; other sidebar sections, statuses, thread actions, and permission checks stay upstream.
+Pinned reminders now use upstream's shortened notification tags and window-reveal behavior, preserving
+replacement of completion alerts and reliable Windows delivery. Desktop builds retain the fork
+identity and local signing alongside upstream's packaging changes. The server, wire contracts, mobile
+client, and other notification behavior follow upstream. The per-thread new-thread-on-branch action
+still reuses its existing checkout.
 
 ## Maintained differences
 
@@ -35,7 +37,8 @@ behavior follow upstream. The per-thread new-thread-on-branch action still reuse
 ### Desktop identity and local installation
 
 - Preserve `T3 Code (Fork)`, the orange macOS icon, `com.t3tools.t3code.fork`, and the separate
-  `t3code-fork` Electron data directory. Development builds retain upstream identity and artwork.
+  `t3code-fork` Electron data directory. Production builds keep the Fork label across release
+  channels; update-channel behavior stays upstream. Development builds retain upstream identity and artwork.
 - Keep the existing pinned, machine-local signing certificate and rollback-safe install commands
   needed for local macOS builds. No certificate or fingerprint state belongs in the repository.
 - Do not install over the live app during routine development or syncs.
@@ -69,7 +72,8 @@ behavior follow upstream. The per-thread new-thread-on-branch action still reuse
   actions are removed. No user data or previously transferred checkout files are deleted.
 - Checkout-wide lifecycle actions, shared terminals/previews/files/diffs, the previous sidebar
   typography and status markers, custom archive/Undo controls, and `chat.newInWorktree` are removed.
-  The compact rows and icon-only status retained then were retired on 2026-10-13.
+  The compact row layout retained then was retired on 2026-10-13; the current icon-only working
+  status is described above.
 - Always-on completion/attention detection, the cuelume dependency/volume patch, and native macOS
   completion delivery/acknowledgement/reconnect queues are replaced by upstream notification handling.
   System notifications require upstream settings and permission, appear while the app is unfocused,
