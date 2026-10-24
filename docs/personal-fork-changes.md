@@ -4,15 +4,15 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `680152e27b` on 2026-10-21. The success cue, icon-only working status,
+Reviewed against upstream `d53873b6a4` on 2026-10-24. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and fork CI runners are preserved.
-Worktree grouping remains retired. The working-status customization follows upstream's extracted
-sidebar row; other sidebar sections, statuses, thread actions, and permission checks stay upstream.
-Pinned reminders now use upstream's shortened notification tags and window-reveal behavior, preserving
-replacement of completion alerts and reliable Windows delivery. Desktop builds retain the fork
-identity and local signing alongside upstream's packaging changes. The server, wire contracts, mobile
-client, and other notification behavior follow upstream. The per-thread new-thread-on-branch action
-still reuses its existing checkout.
+Worktree grouping remains retired. Sidebar status labels now follow upstream's accessibility
+announcements while the working label stays visually hidden and its elapsed time is omitted. Search,
+sidebar sections, thread actions, and permission checks follow upstream. Pinned reminders continue to use upstream
+notification settings, tags, and window-reveal behavior. Desktop identity and local signing remain
+separate from upstream authentication and packaging. Server behavior, wire contracts, mobile, and
+other notification delivery follow upstream. The per-thread new-thread-on-branch action still reuses
+its existing checkout.
 
 ## Maintained differences
 
@@ -47,8 +47,8 @@ still reuses its existing checkout.
 
 - Preserve repository-aware GitHub-hosted runner selection in `ci.yml`. Upstream's private
   Blacksmith runners are unavailable to the fork. Keep upstream jobs and validation commands.
-- `CI` is the only enabled workflow. Every other workflow is disabled in the GitHub repository
-  settings (`gh workflow disable`), not in files, and keeps its upstream contents. They need
+- `CI` and GitHub's `Dependency Graph` are the only enabled workflows. Every other workflow is
+  disabled in the GitHub repository settings (`gh workflow disable`), not in files, and keeps its upstream contents. They need
   Blacksmith, Expo, release secrets, or upstream-only integrations; enabled, they queue for 24 hours
   or do nothing useful.
 
