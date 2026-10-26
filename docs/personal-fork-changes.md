@@ -4,15 +4,16 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `d53873b6a4` on 2026-10-24. The success cue, icon-only working status,
+Reviewed against upstream `210b2e7c6a` on 2026-10-26. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and fork CI runners are preserved.
-Worktree grouping remains retired. Sidebar status labels now follow upstream's accessibility
-announcements while the working label stays visually hidden and its elapsed time is omitted. Search,
-sidebar sections, thread actions, and permission checks follow upstream. Pinned reminders continue to use upstream
-notification settings, tags, and window-reveal behavior. Desktop identity and local signing remain
-separate from upstream authentication and packaging. Server behavior, wire contracts, mobile, and
-other notification delivery follow upstream. The per-thread new-thread-on-branch action still reuses
-its existing checkout.
+Worktree grouping remains retired. Pinned reminders now run within upstream's application lifecycle
+and read its live environment shells; the previous React coordinator integration is replaced.
+Upstream owns the new default design, sidebar sections, thread actions, permission checks, and
+notification delivery, including completion settling and Windows notification handling. Working
+labels remain accessible but visually hidden, without elapsed time. Desktop identity/local signing
+remain separate from upstream authentication and packaging. Server behavior, wire contracts,
+settings, providers, resources, and mobile follow upstream. The per-thread new-thread-on-branch
+action still reuses its existing checkout.
 
 ## Maintained differences
 
