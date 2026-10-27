@@ -6,13 +6,7 @@ import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 
 export const PINNED_REMINDER_INTERVAL_MS = 150_000;
 
-/**
- * Fork-only: pinned threads double as high priority. Returns the pinned threads
- * that have sat without a running agent for a full interval since they went
- * idle or were last reminded, plus the clocks for the next check. A thread the
- * user is looking at restarts its clock; running, snoozed, archived, and
- * unpinned threads drop out of it.
- */
+// Pinned threads act as high priority; viewing one restarts its idle clock.
 export function collectDuePinnedReminders(input: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly idleSince: ReadonlyMap<string, number>;
