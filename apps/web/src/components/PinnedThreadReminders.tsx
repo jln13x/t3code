@@ -1,6 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
-import { pendingSubagentRequestsByThread } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
@@ -10,6 +9,7 @@ import { PinIcon } from "lucide-react";
 import { getClientSettings } from "../hooks/useSettings";
 import { environmentSummaries } from "../state/presentation";
 import { environmentShell } from "../state/shell";
+import { environmentThreadShells } from "../state/threads";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
@@ -48,7 +48,9 @@ export function startPinnedThreadReminders(
         const shell = registry.get(environmentShell.stateValueAtom(environmentId));
         if (shell.status !== "live" || Option.isNone(shell.snapshot)) return [];
         const threads = shell.snapshot.value.threads;
-        const requests = pendingSubagentRequestsByThread(threads);
+        const requests = registry.get(
+          environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
+        );
         return threads.map((thread) =>
           presentThreadShell(environmentId, thread, requests.get(thread.id) ?? null),
         );
