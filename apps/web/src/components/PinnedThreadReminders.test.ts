@@ -125,6 +125,16 @@ function mockThreads() {
 
 const shellAtom = Atom.make<unknown>(null);
 const environmentIdsAtom = Atom.make([EnvironmentId.make("env-1")]);
+const requestsAtom = Atom.make<ReadonlyMap<ThreadId, "approval" | "user_input">>(new Map());
+const delegatedAtom = Atom.make<ReadonlySet<string>>(new Set<string>());
+vi.mock("../state/threads", () => ({
+  environmentThreadShells: {
+    pendingSubagentRequestsAtom: () => requestsAtom,
+    get delegatedUnderParentAtom() {
+      return delegatedAtom;
+    },
+  },
+}));
 vi.mock("../state/shell", () => ({
   environmentShell: { stateValueAtom: () => shellAtom },
 }));
@@ -226,6 +236,8 @@ function setup() {
   } as unknown as AnyRouter;
   let started = false;
   return {
+    requestApproval: () =>
+      registry.set(requestsAtom, new Map([[ThreadId.make("thread-1"), "approval"]])),
     async render() {
       registry.set(shellAtom, {
         status: state.live ? "live" : "disconnected",
@@ -325,5 +337,19 @@ describe("pinned thread reminders", () => {
     expect(state.add).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(state.add).toHaveBeenCalledOnce();
+  });
+  it("reminds when a linked task's approval blocks a pinned running parent", async () => {
+    await using app = setup();
+    state.completedAt = null;
+    await app.render();
+    vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS);
+    expect(state.add).not.toHaveBeenCalled();
+
+    app.requestApproval();
+    vi.advanceTimersByTime(15_000);
+    vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS);
+    expect(
+      state.add.mock.calls.filter(([toast]) => toast.title === "Pinned thread is idle"),
+    ).toHaveLength(1);
   });
 });
