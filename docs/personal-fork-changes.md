@@ -4,16 +4,15 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `dac8b11ddc` on 2026-10-29. The success cue, icon-only working status,
+Reviewed against upstream `ce9e016406` on 2026-11-01. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
-preserved. Fork worktree grouping remains retired. Optional sidebar folders, the simpler composer,
-thread actions, and permission checks use upstream's implementation. Pinned reminders now read
-upstream's shared subagent-request selectors, including linked tasks. They retain live environment
-shells and upstream notification settings and tags; upstream owns completion detection and delivery.
-Desktop identity/local signing remain separate from upstream authentication and packaging. Server
-behavior, wire contracts, settings, providers, resources, and mobile follow upstream, including
-usage-limit provider fallback. The per-thread new-thread-on-branch action still reuses its existing
-checkout. CI retains upstream's longer server-shard timeout with fork runners.
+preserved. Worktree grouping and other retired customizations remain retired. Sidebar rows, thread
+actions, permission checks, notification delivery, providers, resources, settings, and mobile follow
+upstream. Pinned reminders continue using upstream's shared request selectors, including linked
+tasks. The per-thread new-thread-on-branch action retains its existing checkout. Desktop production
+branding stays Fork across release channels; its unused version-label helper is removed. Update
+feeds and channel selection follow upstream. Server and wire behavior remain upstream, including
+scheduled-task recovery and Claude stop handling. CI retains upstream jobs and commands with repository-aware runners.
 
 ## Maintained differences
 
