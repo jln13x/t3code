@@ -4,15 +4,17 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `ce9e016406` on 2026-11-01. The success cue, icon-only working status,
+Reviewed against upstream `8b44f42b14` on 2026-11-04. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
 preserved. Worktree grouping and other retired customizations remain retired. Sidebar rows, thread
 actions, permission checks, notification delivery, providers, resources, settings, and mobile follow
 upstream. Pinned reminders continue using upstream's shared request selectors, including linked
-tasks. The per-thread new-thread-on-branch action retains its existing checkout. Desktop production
-branding stays Fork across release channels; its unused version-label helper is removed. Update
-feeds and channel selection follow upstream. Server and wire behavior remain upstream, including
-scheduled-task recovery and Claude stop handling. CI retains upstream jobs and commands with repository-aware runners.
+tasks. They honor upstream hidden-thread filters and share its tracking so hiding a thread closes
+existing reminders. The per-thread new-thread-on-branch action retains its existing checkout.
+Desktop production branding stays Fork across release channels; update feeds and channel selection
+follow upstream.
+Server and wire behavior remain upstream. CI retains upstream jobs and validation commands with
+repository-aware runners.
 
 ## Maintained differences
 
@@ -30,9 +32,9 @@ scheduled-task recovery and Claude stop handling. CI retains upstream jobs and c
 - Pinned threads act as high priority. In a connected environment, while a pinned thread has no
   running agent or background work that can wake it and is not snoozed, archived, or open in a focused window,
   the web/desktop client repeats an idle reminder every 2.5 minutes (`PinnedThreadReminders`). It
-  uses upstream's sound, toast, and system-notification settings and adds no server state, so it works
-  against unmodified upstream servers. A web tab or desktop window must stay open. Mobile follows
-  upstream and does not remind.
+  uses upstream's hidden-thread filters, sound, toast, and system-notification settings and adds no
+  server state, so it works against unmodified upstream servers. A web tab or desktop window must
+  stay open. Mobile follows upstream and does not remind.
 
 ### Desktop identity and local installation
 
