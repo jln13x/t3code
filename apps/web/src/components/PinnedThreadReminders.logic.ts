@@ -23,7 +23,7 @@ export function collectDuePinnedReminders(input: {
     }
     if (effectiveSnoozed(thread, { now: nowIso })) continue;
     const status = resolveSidebarThreadStatus(thread);
-    if (status === "working" || status === "waiting") continue;
+    if (status === "preparing" || status === "working" || status === "waiting") continue;
     const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
     const since = key === viewingKey ? now : (input.idleSince.get(key) ?? now);
     if (now - since < PINNED_REMINDER_INTERVAL_MS) {

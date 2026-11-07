@@ -93,6 +93,7 @@ it("restores and relaunches the previous app when post-replacement validation fa
     }
 
     assert.instanceOf(installError, DesktopInstallTransactionError);
+    assert.nestedPropertyVal(installError, "cause.message", "installed validation failed");
     assert.equal(validationCount, 2);
     assert.equal(quitCount, 1);
     assert.deepStrictEqual(launchedVersions, ["old"]);

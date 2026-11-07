@@ -7,6 +7,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
+import * as Schema from "effect/Schema";
+
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 
 export const DESKTOP_FORK_BUNDLE_ID = "com.t3tools.t3code.fork";
@@ -49,109 +51,174 @@ export type LocalDesktopCommandRunner = (
   options?: { readonly cwd?: string | undefined },
 ) => Promise<LocalDesktopCommandOutput>;
 
-export class DesktopSigningModeConflictError extends Error {
+export class DesktopSigningModeConflictError extends Schema.TaggedError<
+  DesktopSigningModeConflictError,
+  { readonly brand: unique symbol }
+>()("DesktopSigningModeConflictError", {
+  message: Schema.String,
+}) {
   override readonly name = "DesktopSigningModeConflictError";
 
-  constructor() {
-    super("--signed and --local-signed are mutually exclusive desktop signing modes.");
+  static new(): DesktopSigningModeConflictError {
+    return new DesktopSigningModeConflictError({
+      message: "--signed and --local-signed are mutually exclusive desktop signing modes.",
+    });
   }
 }
 
-export class LocalDesktopSigningStateMissingError extends Error {
+export class LocalDesktopSigningStateMissingError extends Schema.TaggedError<
+  LocalDesktopSigningStateMissingError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningStateMissingError", {
+  message: Schema.String,
+  statePath: Schema.String,
+}) {
   override readonly name = "LocalDesktopSigningStateMissingError";
-  readonly statePath: string;
 
-  constructor(statePath: string) {
-    super(
-      `The local desktop signing identity is not configured. Run 'vp run setup:desktop:signing' once. Refusing to fall back to ad-hoc signing.`,
-    );
-    this.statePath = statePath;
+  static new(statePath: string): LocalDesktopSigningStateMissingError {
+    return new LocalDesktopSigningStateMissingError({
+      message: `The local desktop signing identity is not configured. Run 'vp run setup:desktop:signing' once. Refusing to fall back to ad-hoc signing.`,
+      statePath,
+    });
   }
 }
 
-export class LocalDesktopSigningStateInvalidError extends Error {
+export class LocalDesktopSigningStateInvalidError extends Schema.TaggedError<
+  LocalDesktopSigningStateInvalidError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningStateInvalidError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+  statePath: Schema.String,
+}) {
   override readonly name = "LocalDesktopSigningStateInvalidError";
-  readonly statePath: string;
 
-  constructor(statePath: string, options?: ErrorOptions) {
-    super(
-      `The local desktop signing state at ${statePath} is invalid. Refusing to use an unpinned certificate.`,
-      options,
-    );
-    this.statePath = statePath;
+  static new(statePath: string, options?: ErrorOptions): LocalDesktopSigningStateInvalidError {
+    return new LocalDesktopSigningStateInvalidError({
+      message: `The local desktop signing state at ${statePath} is invalid. Refusing to use an unpinned certificate.`,
+      ...options,
+      statePath,
+    });
   }
 }
 
-export class LocalDesktopSigningIdentityMissingError extends Error {
+export class LocalDesktopSigningIdentityMissingError extends Schema.TaggedError<
+  LocalDesktopSigningIdentityMissingError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningIdentityMissingError", {
+  message: Schema.String,
+  expectedCertificateSha256: Schema.String,
+}) {
   override readonly name = "LocalDesktopSigningIdentityMissingError";
-  readonly expectedCertificateSha256: string;
 
-  constructor(expectedCertificateSha256: string) {
-    super(
-      "The pinned local desktop signing certificate is missing, untrusted, expired, or no longer has its private key. " +
+  static new(expectedCertificateSha256: string): LocalDesktopSigningIdentityMissingError {
+    return new LocalDesktopSigningIdentityMissingError({
+      message:
+        "The pinned local desktop signing certificate is missing, untrusted, expired, or no longer has its private key. " +
         "Deleting this certificate changes the app identity and resets macOS permissions; restore it instead of creating a replacement.",
-    );
-    this.expectedCertificateSha256 = expectedCertificateSha256;
+      expectedCertificateSha256,
+    });
   }
 }
 
-export class LocalDesktopSigningIdentityChangedError extends Error {
+export class LocalDesktopSigningIdentityChangedError extends Schema.TaggedError<
+  LocalDesktopSigningIdentityChangedError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningIdentityChangedError", {
+  message: Schema.String,
+  expectedCertificateSha256: Schema.String,
+  actualCertificateSha256s: Schema.Array(Schema.String),
+}) {
   override readonly name = "LocalDesktopSigningIdentityChangedError";
-  readonly expectedCertificateSha256: string;
-  readonly actualCertificateSha256s: ReadonlyArray<string>;
 
-  constructor(expectedCertificateSha256: string, actualCertificateSha256s: ReadonlyArray<string>) {
-    super(
-      "A different certificate now uses the local desktop signing name. Refusing to sign because certificate replacement changes the app identity and resets macOS permissions.",
-    );
-    this.expectedCertificateSha256 = expectedCertificateSha256;
-    this.actualCertificateSha256s = actualCertificateSha256s;
+  static new(
+    expectedCertificateSha256: string,
+    actualCertificateSha256s: ReadonlyArray<string>,
+  ): LocalDesktopSigningIdentityChangedError {
+    return new LocalDesktopSigningIdentityChangedError({
+      message:
+        "A different certificate now uses the local desktop signing name. Refusing to sign because certificate replacement changes the app identity and resets macOS permissions.",
+      expectedCertificateSha256,
+      actualCertificateSha256s,
+    });
   }
 }
 
-export class LocalDesktopSigningIdentityAmbiguousError extends Error {
+export class LocalDesktopSigningIdentityAmbiguousError extends Schema.TaggedError<
+  LocalDesktopSigningIdentityAmbiguousError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningIdentityAmbiguousError", {
+  message: Schema.String,
+  certificateSha256s: Schema.Array(Schema.String),
+}) {
   override readonly name = "LocalDesktopSigningIdentityAmbiguousError";
-  readonly certificateSha256s: ReadonlyArray<string>;
 
-  constructor(certificateSha256s: ReadonlyArray<string>) {
-    super(
-      "More than one valid Keychain identity uses the local desktop signing name. Refusing an ambiguous signing identity.",
-    );
-    this.certificateSha256s = certificateSha256s;
+  static new(certificateSha256s: ReadonlyArray<string>): LocalDesktopSigningIdentityAmbiguousError {
+    return new LocalDesktopSigningIdentityAmbiguousError({
+      message:
+        "More than one valid Keychain identity uses the local desktop signing name. Refusing an ambiguous signing identity.",
+      certificateSha256s,
+    });
   }
 }
 
-export class LocalDesktopSigningCommandError extends Error {
+export class LocalDesktopSigningCommandError extends Schema.TaggedError<
+  LocalDesktopSigningCommandError,
+  { readonly brand: unique symbol }
+>()("LocalDesktopSigningCommandError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+  executable: Schema.String,
+  args: Schema.Array(Schema.String),
+}) {
   override readonly name = "LocalDesktopSigningCommandError";
-  readonly executable: string;
-  readonly args: ReadonlyArray<string>;
 
-  constructor(executable: string, args: ReadonlyArray<string>, options?: ErrorOptions) {
-    super(`Local desktop signing command failed: ${NodePath.basename(executable)}.`, options);
-    this.executable = executable;
-    this.args = args;
+  static new(
+    executable: string,
+    args: ReadonlyArray<string>,
+    options?: ErrorOptions,
+  ): LocalDesktopSigningCommandError {
+    return new LocalDesktopSigningCommandError({
+      message: `Local desktop signing command failed: ${NodePath.basename(executable)}.`,
+      ...options,
+      executable,
+      args,
+    });
   }
 }
 
-export type LocalSignedAppValidationReason =
-  | "bundle-id"
-  | "certificate"
-  | "nested-certificate"
-  | "designated-requirement-cdhash"
-  | "designated-requirement-identifier"
-  | "designated-requirement-certificate"
-  | "designated-requirement-changed";
+const isLocalDesktopSigningCommandError = Schema.is(LocalDesktopSigningCommandError);
 
-export class LocalSignedAppValidationError extends Error {
+export type LocalSignedAppValidationReason = LocalSignedAppValidationError["reason"];
+
+export class LocalSignedAppValidationError extends Schema.TaggedError<
+  LocalSignedAppValidationError,
+  { readonly brand: unique symbol }
+>()("LocalSignedAppValidationError", {
+  message: Schema.String,
+  reason: Schema.Literals([
+    "bundle-id",
+    "certificate",
+    "nested-certificate",
+    "designated-requirement-cdhash",
+    "designated-requirement-identifier",
+    "designated-requirement-certificate",
+    "designated-requirement-changed",
+  ]),
+  codePath: Schema.optional(Schema.String),
+}) {
   override readonly name = "LocalSignedAppValidationError";
-  readonly reason: LocalSignedAppValidationReason;
-  readonly codePath: string | undefined;
 
-  constructor(reason: LocalSignedAppValidationReason, codePath?: string | undefined) {
+  static new(
+    reason: LocalSignedAppValidationReason,
+    codePath?: string | undefined,
+  ): LocalSignedAppValidationError {
     const suffix = codePath ? ` (${codePath})` : "";
-    super(`Local desktop app signature validation failed: ${reason}${suffix}.`);
-    this.reason = reason;
-    this.codePath = codePath;
+    return new LocalSignedAppValidationError({
+      message: `Local desktop app signature validation failed: ${reason}${suffix}.`,
+      reason,
+      codePath,
+    });
   }
 }
 
@@ -160,7 +227,7 @@ export function resolveDesktopSigningMode(
   localSigned: boolean,
 ): DesktopSigningMode {
   if (releaseSigned && localSigned) {
-    throw new DesktopSigningModeConflictError();
+    throw DesktopSigningModeConflictError.new();
   }
   if (localSigned) return "local";
   return releaseSigned ? "release" : "unsigned";
@@ -211,9 +278,9 @@ export async function readLocalDesktopSigningState(
     source = await NodeFSP.readFile(statePath, "utf8");
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new LocalDesktopSigningStateMissingError(statePath);
+      throw LocalDesktopSigningStateMissingError.new(statePath);
     }
-    throw new LocalDesktopSigningStateInvalidError(statePath, { cause });
+    throw LocalDesktopSigningStateInvalidError.new(statePath, { cause });
   }
 
   try {
@@ -230,7 +297,7 @@ export async function readLocalDesktopSigningState(
         : {}),
     };
   } catch (cause) {
-    throw new LocalDesktopSigningStateInvalidError(statePath, { cause });
+    throw LocalDesktopSigningStateInvalidError.new(statePath, { cause });
   }
 }
 
@@ -239,7 +306,7 @@ export async function writeLocalDesktopSigningState(
   statePath = resolveLocalDesktopSigningStatePath(),
 ): Promise<void> {
   if (!isLocalDesktopSigningState(state)) {
-    throw new LocalDesktopSigningStateInvalidError(statePath);
+    throw LocalDesktopSigningStateInvalidError.new(statePath);
   }
   const stateDirectory = NodePath.dirname(statePath);
   await NodeFSP.mkdir(stateDirectory, { recursive: true, mode: 0o700 });
@@ -261,7 +328,7 @@ export const runLocalDesktopCommand: LocalDesktopCommandRunner = async (
     });
     return { stdout: output.stdout, stderr: output.stderr };
   } catch (cause) {
-    throw new LocalDesktopSigningCommandError(executable, args, { cause });
+    throw LocalDesktopSigningCommandError.new(executable, args, { cause });
   }
 };
 
@@ -314,10 +381,9 @@ export async function inspectLocalDesktopSigningIdentity(
     LOCAL_DESKTOP_SIGNING_COMMON_NAME,
     keychainPath,
   ]).catch((error: unknown) => {
-    const commandCause =
-      error instanceof LocalDesktopSigningCommandError
-        ? (error.cause as { readonly code?: string | number } | undefined)
-        : undefined;
+    const commandCause = isLocalDesktopSigningCommandError(error)
+      ? (error.cause as { readonly code?: string | number } | undefined)
+      : undefined;
     // `security find-certificate` uses exit status 44 for an empty result.
     if (commandCause?.code === 44 || commandCause?.code === "44") {
       return { stdout: "", stderr: "" };
@@ -359,17 +425,17 @@ export function resolvePinnedLocalDesktopSigningIdentity(
         certificate.certificateSha256 === state.certificateSha256,
     );
     if (pinnedCertificateStillExists || inspection.certificates.length === 0) {
-      throw new LocalDesktopSigningIdentityMissingError(state.certificateSha256);
+      throw LocalDesktopSigningIdentityMissingError.new(state.certificateSha256);
     }
     if (inspection.certificates.length > 0) {
-      throw new LocalDesktopSigningIdentityChangedError(
+      throw LocalDesktopSigningIdentityChangedError.new(
         state.certificateSha256,
         inspection.certificates.map((certificate) => certificate.certificateSha256),
       );
     }
   }
   if (identities.length > 1) {
-    throw new LocalDesktopSigningIdentityAmbiguousError(
+    throw LocalDesktopSigningIdentityAmbiguousError.new(
       identities.map((identity) => identity.certificateSha256),
     );
   }
@@ -379,7 +445,7 @@ export function resolvePinnedLocalDesktopSigningIdentity(
     identity.certificateSha1 !== state.certificateSha1 ||
     identity.certificateSha256 !== state.certificateSha256
   ) {
-    throw new LocalDesktopSigningIdentityChangedError(state.certificateSha256, [
+    throw LocalDesktopSigningIdentityChangedError.new(state.certificateSha256, [
       identity.certificateSha256,
     ]);
   }
@@ -438,29 +504,29 @@ export function validateLocalSignedAppMetadata(input: {
   }>;
 }): string {
   if (input.bundleId !== DESKTOP_FORK_BUNDLE_ID) {
-    throw new LocalSignedAppValidationError("bundle-id");
+    throw LocalSignedAppValidationError.new("bundle-id");
   }
   if (
     input.certificateSha1 !== input.state.certificateSha1 ||
     input.certificateSha256 !== input.state.certificateSha256
   ) {
-    throw new LocalSignedAppValidationError("certificate");
+    throw LocalSignedAppValidationError.new("certificate");
   }
   for (const code of input.nestedCode) {
     if (
       code.certificateSha1 !== input.state.certificateSha1 ||
       code.certificateSha256 !== input.state.certificateSha256
     ) {
-      throw new LocalSignedAppValidationError("nested-certificate", code.path);
+      throw LocalSignedAppValidationError.new("nested-certificate", code.path);
     }
   }
 
   const designatedRequirement = normalizeDesignatedRequirement(input.designatedRequirement);
   if (/\bcdhash\b/iu.test(designatedRequirement)) {
-    throw new LocalSignedAppValidationError("designated-requirement-cdhash");
+    throw LocalSignedAppValidationError.new("designated-requirement-cdhash");
   }
   if (!designatedRequirement.includes(`identifier "${DESKTOP_FORK_BUNDLE_ID}"`)) {
-    throw new LocalSignedAppValidationError("designated-requirement-identifier");
+    throw LocalSignedAppValidationError.new("designated-requirement-identifier");
   }
   const normalizedRequirement = designatedRequirement.toLowerCase();
   const certificateSha1 = input.state.certificateSha1.toLowerCase();
@@ -468,13 +534,13 @@ export function validateLocalSignedAppMetadata(input: {
     normalizedRequirement.includes(`anchor h"${certificateSha1}"`) ||
     normalizedRequirement.includes(`certificate root = h"${certificateSha1}"`);
   if (!pinsCertificate) {
-    throw new LocalSignedAppValidationError("designated-requirement-certificate");
+    throw LocalSignedAppValidationError.new("designated-requirement-certificate");
   }
   if (
     input.state.designatedRequirement !== undefined &&
     normalizeDesignatedRequirement(input.state.designatedRequirement) !== designatedRequirement
   ) {
-    throw new LocalSignedAppValidationError("designated-requirement-changed");
+    throw LocalSignedAppValidationError.new("designated-requirement-changed");
   }
   return designatedRequirement;
 }
@@ -487,7 +553,7 @@ export async function pinLocalDesktopDesignatedRequirement(
   const normalized = normalizeDesignatedRequirement(designatedRequirement);
   if (state.designatedRequirement === normalized) return state;
   if (state.designatedRequirement !== undefined) {
-    throw new LocalSignedAppValidationError("designated-requirement-changed");
+    throw LocalSignedAppValidationError.new("designated-requirement-changed");
   }
   const updated = {
     ...state,

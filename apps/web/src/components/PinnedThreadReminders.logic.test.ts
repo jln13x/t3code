@@ -55,16 +55,19 @@ describe("collectDuePinnedReminders", () => {
     expect(due.idleSince.get(KEY)).toBe(dueAt);
   });
 
-  it("restarts the clock after the agent runs", () => {
-    const idle = new Map([[KEY, start]]);
-    const running = check(
-      shell({ runtime: { status: "running" } as ThreadRuntimeSummary }),
-      idle,
-      start + PINNED_REMINDER_INTERVAL_MS,
-    );
-    expect(running.due).toEqual([]);
-    expect(running.idleSince.has(KEY)).toBe(false);
-  });
+  it.each(["preparing", "running"] as const)(
+    "restarts the clock while the agent is %s",
+    (status) => {
+      const idle = new Map([[KEY, start]]);
+      const running = check(
+        shell({ runtime: { status } as ThreadRuntimeSummary }),
+        idle,
+        start + PINNED_REMINDER_INTERVAL_MS,
+      );
+      expect(running.due).toEqual([]);
+      expect(running.idleSince.has(KEY)).toBe(false);
+    },
+  );
 
   it("still reminds while the agent waits for approval", () => {
     const due = check(

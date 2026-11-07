@@ -5,6 +5,8 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as Schema from "effect/Schema";
+
 import {
   assertPinnedLocalDesktopSigningIdentity,
   certificateFingerprints,
@@ -19,6 +21,8 @@ import {
   runLocalDesktopCommand,
   writeLocalDesktopSigningState,
 } from "./lib/local-desktop-signing.ts";
+
+const isLocalDesktopSigningStateMissingError = Schema.is(LocalDesktopSigningStateMissingError);
 
 function parseDefaultKeychainPath(output: string): string {
   const trimmed = output.trim();
@@ -163,7 +167,7 @@ export async function setupLocalDesktopSigning(): Promise<{
       certificateSha256: pinned.identity.certificateSha256,
     };
   } catch (error) {
-    if (!(error instanceof LocalDesktopSigningStateMissingError)) {
+    if (!isLocalDesktopSigningStateMissingError(error)) {
       throw error;
     }
   }
@@ -171,12 +175,12 @@ export async function setupLocalDesktopSigning(): Promise<{
   const keychainPath = await defaultUserKeychainPath();
   let inspection = await inspectLocalDesktopSigningIdentity(keychainPath);
   if (inspection.identities.length > 1) {
-    throw new LocalDesktopSigningIdentityAmbiguousError(
+    throw LocalDesktopSigningIdentityAmbiguousError.new(
       inspection.identities.map((identity) => identity.certificateSha256),
     );
   }
   if (inspection.identities.length === 0 && inspection.certificates.length > 0) {
-    throw new LocalDesktopSigningIdentityMissingError(
+    throw LocalDesktopSigningIdentityMissingError.new(
       inspection.certificates[0]!.certificateSha256,
     );
   }

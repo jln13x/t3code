@@ -4,7 +4,7 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `8b44f42b14` on 2026-11-04. The success cue, icon-only working status,
+Reviewed against upstream `257e4073c1` on 2026-11-07. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
 preserved. Worktree grouping and other retired customizations remain retired. Sidebar rows, thread
 actions, permission checks, notification delivery, providers, resources, settings, and mobile follow
@@ -13,8 +13,12 @@ tasks. They honor upstream hidden-thread filters and share its tracking so hidin
 existing reminders. The per-thread new-thread-on-branch action retains its existing checkout.
 Desktop production branding stays Fork across release channels; update feeds and channel selection
 follow upstream.
-Server and wire behavior remain upstream. CI retains upstream jobs and validation commands with
-repository-aware runners.
+The new Setting up status keeps upstream's label and elapsed time; only a running agent's working
+status remains icon-only. Pinned reminders reset their idle clock during setup as well as running
+work. Server and wire behavior, including inactive-thread auto-settling and
+cloud dictation, remain upstream. CI retains upstream jobs and validation commands with
+repository-aware runners. Local signing/install errors use tagged errors compatible with upstream's
+new Effect type checker; certificate pinning, error messages, and rollback behavior are preserved.
 
 ## Maintained differences
 
