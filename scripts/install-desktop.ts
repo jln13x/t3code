@@ -7,6 +7,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
+import * as Schema from "effect/Schema";
+
 import {
   assertPinnedLocalDesktopSigningIdentity,
   certificateFingerprints,
@@ -39,35 +41,56 @@ export interface DesktopInstallTransactionHooks {
   readonly launchApp: (appPath: string) => Promise<void>;
 }
 
-export class DesktopInstallTransactionError extends Error {
+export class DesktopInstallTransactionError extends Schema.TaggedError<
+  DesktopInstallTransactionError,
+  { readonly brand: unique symbol }
+>()("DesktopInstallTransactionError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+  rollbackCause: Schema.optional(Schema.Defect()),
+  recoveryDirectory: Schema.optional(Schema.String),
+}) {
   override readonly name = "DesktopInstallTransactionError";
 
-  constructor(options: {
+  static new(options: {
     readonly cause: unknown;
     readonly rollbackCause?: unknown;
     readonly recoveryDirectory?: string;
-  }) {
+  }): DesktopInstallTransactionError {
     const recovery = options.recoveryDirectory
       ? ` Recovery contents are preserved in ${options.recoveryDirectory}.`
       : " The original installation state was restored.";
-    super(`Desktop installation failed.${recovery}`, { cause: options.cause });
-    this.rollbackCause = options.rollbackCause;
-    this.recoveryDirectory = options.recoveryDirectory;
+    return new DesktopInstallTransactionError({
+      message: `Desktop installation failed.${recovery}`,
+      cause: options.cause,
+      rollbackCause: options.rollbackCause,
+      recoveryDirectory: options.recoveryDirectory,
+    });
   }
-
-  readonly rollbackCause: unknown;
-  readonly recoveryDirectory: string | undefined;
 }
 
-export class DesktopAppSignatureInspectionError extends Error {
+export class DesktopAppSignatureInspectionError extends Schema.TaggedError<
+  DesktopAppSignatureInspectionError,
+  { readonly brand: unique symbol }
+>()("DesktopAppSignatureInspectionError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+  appPath: Schema.String,
+  operation: Schema.String,
+}) {
   override readonly name = "DesktopAppSignatureInspectionError";
-  readonly appPath: string;
-  readonly operation: string;
 
-  constructor(appPath: string, operation: string, options?: ErrorOptions) {
-    super(`Could not ${operation} for ${appPath}.`, options);
-    this.appPath = appPath;
-    this.operation = operation;
+  static new(
+    appPath: string,
+    operation: string,
+    options?: ErrorOptions,
+  ): DesktopAppSignatureInspectionError {
+    return new DesktopAppSignatureInspectionError({
+      message: `Could not ${operation} for ${appPath}.`,
+      ...options,
+      appPath,
+      operation,
+    });
   }
 }
 
@@ -144,7 +167,7 @@ export async function extractSigningCertificate(
     ]);
     return certificateFingerprints(await NodeFSP.readFile(`${certificatePrefix}0`));
   } catch (cause) {
-    throw new DesktopAppSignatureInspectionError(codePath, "extract its signing certificate", {
+    throw DesktopAppSignatureInspectionError.new(codePath, "extract its signing certificate", {
       cause,
     });
   }
@@ -173,7 +196,7 @@ export async function validateLocalDesktopApp(
       ]);
       bundleId = output.stdout.trim();
     } catch (cause) {
-      throw new DesktopAppSignatureInspectionError(appPath, "read its bundle identifier", {
+      throw DesktopAppSignatureInspectionError.new(appPath, "read its bundle identifier", {
         cause,
       });
     }
@@ -187,7 +210,7 @@ export async function validateLocalDesktopApp(
         appPath,
       ]);
     } catch (cause) {
-      throw new DesktopAppSignatureInspectionError(appPath, "verify its complete code signature", {
+      throw DesktopAppSignatureInspectionError.new(appPath, "verify its complete code signature", {
         cause,
       });
     }
@@ -202,7 +225,7 @@ export async function validateLocalDesktopApp(
       `${requirementOutput.stdout}\n${requirementOutput.stderr}`,
     );
     if (!designatedRequirement) {
-      throw new LocalSignedAppValidationError("designated-requirement-identifier");
+      throw LocalSignedAppValidationError.new("designated-requirement-identifier");
     }
 
     const appCertificate = await extractSigningCertificate(
@@ -224,7 +247,7 @@ export async function validateLocalDesktopApp(
           codePath,
         ]);
       } catch (cause) {
-        throw new DesktopAppSignatureInspectionError(codePath, "verify its code signature", {
+        throw DesktopAppSignatureInspectionError.new(codePath, "verify its code signature", {
           cause,
         });
       }
@@ -320,7 +343,7 @@ export async function replaceInstalledDesktopApp(input: {
         rollbackCause ??= error;
       }
     }
-    throw new DesktopInstallTransactionError({
+    throw DesktopInstallTransactionError.new({
       cause,
       ...(rollbackCause ? { rollbackCause } : {}),
       ...(keepRecoveryDirectory ? { recoveryDirectory: transactionDirectory } : {}),

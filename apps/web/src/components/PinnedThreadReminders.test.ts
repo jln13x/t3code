@@ -127,9 +127,23 @@ const shellAtom = Atom.make<unknown>(null);
 const environmentIdsAtom = Atom.make([EnvironmentId.make("env-1")]);
 const requestsAtom = Atom.make<ReadonlyMap<ThreadId, "approval" | "user_input">>(new Map());
 const delegatedAtom = Atom.make<ReadonlySet<string>>(new Set<string>());
+const hiddenAtom = Atom.make<ReadonlySet<string>>(new Set<string>());
+const hidingAtom = Atom.make(false);
+const refsAtom = Atom.make([
+  { environmentId: EnvironmentId.make("env-1"), threadId: ThreadId.make("thread-1") },
+]);
 vi.mock("../state/threads", () => ({
   environmentThreadShells: {
     pendingSubagentRequestsAtom: () => requestsAtom,
+    get hiddenThreadKeysAtom() {
+      return hiddenAtom;
+    },
+    get anyEnvironmentHidingAtom() {
+      return hidingAtom;
+    },
+    get threadRefsAtom() {
+      return refsAtom;
+    },
     get delegatedUnderParentAtom() {
       return delegatedAtom;
     },
@@ -161,6 +175,8 @@ vi.mock(import("../threadNotifications"), async (original) => ({
   setNotificationBadge: vi.fn(),
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.add, close: state.close } }));
+
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 
 import { startThreadNotifications } from "./ThreadNotificationCoordinator";
 import { threadNotificationTag } from "../threadNotifications";
@@ -236,6 +252,22 @@ function setup() {
   } as unknown as AnyRouter;
   let started = false;
   return {
+    setHidden: (hidden: boolean) => {
+      registry.set(
+        hiddenAtom,
+        new Set(
+          hidden
+            ? [
+                threadKey({
+                  environmentId: EnvironmentId.make("env-1"),
+                  threadId: ThreadId.make("thread-1"),
+                }),
+              ]
+            : [],
+        ),
+      );
+      registry.set(hidingAtom, hidden);
+    },
     requestApproval: () =>
       registry.set(requestsAtom, new Map([[ThreadId.make("thread-1"), "approval"]])),
     async render() {
@@ -278,6 +310,34 @@ describe("pinned thread reminders", () => {
     expect(state.sound).not.toHaveBeenCalled();
     expect(state.notification).not.toHaveBeenCalled();
   });
+
+  it.each(["toast", "system"])(
+    "suppresses and closes %s reminders when a thread is hidden",
+    async (channel) => {
+      await using app = setup();
+      state.mode = "notifications-and-sound";
+      state.focused = channel === "toast";
+      app.setHidden(true);
+      await app.render();
+      vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS * 2);
+      expect(state.add).not.toHaveBeenCalled();
+      expect(state.notification).not.toHaveBeenCalled();
+      expect(state.sound).not.toHaveBeenCalled();
+
+      app.setHidden(false);
+      vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS + 15_000);
+      const presenter = channel === "toast" ? state.add : state.notification;
+      expect(presenter).toHaveBeenCalledOnce();
+      app.setHidden(true);
+      if (channel === "toast") {
+        expect(state.close).toHaveBeenCalledWith("toast-1");
+      } else {
+        expect(state.notification.mock.results[0]?.value.close).toHaveBeenCalledOnce();
+      }
+      vi.advanceTimersByTime(PINNED_REMINDER_INTERVAL_MS * 2);
+      expect(presenter).toHaveBeenCalledOnce();
+    },
+  );
 
   it("starts a full interval after leaving the viewed thread", async () => {
     await using app = setup();

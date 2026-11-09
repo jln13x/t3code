@@ -4,16 +4,21 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `dac8b11ddc` on 2026-10-29. The success cue, icon-only working status,
+Reviewed against upstream `257e4073c1` on 2026-11-07. The success cue, icon-only working status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
-preserved. Fork worktree grouping remains retired. Optional sidebar folders, the simpler composer,
-thread actions, and permission checks use upstream's implementation. Pinned reminders now read
-upstream's shared subagent-request selectors, including linked tasks. They retain live environment
-shells and upstream notification settings and tags; upstream owns completion detection and delivery.
-Desktop identity/local signing remain separate from upstream authentication and packaging. Server
-behavior, wire contracts, settings, providers, resources, and mobile follow upstream, including
-usage-limit provider fallback. The per-thread new-thread-on-branch action still reuses its existing
-checkout. CI retains upstream's longer server-shard timeout with fork runners.
+preserved. Worktree grouping and other retired customizations remain retired. Sidebar rows, thread
+actions, permission checks, notification delivery, providers, resources, settings, and mobile follow
+upstream. Pinned reminders continue using upstream's shared request selectors, including linked
+tasks. They honor upstream hidden-thread filters and share its tracking so hiding a thread closes
+existing reminders. The per-thread new-thread-on-branch action retains its existing checkout.
+Desktop production branding stays Fork across release channels; update feeds and channel selection
+follow upstream.
+The new Setting up status keeps upstream's label and elapsed time; only a running agent's working
+status remains icon-only. Pinned reminders reset their idle clock during setup as well as running
+work. Server and wire behavior, including inactive-thread auto-settling and
+cloud dictation, remain upstream. CI retains upstream jobs and validation commands with
+repository-aware runners. Local signing/install errors use tagged errors compatible with upstream's
+new Effect type checker; certificate pinning, error messages, and rollback behavior are preserved.
 
 ## Maintained differences
 
@@ -31,9 +36,9 @@ checkout. CI retains upstream's longer server-shard timeout with fork runners.
 - Pinned threads act as high priority. In a connected environment, while a pinned thread has no
   running agent or background work that can wake it and is not snoozed, archived, or open in a focused window,
   the web/desktop client repeats an idle reminder every 2.5 minutes (`PinnedThreadReminders`). It
-  uses upstream's sound, toast, and system-notification settings and adds no server state, so it works
-  against unmodified upstream servers. A web tab or desktop window must stay open. Mobile follows
-  upstream and does not remind.
+  uses upstream's hidden-thread filters, sound, toast, and system-notification settings and adds no
+  server state, so it works against unmodified upstream servers. A web tab or desktop window must
+  stay open. Mobile follows upstream and does not remind.
 
 ### Desktop identity and local installation
 

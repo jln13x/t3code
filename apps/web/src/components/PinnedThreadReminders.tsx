@@ -1,4 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
@@ -30,7 +31,16 @@ const TITLE = "Pinned thread is idle";
 export function startPinnedThreadReminders(
   registry: AtomRegistry.AtomRegistry,
   router: AnyRouter,
-  onNotification: (environmentId: EnvironmentId, notification: Notification) => void,
+  onNotification: (
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+    notification: Notification,
+  ) => void,
+  addToast: (
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+    toast: Parameters<typeof toastManager.add>[0],
+  ) => ReturnType<typeof toastManager.add>,
 ): () => void {
   let idleSince = new Map<string, number>();
   const watched = new Map<EnvironmentId, () => void>();
@@ -43,6 +53,7 @@ export function startPinnedThreadReminders(
       threadId?: string;
     };
     const focused = document.visibilityState === "visible" && document.hasFocus();
+    const hidden = registry.get(environmentThreadShells.hiddenThreadKeysAtom);
     const result = collectDuePinnedReminders({
       threads: registry.get(environmentSummaries.environmentIdsAtom).flatMap((environmentId) => {
         const shell = registry.get(environmentShell.stateValueAtom(environmentId));
@@ -51,9 +62,11 @@ export function startPinnedThreadReminders(
         const requests = registry.get(
           environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
         );
-        return threads.map((thread) =>
-          presentThreadShell(environmentId, thread, requests.get(thread.id) ?? null),
-        );
+        return threads
+          .filter((thread) => !hidden.has(threadKey({ environmentId, threadId: thread.id })))
+          .map((thread) =>
+            presentThreadShell(environmentId, thread, requests.get(thread.id) ?? null),
+          );
       }),
       idleSince,
       viewingKey:
@@ -76,7 +89,7 @@ export function startPinnedThreadReminders(
     for (const thread of result.due) {
       if (focused) {
         if (!inAppNotificationsEnabled) continue;
-        const toastId = toastManager.add({
+        const toastId = addToast(thread.environmentId, thread.id, {
           type: "warning",
           title: TITLE,
           description: thread.title,
@@ -108,7 +121,7 @@ export function startPinnedThreadReminders(
           tag: threadNotificationTag(thread.environmentId, thread.id),
           silent: true,
         });
-        onNotification(thread.environmentId, notification);
+        onNotification(thread.environmentId, thread.id, notification);
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();
@@ -139,12 +152,14 @@ export function startPinnedThreadReminders(
     environmentSummaries.environmentIdsAtom,
     syncEnvironments,
   );
+  const unsubscribeHidden = registry.subscribe(environmentThreadShells.hiddenThreadKeysAtom, check);
   const unsubscribeRoute = router.subscribe("onResolved", check);
   syncEnvironments();
   const interval = window.setInterval(check, CHECK_INTERVAL_MS);
   return () => {
     window.clearInterval(interval);
     unsubscribeIds();
+    unsubscribeHidden();
     unsubscribeRoute();
     for (const stop of watched.values()) stop();
   };
