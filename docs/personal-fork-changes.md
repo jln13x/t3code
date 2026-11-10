@@ -4,21 +4,16 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `257e4073c1` on 2026-11-07. The success cue, icon-only working status,
+Reviewed against upstream `4c361199f4` on 2026-11-10. The success cue, icon-only running status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
-preserved. Worktree grouping and other retired customizations remain retired. Sidebar rows, thread
-actions, permission checks, notification delivery, providers, resources, settings, and mobile follow
-upstream. Pinned reminders continue using upstream's shared request selectors, including linked
-tasks. They honor upstream hidden-thread filters and share its tracking so hiding a thread closes
-existing reminders. The per-thread new-thread-on-branch action retains its existing checkout.
-Desktop production branding stays Fork across release channels; update feeds and channel selection
-follow upstream.
-The new Setting up status keeps upstream's label and elapsed time; only a running agent's working
-status remains icon-only. Pinned reminders reset their idle clock during setup as well as running
-work. Server and wire behavior, including inactive-thread auto-settling and
-cloud dictation, remain upstream. CI retains upstream jobs and validation commands with
-repository-aware runners. Local signing/install errors use tagged errors compatible with upstream's
-new Effect type checker; certificate pinning, error messages, and rollback behavior are preserved.
+preserved. Worktree grouping and other retired customizations remain retired. Sidebar design,
+thread actions and permissions, notification delivery, providers, resources, settings, server and
+wire behavior, and mobile follow upstream. The per-thread new-thread-on-branch action retains its
+existing checkout. Pinned reminders honor hidden-thread filters, reset during setup and running
+work, and share upstream notification tracking. Desktop production branding stays Fork across
+release channels; update feeds and channel selection follow upstream. CI keeps upstream's jobs,
+commands, and increased release-smoke timeout, with repository-aware runners. Calendar permission
+coverage includes unsigned, release-signed, and locally signed desktop builds.
 
 ## Maintained differences
 
