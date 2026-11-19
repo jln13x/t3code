@@ -6,6 +6,9 @@ import type { AnyRouter } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 import { PinIcon } from "lucide-react";
+import { msg } from "gt-react";
+
+import { m } from "../i18n/messages";
 
 import { getClientSettings } from "../hooks/useSettings";
 import { environmentSummaries } from "../state/presentation";
@@ -21,7 +24,7 @@ import { collectDuePinnedReminders } from "./PinnedThreadReminders.logic";
 import { toastManager } from "./ui/toast";
 
 const CHECK_INTERVAL_MS = 15_000;
-const TITLE = "Pinned thread is idle";
+const TITLE = msg("Pinned thread is idle");
 
 /**
  * Fork-only: repeats a reminder for pinned threads with no running agent,
@@ -91,14 +94,14 @@ export function startPinnedThreadReminders(
         if (!inAppNotificationsEnabled) continue;
         const toastId = addToast(thread.environmentId, thread.id, {
           type: "warning",
-          title: TITLE,
+          title: m(TITLE),
           description: thread.title,
           data: {
             hideCopyButton: true,
             leadingIcon: <PinIcon aria-hidden className="size-4 text-warning-foreground" />,
           },
           actionProps: {
-            children: "Open thread",
+            children: m(msg("Open thread")),
             onClick: () => {
               toastManager.close(toastId);
               open(thread.environmentId, thread.id);
@@ -115,7 +118,7 @@ export function startPinnedThreadReminders(
         continue;
       }
       try {
-        const notification = new Notification(TITLE, {
+        const notification = new Notification(m(TITLE), {
           body: thread.title,
           // Shares the completion notification's tag so reminders replace it.
           tag: threadNotificationTag(thread.environmentId, thread.id),
