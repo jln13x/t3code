@@ -4,7 +4,7 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `a6d2bed55b` on 2026-11-19. The success cue, icon-only running status,
+Reviewed against upstream `ad1b1f9ca4` on 2026-11-22. The success cue, icon-only running status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
 preserved. Worktree grouping and other retired customizations remain retired. Sidebar design,
 thread actions and permissions, notification delivery, providers, resources, settings, server and
@@ -15,9 +15,11 @@ release channels; update feeds and channel selection follow upstream. CI keeps u
 commands, and timeouts, with repository-aware runners. The fork keeps its `macos-26` fallback
 from `SYNC.md`; upstream native lint now uses Blacksmith macOS 27. Upstream localized notification labels,
 snoozed-completion suppression, and cleanup when an environment is removed are retained alongside
-pinned reminders. Reminder titles and actions use upstream localization helpers; the new idle
-reminder title falls back to English until translated.
+pinned reminders. Reminder titles and actions use upstream localization helpers; the idle reminder title is translated in every web locale.
 Calendar permission coverage includes unsigned, release-signed, and locally signed desktop builds.
+Upstream multi-repository projects, machine map, Apple Speech dictation, and Markdown rendering
+are retained. Both upstream sibling-thread actions keep the existing worktree; the branch-toolbar
+action does not restore the retired worktree-header button.
 
 ## Maintained differences
 
