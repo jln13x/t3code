@@ -64,6 +64,11 @@ function retryDelayMs(failures: number, random: number): number {
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
+// Personal fork: product analytics are off unless T3CODE_TELEMETRY_ENABLED=true at server start.
+export const telemetryOptedIn = Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
+  Config.withDefault(false),
+);
+
 const TelemetryEnvConfig = Config.all({
   posthogKey: Config.String("T3CODE_POSTHOG_KEY").pipe(
     Config.withDefault("phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m"),
@@ -71,7 +76,7 @@ const TelemetryEnvConfig = Config.all({
   posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(
     Config.withDefault("https://ingest.t3.codes"),
   ),
-  enabled: Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(Config.withDefault(true)),
+  enabled: telemetryOptedIn,
   flushBatchSize: Config.Number("T3CODE_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
   maxBufferedEvents: Config.Number("T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
     Config.withDefault(1_000),
@@ -132,8 +137,7 @@ export const make = Effect.gen(function* () {
     if (hostEnvironment.T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING === "1")
       return Effect.succeed(false);
     const preference = hostEnvironment.T3CODE_TELEMETRY_ENABLED;
-    return Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
-      Config.withDefault(true),
+    return telemetryOptedIn.pipe(
       Effect.provideService(
         ConfigProvider.ConfigProvider,
         ConfigProvider.fromEnv({
@@ -145,7 +149,11 @@ export const make = Effect.gen(function* () {
   });
   const httpClient = yield* HttpClient.HttpClient;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const { distinctId, installId } = yield* getTelemetryIdentity;
+  // Provider login files are read only when telemetry can be sent.
+  const { distinctId, installId } =
+    telemetryConfig.enabled && policyAllows
+      ? yield* getTelemetryIdentity
+      : { distinctId: null, installId: null };
   const crypto = yield* SecureRandom.SecureRandom;
   const bufferRef = yield* Ref.make<ReadonlyArray<BufferedAnalyticsEvent>>([]);
   const deliveryRef = yield* Ref.make<DeliveryState>({

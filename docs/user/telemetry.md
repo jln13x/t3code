@@ -1,5 +1,9 @@
 # Product usage data
 
+In this fork, product usage events and relay tracing are off by default. To turn them on, set
+`T3CODE_TELEMETRY_ENABLED=true` in the server's environment before starting it. The rest of this
+page describes what is sent once you opt in.
+
 The T3 Code server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
 associated with a hashed account or installation identifier. To count how many installations one person
 uses, the server also sends hashed account identifiers: your T3 Connect account, your OpenAI and
