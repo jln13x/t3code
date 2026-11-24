@@ -1,7 +1,7 @@
 # Personal fork changes
 
 The fork maintains its success sound, icon-only working status, pinned-thread idle reminders, a
-distinct locally installable desktop identity, and fork CI runners. Other product behavior,
+distinct locally installable desktop identity, opt-in telemetry, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
 Reviewed against upstream `ad1b1f9ca4` on 2026-11-22. The success cue, icon-only running status,
@@ -40,6 +40,18 @@ action does not restore the retired worktree-header button.
   uses upstream's hidden-thread filters, sound, toast, and system-notification settings and adds no
   server state, so it works against unmodified upstream servers. A web tab or desktop window must
   stay open. Mobile follows upstream and does not remind.
+
+### Opt-in telemetry
+
+- Approved server exception (2026-11-24). Product analytics to `ingest.t3.codes` and relay tracing
+  are off unless `T3CODE_TELEMETRY_ENABLED=true` is set. Upstream defaults it to on. The default
+  lives in `telemetryOptedIn` (`AnalyticsService.ts`) and `isRelayTracingEnabled`
+  (`otelEnvironment.ts`); the desktop renderer asks for it after the login shell is read.
+- While opted out, the server does not read `~/.codex/auth.json` or `~/.claude.json` for analytics
+  identity or owners, and fork clients never send hashed Connect account or device ids
+  (`readClientOwnerParams`) to any environment, including upstream servers.
+- No wire contract changes. Upstream servers keep their own defaults. Mobile crash reports and
+  web builds with embedded relay tracing tokens follow upstream; fork builds embed no tokens.
 
 ### Desktop identity and local installation
 
