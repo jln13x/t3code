@@ -108,16 +108,18 @@ const makeLinuxCliArchiveFixture = Effect.fn("test.makeLinuxCliArchiveFixture")(
     yield* fs.makeDirectory(path.dirname(memberPath), { recursive: true });
     yield* fs.writeFileString(memberPath, member);
   }
-  const archivePath = path.join(input.root, `${input.stem}.tar.gz`);
+  const archiveName = `${input.stem}.tar.gz`;
   const tar = yield* spawner.spawn(
-    ChildProcess.make("tar", ["-czf", archivePath, "-C", contentRoot, "."], {
+    // GNU tar reads a drive letter in an absolute archive path as a remote host.
+    ChildProcess.make("tar", ["-czf", archiveName, "-C", contentRoot, "."], {
+      cwd: input.root,
       stdin: "ignore",
       stdout: "ignore",
       stderr: "pipe",
     }),
   );
   assert.equal(Number(yield* tar.exitCode), 0);
-  return archivePath;
+  return path.join(input.root, archiveName);
 });
 
 function mockProcess(exitCode: number, stdout = "") {
@@ -300,6 +302,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       const mac = config.mac as Record<string, unknown>;
       assert.equal(config.appId, "com.t3tools.t3code.fork");
       assert.equal(config.forceCodeSigning, true);
+      assert.nestedPropertyVal(config, "electronFuses.resetAdHocDarwinSignature", false);
       assert.deepStrictEqual(mac.target, ["zip"]);
       assert.equal(mac.identity, LOCAL_DESKTOP_SIGNING_COMMON_NAME);
       assert.equal(mac.notarize, false);
@@ -675,6 +678,40 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect("packages every platform with Node inspector flags off and run-as-Node left on", () =>
+    Effect.gen(function* () {
+      const fuses = (platform: "mac" | "linux" | "win", target: string, signed: boolean) =>
+        createBuildConfig(
+          platform,
+          target,
+          "0.0.33",
+          signed ? "release" : "unsigned",
+          false,
+          undefined,
+          undefined,
+        ).pipe(Effect.map((config) => config.electronFuses));
+
+      // The desktop app starts its server and the `t3` shim by running its own binary as Node.
+      assert.deepEqual(yield* fuses("linux", "AppImage", false), {
+        enableNodeCliInspectArguments: false,
+        resetAdHocDarwinSignature: false,
+      });
+      assert.deepEqual(yield* fuses("win", "nsis", false), {
+        enableNodeCliInspectArguments: false,
+        resetAdHocDarwinSignature: false,
+      });
+      // Nothing signs an unsigned macOS build after the flip, so the flip re-signs it ad hoc.
+      assert.deepEqual(yield* fuses("mac", "dmg", false), {
+        enableNodeCliInspectArguments: false,
+        resetAdHocDarwinSignature: true,
+      });
+      assert.deepEqual(yield* fuses("mac", "dmg", true), {
+        enableNodeCliInspectArguments: false,
+        resetAdHocDarwinSignature: false,
+      });
+    }),
+  );
+
   it.effect("names updatable AppImages without a version and apart per channel", () =>
     Effect.gen(function* () {
       const appImageName = (version: string) =>
@@ -703,7 +740,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
-  it.effect("declares Calendar access for hosted commands in macOS builds", () =>
+  it.effect("declares Calendar and Apple Events access for hosted commands in macOS builds", () =>
     Effect.gen(function* () {
       for (const version of ["0.1.0", "0.1.1-nightly.20261019.1"]) {
         for (const signingMode of ["unsigned", "release", "local"] as const) {
@@ -721,6 +758,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             "NSCalendarsUsageDescription",
             "NSCalendarsFullAccessUsageDescription",
             "NSCalendarsWriteOnlyAccessUsageDescription",
+            "NSAppleEventsUsageDescription",
           ]) {
             assert.isString(mac.extendInfo[key], `${version}, signing=${signingMode}: ${key}`);
             assert.isNotEmpty(mac.extendInfo[key]);
@@ -1702,6 +1740,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
+    assert.match(
+      entitlements,
+      /<key>com\.apple\.security\.automation\.apple-events<\/key>\s*<true\/>/u,
+    );
     assert.match(entitlements, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
     assert.match(entitlements, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
     assert.notInclude(entitlements, "keychain-access-groups");

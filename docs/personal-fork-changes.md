@@ -4,22 +4,15 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, opt-in telemetry, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `ad1b1f9ca4` on 2026-11-22. The success cue, icon-only running status,
-pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
-preserved. Worktree grouping and other retired customizations remain retired. Sidebar design,
-thread actions and permissions, notification delivery, providers, resources, settings, server and
-wire behavior, and mobile follow upstream. The per-thread new-thread-on-branch action retains its
-existing checkout. Pinned reminders honor hidden-thread filters, reset during setup and running
-work, and share upstream notification tracking. Desktop production branding stays Fork across
-release channels; update feeds and channel selection follow upstream. CI keeps upstream's jobs,
-commands, and timeouts, with repository-aware runners. The fork keeps its `macos-26` fallback
-from `SYNC.md`; upstream native lint now uses Blacksmith macOS 27. Upstream localized notification labels,
-snoozed-completion suppression, and cleanup when an environment is removed are retained alongside
-pinned reminders. Reminder titles and actions use upstream localization helpers; the idle reminder title is translated in every web locale.
-Calendar permission coverage includes unsigned, release-signed, and locally signed desktop builds.
-Upstream multi-repository projects, machine map, Apple Speech dictation, and Markdown rendering
-are retained. Both upstream sibling-thread actions keep the existing worktree; the branch-toolbar
-action does not restore the retired worktree-header button.
+Reviewed against upstream `6ac4edef8c` on 2026-11-26. The success cue, icon-only running status,
+pinned-thread idle reminders, desktop identity/local signing, opt-in telemetry, and repository-aware
+CI runners are preserved. Worktree grouping and other retired customizations remain retired.
+Server behavior follows upstream except for the approved telemetry exception below; wire contracts,
+mobile, providers, resources, settings, notification delivery, and thread actions follow upstream.
+Sibling-thread actions retain the existing worktree. The telemetry exception keeps upstream's
+DO_NOT_TRACK and managed-policy controls. Upstream now avoids provider sign-in files for analytics
+identity entirely, replacing the fork's conditional identity-read guard. Reminder copy stays translated
+in every web locale. CI uses upstream jobs with repository-aware Ubuntu and macOS 26 fallbacks.
 
 ## Maintained differences
 
@@ -44,11 +37,11 @@ action does not restore the retired worktree-header button.
 ### Opt-in telemetry
 
 - Approved server exception (2026-11-24). Product analytics to `ingest.t3.codes` and relay tracing
-  are off unless `T3CODE_TELEMETRY_ENABLED=true` is set. Upstream defaults it to on. The default
+  are off unless `T3CODE_TELEMETRY_ENABLED=true` is set. Upstream enables it outside development and CI unless opted out. The default
   lives in `telemetryOptedIn` (`AnalyticsService.ts`) and `isRelayTracingEnabled`
   (`otelEnvironment.ts`); the desktop renderer asks for it after the login shell is read.
-- While opted out, the server does not read `~/.codex/auth.json` or `~/.claude.json` for analytics
-  identity or owners, and fork clients never send hashed Connect account or device ids
+- Upstream no longer reads provider sign-in files for analytics identity or owners.
+  Fork clients never send hashed Connect account or device ids
   (`readClientOwnerParams`) to any environment, including upstream servers.
 - No wire contract changes. Upstream servers keep their own defaults. Mobile crash reports and
   web builds with embedded relay tracing tokens follow upstream; fork builds embed no tokens.
