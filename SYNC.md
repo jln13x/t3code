@@ -4,10 +4,11 @@
 - Work on a task branch. Never reset, rebase, or develop directly on `personal`.
 - Merge current `pingdotgg/t3code` main, then reconcile only the completion sound asset,
   icon-only sidebar working status, pinned-thread idle reminders, desktop identity/local signing,
-  and fork CI runners.
+  opt-in telemetry, and fork CI runners.
 - Keep the rest of the sidebar upstream, including rows, thread actions, search, drafts, pinning,
   ordering, provider/model icons, shelf persistence, and PR state. Do not restore worktree grouping.
-- Keep server behavior, wire contracts, resources, notification delivery, and settings upstream.
+- Keep the approved opt-in telemetry exception from the inventory; other server behavior,
+  wire contracts, resources, notification delivery, and settings follow upstream.
 - Update the inventory when upstream replaces a customization. Do not restore retired features.
 - Run `vp check`, `vp run typecheck`, and focused sidebar, notification, and desktop identity tests.
   Run `vp run lint:mobile` if the sync changes native mobile code.

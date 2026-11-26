@@ -4,7 +4,7 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, opt-in telemetry, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `ad1b1f9ca4` on 2026-11-22. The success cue, icon-only running status,
+Reviewed against upstream `ca81b7b97a` on 2026-11-25. The success cue, icon-only running status,
 pinned-thread idle reminders, desktop identity/local signing, and repository-aware CI runners are
 preserved. Worktree grouping and other retired customizations remain retired. Sidebar design,
 thread actions and permissions, notification delivery, providers, resources, settings, server and
