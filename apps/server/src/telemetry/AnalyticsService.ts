@@ -1,4 +1,4 @@
-// T3 ingest retains events and forwards to PostHog; UUIDs deduplicate retries there.
+// T3 ingest retains events and deduplicates retries by UUID.
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isDoNotTrackSet } from "@t3tools/shared/otelEnvironment";
 import type { ClientOs } from "@t3tools/contracts";
@@ -73,10 +73,10 @@ export const telemetryOptedIn = Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
 );
 
 const TelemetryEnvConfig = Config.all({
-  posthogKey: Config.String("T3CODE_POSTHOG_KEY").pipe(
+  ingestKey: Config.String("T3CODE_TELEMETRY_KEY").pipe(
     Config.withDefault("phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m"),
   ),
-  posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(
+  ingestHost: Config.String("T3CODE_TELEMETRY_HOST").pipe(
     Config.withDefault("https://ingest.t3.codes"),
   ),
   enabled: telemetryOptedIn,
@@ -156,11 +156,7 @@ export const make = Effect.gen(function* () {
   });
   const httpClient = yield* HttpClient.HttpClient;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  // Provider login files are read only when telemetry can be sent.
-  const { distinctId, installId } =
-    telemetryConfig.enabled && policyAllows
-      ? yield* getTelemetryIdentity
-      : { distinctId: null, installId: null };
+  const { distinctId, installId } = yield* getTelemetryIdentity;
   const crypto = yield* SecureRandom.SecureRandom;
   const bufferRef = yield* Ref.make<ReadonlyArray<BufferedAnalyticsEvent>>([]);
   const deliveryRef = yield* Ref.make<DeliveryState>({
@@ -219,7 +215,7 @@ export const make = Effect.gen(function* () {
     if (!(yield* telemetryEnabled) || !distinctId) return;
 
     const payload = {
-      api_key: telemetryConfig.posthogKey,
+      api_key: telemetryConfig.ingestKey,
       batch: events.map((event) => ({
         uuid: event.uuid,
         event: event.event,
@@ -251,7 +247,7 @@ export const make = Effect.gen(function* () {
       })),
     };
 
-    yield* HttpClientRequest.post(`${telemetryConfig.posthogHost}/batch/`).pipe(
+    yield* HttpClientRequest.post(`${telemetryConfig.ingestHost}/batch/`).pipe(
       HttpClientRequest.bodyJson(payload),
       Effect.flatMap(httpClient.execute),
       Effect.flatMap(HttpClientResponse.filterStatusOk),

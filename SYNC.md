@@ -33,5 +33,5 @@ vp run setup:desktop:signing # once per Mac
 vp run install:desktop:arm64
 ```
 
-Follow the signing and rollback checks in `docs/internals/scripts.md`. The first replacement of an
+Follow the signing and rollback checks in `docs/internals/17_scripts.md`. The first replacement of an
 installed app requires explicit approval. Report validation, replacement, and launch results.
