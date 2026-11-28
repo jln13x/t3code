@@ -4,7 +4,7 @@ The fork maintains its success sound, icon-only working status, pinned-thread id
 distinct locally installable desktop identity, opt-in telemetry, and fork CI runners. Other product behavior,
 including the rest of the sidebar, follows upstream.
 
-Reviewed against upstream `6ac4edef8c` on 2026-11-26. The success cue, icon-only running status,
+Reviewed against upstream `b68de0fb09` on 2026-11-28. The success cue, icon-only running status,
 pinned-thread idle reminders, desktop identity/local signing, opt-in telemetry, and repository-aware
 CI runners are preserved. Worktree grouping and other retired customizations remain retired.
 Server behavior follows upstream except for the approved telemetry exception below; wire contracts,
@@ -12,7 +12,7 @@ mobile, providers, resources, settings, notification delivery, and thread action
 Sibling-thread actions retain the existing worktree. The telemetry exception keeps upstream's
 DO_NOT_TRACK and managed-policy controls. Upstream now avoids provider sign-in files for analytics
 identity entirely, replacing the fork's conditional identity-read guard. Reminder copy stays translated
-in every web locale. CI uses upstream jobs with repository-aware Ubuntu and macOS 26 fallbacks.
+in every web locale, including Polish. CI uses upstream jobs with repository-aware Ubuntu and macOS 26 fallbacks.
 
 ## Maintained differences
 
